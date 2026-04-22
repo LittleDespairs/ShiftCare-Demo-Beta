@@ -196,7 +196,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             employee_id INTEGER NOT NULL,
             date TEXT NOT NULL,
-            status_type TEXT NOT NULL CHECK (status_type IN ('sick', 'no_show')),
+            status_type TEXT NOT NULL CHECK (status_type IN ('sick', 'day_off')),
             UNIQUE(employee_id, date),
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
         )
@@ -214,6 +214,28 @@ def init_db():
         )
     """)
     cursor.execute("DELETE FROM employee_day_statuses WHERE status_type = 'no_show'")
+
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'employee_day_statuses'")
+    day_status_table_sql = cursor.fetchone()["sql"]
+    if "day_off" not in day_status_table_sql:
+        cursor.execute("ALTER TABLE employee_day_statuses RENAME TO employee_day_statuses_old")
+        cursor.execute("""
+            CREATE TABLE employee_day_statuses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                status_type TEXT NOT NULL CHECK (status_type IN ('sick', 'day_off')),
+                UNIQUE(employee_id, date),
+                FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO employee_day_statuses (id, employee_id, date, status_type)
+            SELECT id, employee_id, date, status_type
+            FROM employee_day_statuses_old
+            WHERE status_type IN ('sick', 'day_off')
+        """)
+        cursor.execute("DROP TABLE employee_day_statuses_old")
 
     # ==========================================
     # Time-based coverage requirements / Интервальные требования покрытия

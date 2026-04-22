@@ -30,9 +30,9 @@ tags_metadata = [
 ]
 
 app = FastAPI(
-    title="Schedule App - Nursing Staff Scheduling 0.6.0_alpha",
+    title="Schedule App - Nursing Staff Scheduling 0.11.1_alpha",
     description="Web application for nursing staff scheduling",
-    version="0.6.0_alpha",
+    version="0.11.1_alpha",
     openapi_tags=tags_metadata,
 )
 
@@ -185,7 +185,7 @@ class EmployeeWeekPreferenceCreate(BaseModel):
 class EmployeeDayStatusCreate(BaseModel):
     employee_id: int
     date: str
-    status_type: Literal["sick"]
+    status_type: Literal["sick", "day_off"]
 
 
 class ScheduleEntryCreate(BaseModel):
@@ -210,9 +210,17 @@ class ClearWeekScheduleRequest(BaseModel):
 
 
 class AppSettingsUpdate(BaseModel):
-    min_rest_minutes_between_morning_and_evening: int = Field(ge=0, le=24 * 60)
-    min_rest_minutes_after_night_before_evening: int = Field(ge=0, le=24 * 60)
-    schedule_coverage_display_mode: Literal["category", "interval"] = "interval"
+    min_rest_minutes_between_morning_and_evening: int | None = Field(
+        default=None,
+        ge=0,
+        le=24 * 60,
+    )
+    min_rest_minutes_after_night_before_evening: int | None = Field(
+        default=None,
+        ge=0,
+        le=24 * 60,
+    )
+    schedule_coverage_display_mode: Literal["category", "interval"] | None = None
 
 
 @dataclass(frozen=True)
@@ -298,7 +306,7 @@ def get_app_settings(connection) -> dict:
 
 def save_app_settings(connection, settings: AppSettingsUpdate) -> None:
     cursor = connection.cursor()
-    for key, value in settings.model_dump().items():
+    for key, value in settings.model_dump(exclude_none=True).items():
         cursor.execute(
             """
             INSERT INTO app_settings (key, value)
@@ -891,14 +899,17 @@ def get_export_label(key: str, lang: str) -> str:
     labels = {
         "en": {
             "sick": "Sick",
+            "day_off": "Day off",
             "no_show": "No-show",
         },
         "ru": {
             "sick": "Больничный",
+            "day_off": "Выходной",
             "no_show": "Неявка",
         },
         "he": {
             "sick": "מחלה",
+            "day_off": "יום חופשי",
             "no_show": "אי הגעה",
         },
     }
@@ -906,8 +917,8 @@ def get_export_label(key: str, lang: str) -> str:
 
 
 def build_schedule_cell_text(entries: list[dict], day_status: dict | None = None, lang: str = "en") -> str:
-    if day_status and day_status.get("status_type") == "sick":
-        return get_export_label("sick", lang)
+    if day_status and day_status.get("status_type") in {"sick", "day_off"}:
+        return get_export_label(day_status["status_type"], lang)
 
     return "\n".join(
         get_export_label("no_show", lang) if entry.get("no_show") else entry["shift_template_name"]
@@ -1676,6 +1687,57 @@ def get_employee_day_status_map(connection, employee_ids: list[int], dates: list
     return {(row["employee_id"], row["date"]): dict(row) for row in cursor.fetchall()}
 
 
+def sync_generated_day_off_statuses(
+    connection,
+    cursor,
+    employees: list[dict],
+    position_id: int,
+    dates: list[str],
+) -> int:
+    employee_ids = [employee["id"] for employee in employees]
+    if not employee_ids or not dates:
+        return 0
+
+    employee_placeholders = ",".join(["?"] * len(employee_ids))
+    date_placeholders = ",".join(["?"] * len(dates))
+    cursor.execute(
+        f"""
+        DELETE FROM employee_day_statuses
+        WHERE status_type = 'day_off'
+          AND employee_id IN ({employee_placeholders})
+          AND date IN ({date_placeholders})
+        """,
+        [*employee_ids, *dates],
+    )
+
+    entries = get_schedule_entries(connection, dates=dates)
+    employee_id_set = set(employee_ids)
+    worked_days = {
+        (entry["employee_id"], entry["date"])
+        for entry in entries
+        if entry["employee_id"] in employee_id_set and not entry.get("no_show")
+    }
+    day_status_map = get_employee_day_status_map(connection, employee_ids, dates)
+
+    inserted_count = 0
+    for employee_id in employee_ids:
+        for date_string in dates:
+            if (employee_id, date_string) in worked_days:
+                continue
+            if (employee_id, date_string) in day_status_map:
+                continue
+            cursor.execute(
+                """
+                INSERT INTO employee_day_statuses (employee_id, date, status_type)
+                VALUES (?, ?, 'day_off')
+                """,
+                (employee_id, date_string),
+            )
+            inserted_count += 1
+
+    return inserted_count
+
+
 # =========================
 # Schedule and generator
 # =========================
@@ -1798,6 +1860,18 @@ def clear_week_schedule(request_data: ClearWeekScheduleRequest):
             [request_data.position_id, *week_dates],
         )
         deleted_count = cursor.rowcount
+        employees = load_position_employees(connection, request_data.position_id)
+        employee_ids = [employee["id"] for employee in employees]
+        if employee_ids:
+            cursor.execute(
+                f"""
+                DELETE FROM employee_day_statuses
+                WHERE status_type = 'day_off'
+                  AND employee_id IN ({','.join(['?'] * len(employee_ids))})
+                  AND date IN ({','.join(['?'] * len(week_dates))})
+                """,
+                [*employee_ids, *week_dates],
+            )
         connection.commit()
         return {"message": "Week schedule cleared successfully", "deleted_count": deleted_count}
     finally:
@@ -2994,12 +3068,20 @@ def auto_generate_schedule(request_data: AutoGenerateScheduleRequest):
         )
 
         append_fatigue_summary_warnings(connection, employees, week_dates, request_data.week_start_date, errors)
+        day_off_count = sync_generated_day_off_statuses(
+            connection,
+            cursor,
+            employees,
+            request_data.position_id,
+            week_dates,
+        )
 
         connection.commit()
         return {
             "message": "Auto-generation finished",
             "created_count": len(created_entries),
             "created_entries": created_entries,
+            "day_off_count": day_off_count,
             "optimization_moved_count": optimization_moved_count,
             "errors": errors,
         }
@@ -3064,7 +3146,7 @@ def export_schedule_excel(week_start_date: str, position_id: int, lang: str = "e
             for day_offset, current_date in enumerate(week_dates, start=2):
                 day_entries = grouped_entries.get((employee["id"], current_date), [])
                 day_status = day_status_map.get((employee["id"], current_date))
-                if not (day_status and day_status.get("status_type") == "sick"):
+                if not (day_status and day_status.get("status_type") in {"sick", "day_off"}):
                     weekly_count += sum(1 for entry in day_entries if not entry.get("no_show"))
                 text = build_schedule_cell_text(day_entries, day_status, lang)
                 max_lines = max(max_lines, text.count("\n") + 1 if text else 1)

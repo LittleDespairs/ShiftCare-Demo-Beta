@@ -239,16 +239,6 @@
                         </div>
 
                         <div>
-                            <label class="form-label" for="schedule_coverage_display_mode">
-                                <span data-i18n="coverage_display_mode">Schedule coverage display</span>
-                            </label>
-                            <select id="schedule_coverage_display_mode" class="input" required>
-                                <option value="interval" data-i18n="coverage_display_interval">By time intervals</option>
-                                <option value="category" data-i18n="coverage_display_category">By shift categories</option>
-                            </select>
-                        </div>
-
-                        <div>
                             <div class="form-actions">
                                 <button class="btn btn-primary" type="submit" data-i18n="coverage_save_rest_settings">Save settings</button>
                                 <button class="btn btn-secondary" type="button" onclick="loadAppSettings()" data-i18n="common_reload">Reload</button>
@@ -380,8 +370,6 @@
                 settings.min_rest_minutes_between_morning_and_evening;
             document.getElementById("min_rest_minutes_after_night_before_evening").value =
                 settings.min_rest_minutes_after_night_before_evening;
-            document.getElementById("schedule_coverage_display_mode").value =
-                settings.schedule_coverage_display_mode || "interval";
         }
 
         async function saveAppSettings(event) {
@@ -393,8 +381,7 @@
                 ),
                 min_rest_minutes_after_night_before_evening: Number(
                     document.getElementById("min_rest_minutes_after_night_before_evening").value
-                ),
-                schedule_coverage_display_mode: document.getElementById("schedule_coverage_display_mode").value
+                )
             };
 
             const response = await fetch("/api/app-settings", {
@@ -415,8 +402,6 @@
                 result.settings.min_rest_minutes_between_morning_and_evening;
             document.getElementById("min_rest_minutes_after_night_before_evening").value =
                 result.settings.min_rest_minutes_after_night_before_evening;
-            document.getElementById("schedule_coverage_display_mode").value =
-                result.settings.schedule_coverage_display_mode || "interval";
         }
 
         async function loadPositions() {

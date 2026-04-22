@@ -10,7 +10,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Requests",
         nav_settings: "Settings",
 
-        sidebar_footer_title: "Version 0.3.1beta",
+        sidebar_footer_title: "Version 0.11.1_alpha",
         sidebar_footer_text: "Interface redesign in progress. The current goal is a simpler and clearer workflow.",
 
         page_title: "Dashboard",
@@ -56,7 +56,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Documentation",
         footer_guide: "User Guide",
-        footer_version: "Schedule App v0.3.1 beta",
+        footer_version: "Schedule App v0.11.1_alpha",
 
         quick_actions_title: "Quick actions",
         quick_action_schedule_title: "Open current week",
@@ -115,6 +115,7 @@ const I18N_TRANSLATIONS = {
         schedule_remove_status: "Remove status",
         schedule_shift_status: "Shift status",
         schedule_status_sick_hint: "Blocks the whole day cell",
+        schedule_status_day_off_hint: "Marks the whole day as a day off",
         schedule_no_shifts_for_no_show: "No shifts available for no-show status",
 
         schedule_employee_header: "Employee",
@@ -128,6 +129,7 @@ const I18N_TRANSLATIONS = {
         shift_night: "Night",
 
         status_sick: "Sick",
+        status_day_off: "Day off",
         status_no_show: "No-show",
 
         coverage_staff: "Staff",
@@ -151,6 +153,7 @@ const I18N_TRANSLATIONS = {
         msg_failed_load_schedule_data: "Failed to load schedule data.",
         msg_server_error_load_schedule: "Server error while loading schedule.",
         msg_schedule_loaded: "Schedule loaded successfully.",
+        msg_failed_save_schedule_display: "Failed to save coverage display mode.",
 
         msg_auto_generate_failed: "Auto-generation failed.",
         msg_auto_generate_done: "Auto-generation finished.",
@@ -406,7 +409,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.3.1 beta",
+        footer_version: "Schedule App v0.11.1_alpha",
 
         msg_enter_template_name: "Please enter template name.",
         msg_select_shift_category: "Please select shift category.",
@@ -536,7 +539,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Пожелания",
         nav_settings: "Настройки",
 
-        sidebar_footer_title: "Версия 0.3.1beta",
+        sidebar_footer_title: "Версия 0.11.1_alpha",
         sidebar_footer_text: "Сейчас идёт редизайн интерфейса. Главная цель — сделать рабочий процесс проще и понятнее.",
 
         page_title: "Главная",
@@ -582,7 +585,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.3.1 beta",
+        footer_version: "Schedule App v0.11.1_alpha",
 
         quick_actions_title: "Быстрые действия",
         quick_action_schedule_title: "Открыть текущую неделю",
@@ -654,10 +657,12 @@ const I18N_TRANSLATIONS = {
         shift_night: "Ночь",
 
         status_sick: "Больничный",
+        status_day_off: "Выходной",
         status_no_show: "Неявка",
         schedule_remove_status: "Удалить статус",
         schedule_shift_status: "Статус смены",
         schedule_status_sick_hint: "Закрывает всю ячейку дня",
+        schedule_status_day_off_hint: "Отмечает весь день как выходной",
         schedule_no_shifts_for_no_show: "Нет смен, доступных для статуса неявки",
 
         coverage_staff: "Сотрудники",
@@ -681,6 +686,7 @@ const I18N_TRANSLATIONS = {
         msg_failed_load_schedule_data: "Не удалось загрузить данные расписания.",
         msg_server_error_load_schedule: "Ошибка сервера при загрузке расписания.",
         msg_schedule_loaded: "Расписание успешно загружено.",
+        msg_failed_save_schedule_display: "Не удалось сохранить режим отображения покрытия.",
 
         msg_auto_generate_failed: "Автогенерация не удалась.",
         msg_auto_generate_done: "Автогенерация завершена.",
@@ -1058,7 +1064,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "בקשות",
         nav_settings: "הגדרות",
 
-        sidebar_footer_title: "גרסה 0.3.1beta",
+        sidebar_footer_title: "גרסה 0.11.1_alpha",
         sidebar_footer_text: "כעת מתבצע עיצוב מחדש של הממשק. המטרה היא להפוך את תהליך העבודה לפשוט וברור יותר.",
 
         page_title: "דף הבית",
@@ -1168,10 +1174,12 @@ const I18N_TRANSLATIONS = {
         shift_night: "לילה",
 
         status_sick: "מחלה",
+        status_day_off: "יום חופשי",
         status_no_show: "אי הגעה",
         schedule_remove_status: "הסר סטטוס",
         schedule_shift_status: "סטטוס משמרת",
         schedule_status_sick_hint: "חוסם את כל תא היום",
+        schedule_status_day_off_hint: "מסמן את כל היום כיום חופשי",
         schedule_no_shifts_for_no_show: "אין משמרות זמינות לסימון אי הגעה",
 
         coverage_staff: "עובדים",
@@ -1195,6 +1203,7 @@ const I18N_TRANSLATIONS = {
         msg_failed_load_schedule_data: "טעינת נתוני סידור העבודה נכשלה.",
         msg_server_error_load_schedule: "שגיאת שרת בזמן טעינת סידור העבודה.",
         msg_schedule_loaded: "סידור העבודה נטען בהצלחה.",
+        msg_failed_save_schedule_display: "שמירת מצב תצוגת הכיסוי נכשלה.",
 
         msg_auto_generate_failed: "היצירה האוטומטית נכשלה.",
         msg_auto_generate_done: "היצירה האוטומטית הסתיימה.",
@@ -1287,7 +1296,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "תיעוד",
         footer_guide: "מדריך",
-        footer_version: "Schedule App v0.3.1 beta",
+        footer_version: "Schedule App v0.11.1_alpha",
 
         employees_table_id: "מזהה",
         employees_table_name: "שם מלא",
@@ -1709,3 +1718,4 @@ function bindSidebarToggle() {
 window.addEventListener("resize", () => {
     applySidebarState(getSavedSidebarState());
 });
+

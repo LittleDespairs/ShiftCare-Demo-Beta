@@ -42,20 +42,44 @@
             justify-content: flex-start;
         }
 
+        .schedule-display-control {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 14px;
+        }
+
+        body.rtl .schedule-display-control {
+            justify-content: flex-start;
+        }
+
+        .schedule-display-field {
+            width: min(320px, 100%);
+        }
+
         /* Large schedule area / Большая область таблицы расписания */
         .schedule-shell {
             --schedule-date-header-height: 72px;
             --schedule-header-offset: 0px;
             position: relative;
             overflow: visible;
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            background: #fff;
+            border: 1px solid #b8c3d4;
+            border-radius: 16px;
+            background: #d9e1ec;
+            box-shadow:
+                0 22px 60px rgba(15, 23, 42, 0.14),
+                0 0 0 1px rgba(255, 255, 255, 0.7) inset;
             min-height: 320px;
         }
 
         .schedule-panel {
+            border-color: #c7d2e1;
+            background: #edf2f8;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
             overflow: visible;
+        }
+
+        .schedule-panel .panel-body {
+            background: #eef3f8;
         }
 
         .schedule-loading-overlay {
@@ -158,11 +182,11 @@
 
         .schedule-table th,
         .schedule-table td {
-            border-bottom: 1px solid var(--border);
-            border-inline-end: 1px solid var(--border);
+            border-bottom: 1px solid #d3dce8;
+            border-inline-end: 1px solid #d3dce8;
             vertical-align: top;
             padding: 0;
-            background: #fff;
+            background: #fdfefe;
         }
 
         .schedule-table th:last-child,
@@ -172,7 +196,7 @@
 
         .schedule-table thead th {
             position: sticky;
-            background: #f8fafc;
+            background: #eaf0f7;
         }
 
         .schedule-table thead .date-header-row th {
@@ -192,7 +216,7 @@
             position: sticky;
             left: 0;
             z-index: 3;
-            background: #fff;
+            background: #f7fafc;
         }
 
         body.rtl .employee-column {
@@ -202,7 +226,7 @@
 
         .schedule-table thead .employee-column {
             z-index: 12;
-            background: #f8fafc;
+            background: #eaf0f7;
         }
 
         /* Header cells / Ячейки заголовка по дням */
@@ -210,7 +234,7 @@
             min-width: 150px;
             min-height: var(--schedule-date-header-height);
             box-sizing: border-box;
-            background: #f8fafc;
+            background: #eaf0f7;
             padding: 10px 10px;
         }
 
@@ -230,7 +254,7 @@
         .employee-cell {
             padding: 10px 12px;
             min-height: 126px;
-            background: #fff;
+            background: #f7fafc;
         }
 
         .employee-name {
@@ -250,7 +274,7 @@
         .schedule-day-cell {
             position: relative;
             min-width: 150px;
-            background: #fff;
+            background: #fdfefe;
         }
 
         .schedule-day-inner {
@@ -262,13 +286,13 @@
             min-height: 126px;
         }
 
-        .schedule-day-inner.has-sick-status {
+        .schedule-day-cell.has-day-status .schedule-day-inner {
             min-height: 126px;
         }
 
         .cell-status-cover {
             position: absolute;
-            inset: 8px;
+            inset: 0;
             z-index: 5;
             display: flex;
             align-items: center;
@@ -281,6 +305,13 @@
             font-weight: 800;
             text-align: center;
             box-shadow: 0 10px 30px rgba(153, 27, 27, 0.12);
+        }
+
+        .cell-status-cover.day-off {
+            border-color: #c4b5fd;
+            background: rgba(245, 243, 255, 0.97);
+            color: #5b21b6;
+            box-shadow: 0 10px 30px rgba(91, 33, 182, 0.12);
         }
 
         .status-remove-btn {
@@ -785,6 +816,14 @@
                 grid-column: span 12;
             }
 
+            .schedule-display-control {
+                justify-content: stretch;
+            }
+
+            .schedule-display-field {
+                width: 100%;
+            }
+
             body.mobile-sidebar-hidden .sidebar {
                 display: none;
             }
@@ -943,6 +982,18 @@
             -->
             <section class="panel schedule-panel mt-22">
                 <div class="panel-body">
+                    <div class="schedule-display-control">
+                        <div class="schedule-display-field">
+                            <label class="form-label" for="schedule_coverage_display_mode" data-i18n="coverage_display_mode">
+                                Schedule coverage display
+                            </label>
+                            <select id="schedule_coverage_display_mode" class="select">
+                                <option value="interval" data-i18n="coverage_display_interval">By time intervals</option>
+                                <option value="category" data-i18n="coverage_display_category">By shift categories</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div class="schedule-shell">
                         <table class="schedule-table">
                             <thead id="schedule-thead">
@@ -1067,8 +1118,11 @@
             // Apply remembered sidebar state / Применяем сохранённое состояние sidebar
             applySidebarState(getSavedSidebarState());
 
-            // Load positions immediately / Сразу загружаем должности
-            await loadPositions();
+            // Load initial settings and reference data / Загружаем настройки и справочники
+            await Promise.all([
+                loadPositions(),
+                loadScheduleDisplaySetting()
+            ]);
         });
 
         // Re-render parts that depend on language / Перерисовка частей, зависящих от языка
@@ -1320,6 +1374,7 @@
             document.getElementById("clear-week-btn").addEventListener("click", clearWeekSchedule);
             document.getElementById("export-excel-btn").addEventListener("click", exportScheduleExcel);
             document.getElementById("clear-message-btn").addEventListener("click", clearMessage);
+            document.getElementById("schedule_coverage_display_mode").addEventListener("change", saveScheduleDisplayMode);
         }
 
         /* =========================================================
@@ -1348,6 +1403,73 @@
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_load_positions", "Server error while loading positions."), "danger");
+            }
+        }
+
+        function syncScheduleDisplaySelect() {
+            const select = document.getElementById("schedule_coverage_display_mode");
+            if (select) {
+                select.value = appSettings.schedule_coverage_display_mode || "interval";
+            }
+        }
+
+        async function loadScheduleDisplaySetting() {
+            try {
+                const response = await fetch("/api/app-settings");
+                if (!response.ok) {
+                    return;
+                }
+
+                appSettings = await response.json();
+                syncScheduleDisplaySelect();
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        async function saveScheduleDisplayMode(event) {
+            const select = event.target;
+            const nextMode = select.value;
+            const previousMode = appSettings.schedule_coverage_display_mode || "interval";
+            const positionId = Number(document.getElementById("position_select").value);
+
+            appSettings = {
+                ...appSettings,
+                schedule_coverage_display_mode: nextMode
+            };
+
+            if (weekDates.length > 0 && positionId) {
+                renderScheduleTable(positionId);
+            }
+
+            try {
+                const response = await fetch("/api/app-settings", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ schedule_coverage_display_mode: nextMode })
+                });
+
+                if (!response.ok) {
+                    appSettings.schedule_coverage_display_mode = previousMode;
+                    syncScheduleDisplaySelect();
+                    if (weekDates.length > 0 && positionId) {
+                        renderScheduleTable(positionId);
+                    }
+                    showMessage(t("msg_failed_save_schedule_display", "Failed to save coverage display mode."), "danger");
+                    return;
+                }
+
+                const result = await response.json();
+                appSettings = result.settings;
+                syncScheduleDisplaySelect();
+            } catch (error) {
+                console.error(error);
+                appSettings.schedule_coverage_display_mode = previousMode;
+                syncScheduleDisplaySelect();
+                if (weekDates.length > 0 && positionId) {
+                    renderScheduleTable(positionId);
+                }
+                showMessage(t("msg_failed_save_schedule_display", "Failed to save coverage display mode."), "danger");
             }
         }
 
@@ -1411,6 +1533,7 @@
                 allRequirements = await requirementsResponse.json();
                 allCoverageRequirements = await coverageRequirementsResponse.json();
                 appSettings = await appSettingsResponse.json();
+                syncScheduleDisplaySelect();
                 allShiftTemplates = await shiftTemplatesResponse.json();
                 allDayStatuses = await dayStatusesResponse.json();
 
@@ -1534,7 +1657,8 @@
                 document.getElementById("load-btn"),
                 document.getElementById("auto-generate-btn"),
                 document.getElementById("clear-week-btn"),
-                document.getElementById("export-excel-btn")
+                document.getElementById("export-excel-btn"),
+                document.getElementById("schedule_coverage_display_mode")
             ];
 
             if (shell) {
@@ -1856,6 +1980,62 @@
             `;
         }
 
+        function getDayStatusLabel(statusType) {
+            if (statusType === "day_off") {
+                return t("status_day_off", "Day off");
+            }
+            return t("status_sick", "Sick");
+        }
+
+        function getDayStatusClass(statusType) {
+            return statusType === "day_off" ? "day-off" : "sick";
+        }
+
+        function renderReadOnlyCellBody(dayEntries) {
+            return `
+                <div class="add-box" aria-hidden="true">
+                    <div class="cell-actions">
+                        <button class="cell-btn primary" type="button" tabindex="-1">
+                            ${t("schedule_add_shift", "Add shift")}
+                        </button>
+                        <button class="cell-btn secondary" type="button" tabindex="-1">
+                            ${t("schedule_day_status", "Day status")}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="entries-list" aria-hidden="true">
+                    ${dayEntries.length === 0 ? `
+                        <div class="empty-text">${t("schedule_no_shifts_assigned", "No shifts assigned")}</div>
+                    ` : dayEntries.map(entry => `
+                        <div class="${getCardClassByShiftCategory(entry.shift_category)} ${entry.no_show ? "has-no-show" : ""}">
+                            <div class="entry-title">${entry.shift_template_name}</div>
+                            <div class="entry-meta">
+                                ${getShiftCategoryLabel(entry.shift_category)} · ${entry.start_time} - ${entry.end_time}
+                            </div>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+        }
+
+        function renderDayStatusCover(employeeId, date, statusType) {
+            return `
+                <div class="cell-status-cover ${getDayStatusClass(statusType)}">
+                    <button
+                        class="status-remove-btn delete-day-status-btn"
+                        data-employee-id="${employeeId}"
+                        data-date="${date}"
+                        type="button"
+                        title="${t("schedule_remove_status", "Remove status")}"
+                    >
+                        ×
+                    </button>
+                    <div>${getDayStatusLabel(statusType)}</div>
+                </div>
+            `;
+        }
+
         function renderScheduleCell(employeeId, positionId, date) {
             // Render one employee/day cell
             // Отрисовываем одну ячейку: сотрудник + день
@@ -1866,49 +2046,15 @@
             ));
 
             const dayStatus = getDayStatus(employeeId, date);
-            const hasSickStatus = dayStatus && dayStatus.status_type === "sick";
+            const hasFullCellStatus = dayStatus && ["sick", "day_off"].includes(dayStatus.status_type);
 
-            if (hasSickStatus) {
+            if (hasFullCellStatus) {
                 return `
-                    <td class="schedule-day-cell">
-                        <div class="schedule-day-inner has-sick-status">
-                            <div class="add-box" aria-hidden="true">
-                                <div class="cell-actions">
-                                    <button class="cell-btn primary" type="button" tabindex="-1">
-                                        ${t("schedule_add_shift", "Add shift")}
-                                    </button>
-                                    <button class="cell-btn secondary" type="button" tabindex="-1">
-                                        ${t("schedule_day_status", "Day status")}
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="entries-list" aria-hidden="true">
-                                ${dayEntries.length === 0 ? `
-                                    <div class="empty-text">${t("schedule_no_shifts_assigned", "No shifts assigned")}</div>
-                                ` : dayEntries.map(entry => `
-                                    <div class="${getCardClassByShiftCategory(entry.shift_category)}">
-                                        <div class="entry-title">${entry.shift_template_name}</div>
-                                        <div class="entry-meta">
-                                            ${getShiftCategoryLabel(entry.shift_category)} · ${entry.start_time} - ${entry.end_time}
-                                        </div>
-                                    </div>
-                                `).join("")}
-                            </div>
-
-                            <div class="cell-status-cover">
-                                <button
-                                    class="status-remove-btn delete-day-status-btn"
-                                    data-employee-id="${employeeId}"
-                                    data-date="${date}"
-                                    type="button"
-                                    title="${t("schedule_remove_status", "Remove status")}"
-                                >
-                                    ×
-                                </button>
-                                <div>${t("status_sick", "Sick")}</div>
-                            </div>
+                    <td class="schedule-day-cell has-day-status">
+                        <div class="schedule-day-inner">
+                            ${renderReadOnlyCellBody(dayEntries)}
                         </div>
+                        ${renderDayStatusCover(employeeId, date, dayStatus.status_type)}
                     </td>
                 `;
             }
@@ -2236,6 +2382,10 @@
                     <button class="shift-picker-option status-picker-option" type="button" data-status-type="sick">
                         <div class="shift-picker-option-title">${t("status_sick", "Sick")}</div>
                         <div class="shift-picker-option-meta">${t("schedule_status_sick_hint", "Blocks the whole day cell")}</div>
+                    </button>
+                    <button class="shift-picker-option status-picker-option" type="button" data-status-type="day_off">
+                        <div class="shift-picker-option-title">${t("status_day_off", "Day off")}</div>
+                        <div class="shift-picker-option-meta">${t("schedule_status_day_off_hint", "Marks the whole day as a day off")}</div>
                     </button>
                 </div>
                 <div class="shift-picker-group">
