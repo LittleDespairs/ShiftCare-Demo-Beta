@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Positions - Schedule App</title>
+
+    <!--
+        Shared stylesheet / Общий файл стилей
+        Used across all redesigned pages.
+        Используется на всех переделанных страницах.
+    -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    <style>
+        /* =========================================================
+           PAGE-SPECIFIC STYLES / СТИЛИ ТОЛЬКО ДЛЯ СТРАНИЦЫ ДОЛЖНОСТЕЙ
+           ========================================================= */
+
+        .positions-layout {
+            display: grid;
+            grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
+            gap: 22px;
+        }
+
+        .position-form-panel {
+            position: sticky;
+            top: 28px;
+            align-self: start;
+        }
+
+        .subsection-title {
+            margin: 0 0 14px;
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+
+        .subsection-text {
+            margin: 0 0 18px;
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+
+        .helper-text {
+            font-size: 0.8rem;
+            color: var(--muted);
+            line-height: 1.45;
+            margin-top: 6px;
+        }
+
+        .rules-box {
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: #f8fafc;
+            padding: 14px;
+        }
+
+        .rules-title {
+            margin: 0 0 10px;
+            font-size: 0.9rem;
+            font-weight: 800;
+        }
+
+        .check-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 0.9rem;
+            line-height: 1.45;
+            color: var(--text);
+        }
+
+        .check-row input[type="checkbox"] {
+            margin-top: 2px;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary);
+            flex-shrink: 0;
+        }
+
+        .positions-table-shell {
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: #fff;
+        }
+
+        .positions-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 760px;
+        }
+
+        .positions-table th,
+        .positions-table td {
+            padding: 14px 14px;
+            border-bottom: 1px solid var(--border);
+            text-align: start;
+            vertical-align: top;
+        }
+
+        .positions-table th {
+            background: #f8fafc;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        body.rtl .positions-table th,
+        body.rtl .positions-table td {
+            text-align: right;
+        }
+
+        body.ltr .positions-table th,
+        body.ltr .positions-table td {
+            text-align: left;
+        }
+
+        .positions-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .position-name-cell {
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .muted-cell {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .mini-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            line-height: 1;
+            border: 1px solid transparent;
+        }
+
+        .mini-badge.yes {
+            background: #dcfce7;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .mini-badge.no {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+
+        .table-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .table-btn {
+            border: none;
+            border-radius: 12px;
+            min-height: 36px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 800;
+            transition: transform var(--transition), background var(--transition);
+        }
+
+        .table-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .table-btn.edit {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .table-btn.delete {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        body.rtl .list-header {
+            flex-direction: row-reverse;
+        }
+
+        .notes-box {
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 18px;
+            background: #f8fafc;
+            margin-top: 18px;
+        }
+
+        .notes-box ul {
+            margin: 0;
+            padding-inline-start: 18px;
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 0.9rem;
+        }
+
+        #message-box {
+            margin-bottom: 16px;
+        }
+
+        .page-message {
+            border-radius: 14px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .page-message.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .page-message.warning {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+
+        .page-message.danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .page-message.info {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        .sidebar-top-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .sidebar-toggle {
+            width: 42px;
+            height: 42px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background var(--transition), transform var(--transition);
+            margin-top: 12px;
+        }
+
+        .sidebar-toggle:hover {
+            background: #f8fafc;
+            transform: translateY(-1px);
+        }
+
+        body.sidebar-collapsed {
+            --sidebar-width: 88px;
+        }
+
+        body.sidebar-collapsed .brand-text,
+        body.sidebar-collapsed .sidebar-section-title {
+            display: none;
+        }
+
+        body.sidebar-collapsed .sidebar-top-row {
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        body.sidebar-collapsed .nav-label {
+            display: none;
+        }
+
+        body.sidebar-collapsed .nav-item {
+            justify-content: center;
+            padding-inline: 10px;
+        }
+
+        body.sidebar-collapsed .nav-icon {
+            width: auto;
+        }
+
+        @media (max-width: 1200px) {
+            .positions-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .position-form-panel {
+                position: static;
+            }
+        }
+
+        @media (max-width: 920px) {
+            body.mobile-sidebar-hidden .sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body class="app-shell ltr">
+    <div class="app-layout">
+        <!--
+            SIDEBAR / БОКОВОЕ МЕНЮ
+            Main navigation for the application.
+            Основная навигация приложения.
+        -->
+        <aside class="sidebar">
+            <div class="sidebar-top-row">
+                <div class="brand" style="border-bottom:none; padding:0; flex:1;">
+                    <div class="brand-logo">SA</div>
+                    <div class="brand-text">
+                        <h1 class="brand-title" data-i18n="app_title">Schedule App</h1>
+                        <p class="brand-subtitle" data-i18n="app_subtitle">Nursing staff scheduling</p>
+                    </div>
+                </div>
+
+                <button id="sidebar-toggle" class="sidebar-toggle" type="button" data-i18n-title="toggle_sidebar"
+                    title="Toggle menu">
+                    ☰
+                </button>
+            </div>
+
+            <div>
+                <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
+
+                <nav class="nav-list">
+                    <a href="/" class="nav-item">
+                        <span class="nav-icon">⌂</span>
+                        <span class="nav-label" data-i18n="nav_dashboard">Dashboard</span>
+                    </a>
+
+                    <a href="/schedule" class="nav-item">
+                        <span class="nav-icon">🗓</span>
+                        <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
+                    </a>
+
+                    <a href="/employees" class="nav-item">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-label" data-i18n="nav_employees">Employees</span>
+                    </a>
+
+                    <a href="/weekly-preferences" class="nav-item">
+                        <span class="nav-icon">✦</span>
+                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                    </a>
+
+                    <a href="/settings" class="nav-item">
+                        <span class="nav-icon">⚙</span>
+                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                    </a>
+                </nav>
+            </div>
+        </aside>
+
+        <!--
+            MAIN CONTENT / ОСНОВНОЕ СОДЕРЖИМОЕ
+            Header + form + table.
+            Заголовок + форма + таблица.
+        -->
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 class="page-title" data-i18n="positions_page_title">Positions</h2>
+                    <p class="page-subtitle" data-i18n="positions_page_subtitle">
+                        Create and manage department positions used by the scheduling system.
+                    </p>
+                </div>
+
+                <div class="topbar-actions">
+                    <div class="lang-switcher">
+                        <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+                        <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+                        <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+                    </div>
+                </div>
+            </header>
+
+            <div id="message-box"></div>
+
+            <div class="positions-layout">
+                <!--
+                    LEFT COLUMN / ЛЕВАЯ КОЛОНКА
+                    Position form.
+                    Форма должности.
+                -->
+                <section class="panel position-form-panel">
+                    <div class="panel-body">
+                        <h3 class="subsection-title" data-i18n="positions_form_title">Position form</h3>
+                        <p class="subsection-text" data-i18n="positions_form_subtitle">
+                            Add a new position and define coverage-related properties.
+                        </p>
+
+                        <form id="position-form" class="form-grid">
+                            <!-- Position name / Название должности -->
+                            <div>
+                                <label class="form-label" for="position_name" data-i18n="positions_name">
+                                    Position name
+                                </label>
+                                <input type="text" id="position_name" class="input"
+                                    data-i18n-placeholder="positions_name_placeholder" placeholder="Example: Nurse"
+                                    required>
+                            </div>
+
+                            <!-- Coverage options / Опции покрытия -->
+                            <div class="rules-box">
+                                <h4 class="rules-title" data-i18n="positions_coverage_title">
+                                    Coverage settings
+                                </h4>
+
+                                <label class="check-row">
+                                    <input type="checkbox" id="requires_continuous_coverage">
+                                    <span data-i18n="positions_requires_continuous_coverage">
+                                        Requires continuous coverage
+                                    </span>
+                                </label>
+
+                                <div style="margin-top:14px;">
+                                    <label class="form-label" for="minimum_staff_presence"
+                                        data-i18n="positions_minimum_staff_presence">
+                                        Minimum staff present at any moment
+                                    </label>
+                                    <input type="number" id="minimum_staff_presence" class="input" min="0" max="20"
+                                        value="0">
+                                    <div class="helper-text" data-i18n="positions_minimum_staff_presence_hint">
+                                        Set this only if continuous coverage is required.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button id="position-submit-button" type="submit" class="btn btn-primary"
+                                data-i18n="positions_add_button">
+                                Add position
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="resetPositionForm()">
+                                Reset
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <!--
+                    RIGHT COLUMN / ПРАВАЯ КОЛОНКА
+                    Position list + notes.
+                    Список должностей + заметки.
+                -->
+                <section>
+                    <div class="panel">
+                        <div class="panel-body">
+                            <div class="list-header">
+                                <div>
+                                    <h3 class="subsection-title" style="margin-bottom:6px;"
+                                        data-i18n="positions_list_title">
+                                        Position list
+                                    </h3>
+                                    <p class="subsection-text" style="margin:0;" data-i18n="positions_list_subtitle">
+                                        All positions currently saved in the system.
+                                    </p>
+                                </div>
+
+                                <button id="reload-btn" class="btn btn-secondary" type="button"
+                                    data-i18n="positions_reload_button">
+                                    Reload
+                                </button>
+                            </div>
+
+                            <div class="positions-table-shell">
+                                <table class="positions-table">
+                                    <thead>
+                                        <tr>
+                                            <th data-i18n="positions_table_id">ID</th>
+                                            <th data-i18n="positions_table_name">Name</th>
+                                            <th data-i18n="positions_table_continuous">Continuous coverage</th>
+                                            <th data-i18n="positions_table_min_presence">Minimum presence</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="positions-table-body">
+                                        <tr>
+                                            <td colspan="5" class="muted-cell" data-i18n="positions_empty_list">
+                                                No positions yet
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="notes-box">
+                        <h4 class="subsection-title" style="font-size:0.98rem; margin-bottom:10px;"
+                            data-i18n="positions_notes_title">
+                            Notes
+                        </h4>
+                        <ul>
+                            <li data-i18n="positions_note_1">
+                                A position can later be assigned to multiple employees.
+                            </li>
+                            <li data-i18n="positions_note_2">
+                                Continuous coverage is useful for roles that require constant presence.
+                            </li>
+                            <li data-i18n="positions_note_3">
+                                Minimum staff presence should normally stay at 0 unless continuous coverage is enabled.
+                            </li>
+                        </ul>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/i18n.js"></script>
+
+    <script>
+        /* =========================================================
+           SIDEBAR STATE / СОСТОЯНИЕ САЙДБАРА
+           ========================================================= */
+
+        function getSavedSidebarState() {
+            return localStorage.getItem("scheduleAppSidebar") || "expanded";
+        }
+
+        function applySidebarState(state) {
+            document.body.classList.remove("sidebar-collapsed", "mobile-sidebar-hidden");
+
+            if (window.innerWidth <= 920) {
+                if (state === "hidden") {
+                    document.body.classList.add("mobile-sidebar-hidden");
+                }
+                return;
+            }
+
+            if (state === "collapsed") {
+                document.body.classList.add("sidebar-collapsed");
+            }
+        }
+
+        function toggleSidebar() {
+            if (window.innerWidth <= 920) {
+                const hiddenNow = document.body.classList.contains("mobile-sidebar-hidden");
+                const nextState = hiddenNow ? "expanded" : "hidden";
+                localStorage.setItem("scheduleAppSidebar", nextState);
+                applySidebarState(nextState);
+                return;
+            }
+
+            const collapsedNow = document.body.classList.contains("sidebar-collapsed");
+            const nextState = collapsedNow ? "expanded" : "collapsed";
+            localStorage.setItem("scheduleAppSidebar", nextState);
+            applySidebarState(nextState);
+        }
+
+        function bindSidebarToggle() {
+            const button = document.getElementById("sidebar-toggle");
+            if (!button) return;
+
+            button.addEventListener("click", toggleSidebar);
+
+            window.addEventListener("resize", () => {
+                applySidebarState(getSavedSidebarState());
+            });
+        }
+
+        /* =========================================================
+           HELPERS / ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+           ========================================================= */
+
+        let editingPositionId = null;
+
+        function t(key, fallback = "") {
+            if (typeof translate === "function") {
+                return translate(key);
+            }
+            return fallback || key;
+        }
+
+        function showMessage(text, type = "info") {
+            const box = document.getElementById("message-box");
+            box.innerHTML = `<div class="page-message ${type}">${text}</div>`;
+        }
+
+        function boolBadge(value) {
+            const yesText = t("common_yes", "Yes");
+            const noText = t("common_no", "No");
+
+            return value
+                ? `<span class="mini-badge yes">${yesText}</span>`
+                : `<span class="mini-badge no">${noText}</span>`;
+        }
+
+        /* =========================================================
+           INIT / ИНИЦИАЛИЗАЦИЯ
+           ========================================================= */
+
+        document.addEventListener("DOMContentLoaded", () => {
+            bindSidebarToggle();
+            applySidebarState(getSavedSidebarState());
+
+            const form = document.getElementById("position-form");
+            const reloadButton = document.getElementById("reload-btn");
+
+            form.addEventListener("submit", handlePositionSubmit);
+            reloadButton.addEventListener("click", loadPositions);
+
+            loadPositions();
+        });
+
+        /* =========================================================
+           FORM SUBMIT / ОТПРАВКА ФОРМЫ
+           ========================================================= */
+
+        async function handlePositionSubmit(event) {
+            event.preventDefault();
+
+            const positionName = document.getElementById("position_name").value.trim();
+
+            if (!positionName) {
+                showMessage(t("msg_enter_position_name", "Please enter position name."), "warning");
+                return;
+            }
+
+            try {
+                const requiresContinuousCoverage = document.getElementById("requires_continuous_coverage").checked;
+                const minimumStaffPresence = Number(document.getElementById("minimum_staff_presence").value);
+
+                const payload = {
+                    name: positionName,
+                    requires_continuous_coverage: requiresContinuousCoverage,
+                    minimum_staff_presence: minimumStaffPresence
+                };
+
+                const url = editingPositionId === null
+                    ? "/api/positions"
+                    : `/api/positions/${editingPositionId}`;
+
+                const response = await fetch(url, {
+                    method: editingPositionId === null ? "POST" : "PUT",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("msg_failed_add_position", "Failed to add position."), "danger");
+                    return;
+                }
+
+                const result = await response.json();
+                showMessage(result.message, "success");
+
+                resetPositionForm();
+
+                await loadPositions();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_save_position", "Server error while saving position."), "danger");
+            }
+        }
+
+        /* =========================================================
+           LOAD POSITIONS / ЗАГРУЗКА ДОЛЖНОСТЕЙ
+           ========================================================= */
+
+        async function loadPositions() {
+            try {
+                const response = await fetch("/api/positions");
+
+                if (!response.ok) {
+                    showMessage(t("msg_failed_load_positions", "Failed to load positions."), "danger");
+                    return;
+                }
+
+                const positions = await response.json();
+                renderPositionsTable(positions);
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_load_positions", "Server error while loading positions."), "danger");
+            }
+        }
+
+        /* =========================================================
+           TABLE RENDER / ОТРИСОВКА ТАБЛИЦЫ
+           ========================================================= */
+
+        function editPosition(position) {
+            editingPositionId = position.id;
+            document.getElementById("position_name").value = position.name;
+            document.getElementById("requires_continuous_coverage").checked = position.requires_continuous_coverage;
+            document.getElementById("minimum_staff_presence").value = position.minimum_staff_presence;
+            document.getElementById("position-submit-button").textContent = t("positions_update_button", "Update position");
+            showMessage(`${t("msg_editing_position", "Editing position")}: ${position.name}`, "info");
+        }
+
+        async function deletePosition(positionId) {
+            if (!confirm(t("msg_confirm_delete_position", "Are you sure you want to delete this position?"))) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/positions/${positionId}`, {
+                    method: "DELETE"
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("msg_failed_delete_position", "Failed to delete position."), "danger");
+                    return;
+                }
+
+                const result = await response.json();
+                showMessage(result.message, "success");
+
+                if (editingPositionId === positionId) {
+                    resetPositionForm();
+                }
+
+                await loadPositions();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_delete_position", "Server error while deleting position."), "danger");
+            }
+        }
+
+        function resetPositionForm() {
+            document.getElementById("position-form").reset();
+            document.getElementById("minimum_staff_presence").value = 0;
+            editingPositionId = null;
+            document.getElementById("position-submit-button").textContent = t("positions_add_button", "Add position");
+        }
+
+        function renderPositionsTable(positions) {
+            const tableBody = document.getElementById("positions-table-body");
+
+            if (positions.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="muted-cell">
+                            ${t("positions_empty_list", "No positions yet")}
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tableBody.innerHTML = positions.map(position => `
+                <tr>
+                    <td>${position.id}</td>
+                    <td class="position-name-cell">${position.name}</td>
+                    <td>${boolBadge(position.requires_continuous_coverage)}</td>
+                    <td>${position.minimum_staff_presence}</td>
+                    <td>
+                        <div class="table-actions">
+                            <button class="table-btn edit" type="button" onclick='editPosition(${JSON.stringify(position)})'>
+                                ${t("positions_edit_button", "Edit")}
+                            </button>
+                            <button class="table-btn delete" type="button" onclick="deletePosition(${position.id})">
+                                ${t("positions_delete_button", "Delete")}
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join("");
+        }
+    </script>
+</body>
+
+</html>

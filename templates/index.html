@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule App</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body class="app-shell ltr">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">SA</div>
+                <div class="brand-text">
+                    <h1 class="brand-title" data-i18n="app_title">Schedule App</h1>
+                    <p class="brand-subtitle" data-i18n="app_subtitle">Nursing staff scheduling</p>
+                </div>
+            </div>
+            <div>
+                <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
+                <button id="sidebar-toggle" class="sidebar-toggle" type="button" data-i18n-title="toggle_sidebar"
+                    title="Toggle menu">
+                    ☰
+                </button>
+                <nav class="nav-list">
+                    <a href="/" class="nav-item active">
+                        <span class="nav-icon">⌂</span>
+                        <span class="nav-label" data-i18n="nav_dashboard">Home</span>
+                    </a>
+
+                    <a href="/schedule" class="nav-item">
+                        <span class="nav-icon">🗓</span>
+                        <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
+                    </a>
+
+                    <a href="/employees" class="nav-item">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-label" data-i18n="nav_employees">Employees</span>
+                    </a>
+
+                    <a href="/weekly-preferences" class="nav-item">
+                        <span class="nav-icon">✦</span>
+                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                    </a>
+
+                    <a href="/settings" class="nav-item">
+                        <span class="nav-icon">⚙</span>
+                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                    </a>
+                </nav>
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 class="page-title" data-i18n="home_title">Main Menu</h2>
+                    <p class="page-subtitle" data-i18n="home_subtitle">
+                        Choose the action you need right now.
+                    </p>
+                </div>
+
+                <div class="topbar-actions">
+                    <div class="lang-switcher">
+                        <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+                        <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+                        <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+                    </div>
+                </div>
+            </header>
+
+            <section class="panel">
+                <div class="panel-body">
+                    <div class="quick-actions" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+                        <a href="/schedule" class="quick-action">
+                            <h3 class="quick-action-title" data-i18n="home_schedule_title">Create schedule</h3>
+                            <p class="quick-action-text" data-i18n="home_schedule_text">
+                                Open the weekly schedule and create or edit shifts.
+                            </p>
+                        </a>
+
+                        <a href="/employees" class="quick-action">
+                            <h3 class="quick-action-title" data-i18n="home_employees_title">Employees</h3>
+                            <p class="quick-action-text" data-i18n="home_employees_text">
+                                Add, edit, and manage employees.
+                            </p>
+                        </a>
+
+                        <a href="/weekly-preferences" class="quick-action">
+                            <h3 class="quick-action-title" data-i18n="home_requests_title">Requests</h3>
+                            <p class="quick-action-text" data-i18n="home_requests_text">
+                                View weekly preferences, days off, and requests.
+                            </p>
+                        </a>
+
+                        <a href="/settings" class="quick-action">
+                            <h3 class="quick-action-title" data-i18n="home_settings_title">Settings</h3>
+                            <p class="quick-action-text" data-i18n="home_settings_text">
+                                Configure positions, templates, and system data.
+                            </p>
+                        </a>
+                    </div>
+                </div>
+            </section>
+            <footer class="app-footer">
+                <div class="footer-left" data-i18n="footer_version">
+                    Schedule App v0.3.1 beta
+                </div>
+
+                <div class="footer-right">
+                    <a href="/docs" data-i18n="footer_docs">Documentation</a>
+                    <a href="/guide" data-i18n="footer_guide">Guide</a>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <script src="/static/js/i18n.js"></script>
+</body>
+
+</html>

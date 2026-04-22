@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Preferences - Schedule App</title>
+
+    <!--
+        Shared stylesheet / Общий файл стилей
+        Reused across all redesigned pages.
+        Используется на всех переделанных страницах.
+    -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    <style>
+        /* =========================================================
+           PAGE-SPECIFIC STYLES / СТИЛИ ТОЛЬКО ДЛЯ СТРАНИЦЫ ПОЖЕЛАНИЙ
+           ========================================================= */
+
+        /* Top filter panel / Верхняя панель фильтров */
+        .preferences-toolbar {
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 14px;
+            align-items: end;
+        }
+
+        .toolbar-field {
+            grid-column: span 4;
+        }
+
+        .toolbar-actions {
+            grid-column: span 4;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        body.rtl .toolbar-actions {
+            justify-content: flex-start;
+        }
+
+        /* Table wrapper / Обёртка таблицы */
+        .preferences-table-shell {
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: #fff;
+        }
+
+        .preferences-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 760px;
+        }
+
+        .preferences-table th,
+        .preferences-table td {
+            padding: 14px 14px;
+            border-bottom: 1px solid var(--border);
+            text-align: start;
+            vertical-align: top;
+        }
+
+        .preferences-table th {
+            background: #f8fafc;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        body.rtl .preferences-table th,
+        body.rtl .preferences-table td {
+            text-align: right;
+        }
+
+        body.ltr .preferences-table th,
+        body.ltr .preferences-table td {
+            text-align: left;
+        }
+
+        .preferences-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Day column / Колонка дня */
+        .day-name {
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .date-text {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        /* Preference select / Селект пожелания */
+        .preference-select {
+            width: 100%;
+            border: 1px solid var(--border);
+            background: #fff;
+            border-radius: 12px;
+            padding: 10px 12px;
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        .preference-select:focus {
+            outline: none;
+            border-color: #93c5fd;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+        }
+
+        /* Notes / Заметки */
+        .notes-box {
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 18px;
+            background: #f8fafc;
+            margin-top: 18px;
+        }
+
+        .notes-title {
+            margin: 0 0 10px;
+            font-size: 1rem;
+            font-weight: 800;
+        }
+
+        .notes-box ul {
+            margin: 0;
+            padding-inline-start: 18px;
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 0.9rem;
+        }
+
+        /* Messages / Сообщения */
+        #message-box {
+            margin-bottom: 16px;
+        }
+
+        .page-message {
+            border-radius: 14px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .page-message.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .page-message.warning {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+
+        .page-message.danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .page-message.info {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        /* Sidebar helpers / Помощники для sidebar */
+        .sidebar-top-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .sidebar-toggle {
+            width: 42px;
+            height: 42px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background var(--transition), transform var(--transition);
+            margin-top: 12px;
+        }
+
+        .sidebar-toggle:hover {
+            background: #f8fafc;
+            transform: translateY(-1px);
+        }
+
+        body.sidebar-collapsed {
+            --sidebar-width: 88px;
+        }
+
+        body.sidebar-collapsed .brand-text,
+        body.sidebar-collapsed .sidebar-section-title {
+            display: none;
+        }
+
+        body.sidebar-collapsed .sidebar-top-row {
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        body.sidebar-collapsed .nav-label {
+            display: none;
+        }
+
+        body.sidebar-collapsed .nav-item {
+            justify-content: center;
+            padding-inline: 10px;
+        }
+
+        body.sidebar-collapsed .nav-icon {
+            width: auto;
+        }
+
+        /* Responsive layout / Адаптивный макет */
+        @media (max-width: 1100px) {
+            .toolbar-field {
+                grid-column: span 6;
+            }
+
+            .toolbar-actions {
+                grid-column: span 12;
+                justify-content: flex-start;
+            }
+        }
+
+        @media (max-width: 920px) {
+            .toolbar-field {
+                grid-column: span 12;
+            }
+
+            .toolbar-actions {
+                grid-column: span 12;
+            }
+
+            body.mobile-sidebar-hidden .sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body class="app-shell ltr">
+    <div class="app-layout">
+        <!--
+            SIDEBAR / БОКОВОЕ МЕНЮ
+            Main navigation for the application.
+            Основная навигация приложения.
+        -->
+        <aside class="sidebar">
+            <div class="sidebar-top-row">
+                <div class="brand" style="border-bottom:none; padding:0; flex:1;">
+                    <div class="brand-logo">SA</div>
+                    <div class="brand-text">
+                        <h1 class="brand-title" data-i18n="app_title">Schedule App</h1>
+                        <p class="brand-subtitle" data-i18n="app_subtitle">Nursing staff scheduling</p>
+                    </div>
+                </div>
+
+                <button id="sidebar-toggle" class="sidebar-toggle" type="button" data-i18n-title="toggle_sidebar"
+                    title="Toggle menu">
+                    ☰
+                </button>
+            </div>
+
+            <div>
+                <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
+
+                <nav class="nav-list">
+                    <a href="/" class="nav-item">
+                        <span class="nav-icon">⌂</span>
+                        <span class="nav-label" data-i18n="nav_dashboard">Dashboard</span>
+                    </a>
+
+                    <a href="/schedule" class="nav-item">
+                        <span class="nav-icon">🗓</span>
+                        <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
+                    </a>
+
+                    <a href="/employees" class="nav-item">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-label" data-i18n="nav_employees">Employees</span>
+                    </a>
+
+                    <a href="/weekly-preferences" class="nav-item active">
+                        <span class="nav-icon">✦</span>
+                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                    </a>
+
+                    <a href="/settings" class="nav-item">
+                        <span class="nav-icon">⚙</span>
+                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                    </a>
+                </nav>
+            </div>
+        </aside>
+
+        <!--
+            MAIN CONTENT / ОСНОВНОЕ СОДЕРЖИМОЕ
+            Filters + table + notes.
+            Фильтры + таблица + заметки.
+        -->
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 class="page-title" data-i18n="preferences_page_title">Weekly preferences</h2>
+                    <p class="page-subtitle" data-i18n="preferences_page_subtitle">
+                        Set weekly employee requests, restrictions, and preferred day rules.
+                    </p>
+                </div>
+
+                <div class="topbar-actions">
+                    <div class="lang-switcher">
+                        <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+                        <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+                        <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Messages / Сообщения -->
+            <div id="message-box"></div>
+
+            <!--
+                FILTER PANEL / ПАНЕЛЬ ФИЛЬТРОВ
+                Week + employee + actions.
+                Неделя + сотрудник + действия.
+            -->
+            <section class="panel">
+                <div class="panel-body">
+                    <div class="preferences-toolbar">
+                        <div class="toolbar-field">
+                            <label class="form-label" for="week_start" data-i18n="preferences_week_start">Week
+                                start</label>
+                            <input type="date" id="week_start" class="input">
+                        </div>
+
+                        <div class="toolbar-field">
+                            <label class="form-label" for="employee_select"
+                                data-i18n="preferences_employee">Employee</label>
+                            <select id="employee_select" class="select">
+                                <option value="" data-i18n="preferences_select_employee">Select employee</option>
+                            </select>
+                        </div>
+
+                        <div class="toolbar-actions">
+                            <button id="load-btn" class="btn btn-primary" type="button"
+                                data-i18n="preferences_load_btn">
+                                Load
+                            </button>
+
+                            <button id="save-btn" class="btn btn-soft" type="button" data-i18n="preferences_save_btn">
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!--
+                MAIN TABLE / ОСНОВНАЯ ТАБЛИЦА
+                The weekly preference matrix.
+                Недельная матрица пожеланий.
+            -->
+            <section class="panel mt-22">
+                <div class="panel-body">
+                    <div class="preferences-table-shell">
+                        <table class="preferences-table">
+                            <thead id="thead"></thead>
+                            <tbody id="tbody">
+                                <tr>
+                                    <td data-i18n="preferences_initial_hint">
+                                        Select a week and an employee, then click Load.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Notes / Заметки -->
+            <div class="notes-box">
+                <h3 class="notes-title" data-i18n="preferences_notes_title">Notes</h3>
+                <ul>
+                    <li data-i18n="preferences_note_1">
+                        Preferences are stored per employee and per date.
+                    </li>
+                    <li data-i18n="preferences_note_2">
+                        These values affect schedule generation and manual validation.
+                    </li>
+                    <li data-i18n="preferences_note_3">
+                        The week in this project starts on Sunday.
+                    </li>
+                </ul>
+            </div>
+        </main>
+    </div>
+
+    <!-- Shared i18n / Общий перевод -->
+    <script src="/static/js/i18n.js"></script>
+
+    <script>
+        /* =========================================================
+           SIDEBAR STATE / СОСТОЯНИЕ САЙДБАРА
+           ========================================================= */
+
+        function getSavedSidebarState() {
+            return localStorage.getItem("scheduleAppSidebar") || "expanded";
+        }
+
+        function applySidebarState(state) {
+            document.body.classList.remove("sidebar-collapsed", "mobile-sidebar-hidden");
+
+            if (window.innerWidth <= 920) {
+                if (state === "hidden") {
+                    document.body.classList.add("mobile-sidebar-hidden");
+                }
+                return;
+            }
+
+            if (state === "collapsed") {
+                document.body.classList.add("sidebar-collapsed");
+            }
+        }
+
+        function toggleSidebar() {
+            if (window.innerWidth <= 920) {
+                const hiddenNow = document.body.classList.contains("mobile-sidebar-hidden");
+                const nextState = hiddenNow ? "expanded" : "hidden";
+                localStorage.setItem("scheduleAppSidebar", nextState);
+                applySidebarState(nextState);
+                return;
+            }
+
+            const collapsedNow = document.body.classList.contains("sidebar-collapsed");
+            const nextState = collapsedNow ? "expanded" : "collapsed";
+            localStorage.setItem("scheduleAppSidebar", nextState);
+            applySidebarState(nextState);
+        }
+
+        function bindSidebarToggle() {
+            const button = document.getElementById("sidebar-toggle");
+            if (!button) return;
+
+            button.addEventListener("click", toggleSidebar);
+
+            window.addEventListener("resize", () => {
+                applySidebarState(getSavedSidebarState());
+            });
+        }
+
+        /* =========================================================
+           PAGE DATA / ДАННЫЕ СТРАНИЦЫ
+           ========================================================= */
+
+        const OPTION_KEYS = [
+            ["no_preference", "preference_no_preference"],
+            ["off_day", "preference_off_day"],
+            ["only_morning", "preference_only_morning"],
+            ["vacation", "preference_vacation"],
+            ["only_evening", "preference_only_evening"],
+            ["only_night", "preference_only_night"],
+            ["not_morning", "preference_not_morning"],
+            ["not_evening", "preference_not_evening"],
+            ["not_night", "preference_not_night"],
+            ["no_morning_evening_combo", "preference_no_morning_evening_combo"]
+        ];
+
+        const WEEKDAY_KEYS = [
+            "weekday_sunday",
+            "weekday_monday",
+            "weekday_tuesday",
+            "weekday_wednesday",
+            "weekday_thursday",
+            "weekday_friday",
+            "weekday_saturday"
+        ];
+
+        let employees = [];
+        let weekDates = [];
+        let preferencesMap = {};
+
+        /* =========================================================
+           HELPERS / ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+           ========================================================= */
+
+        function t(key, fallback = "") {
+            if (typeof translate === "function") {
+                return translate(key);
+            }
+            return fallback || key;
+        }
+
+        function showMessage(text, type = "info") {
+            const box = document.getElementById("message-box");
+            box.innerHTML = `<div class="page-message ${type}">${text}</div>`;
+        }
+
+        function formatDate(dateObject) {
+            return dateObject.toISOString().split("T")[0];
+        }
+
+        function buildWeek(startDate) {
+            const base = new Date(startDate);
+            const dates = [];
+
+            for (let i = 0; i < 7; i++) {
+                const current = new Date(base);
+                current.setDate(base.getDate() + i);
+                dates.push(formatDate(current));
+            }
+
+            return dates;
+        }
+
+        function setWeekStart() {
+            /*
+                Israeli week starts on Sunday
+                Израильская неделя начинается с воскресенья
+            */
+            const input = document.getElementById("week_start");
+            const today = new Date();
+            const day = today.getDay(); // Sunday = 0
+            today.setDate(today.getDate() - day);
+            input.value = formatDate(today);
+        }
+
+        function getWeekdayName(index) {
+            return t(
+                WEEKDAY_KEYS[index],
+                ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][index]
+            );
+        }
+
+        function getPreferenceOptions(selectedValue) {
+            return OPTION_KEYS.map(([value, key]) => `
+                <option value="${value}" ${value === selectedValue ? "selected" : ""}>
+                    ${t(key, value)}
+                </option>
+            `).join("");
+        }
+
+        /* =========================================================
+           INIT / ИНИЦИАЛИЗАЦИЯ
+           ========================================================= */
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            bindSidebarToggle();
+            applySidebarState(getSavedSidebarState());
+
+            setWeekStart();
+            await loadEmployees();
+
+            document.getElementById("load-btn").addEventListener("click", loadWeekPreferences);
+            document.getElementById("save-btn").addEventListener("click", savePreferences);
+        });
+
+        document.addEventListener("app-language-changed", () => {
+            const employeeId = Number(document.getElementById("employee_select").value);
+            if (weekDates.length > 0 && employeeId) {
+                renderTable(employeeId);
+            }
+        });
+
+        /* =========================================================
+           EMPLOYEE LOADING / ЗАГРУЗКА СОТРУДНИКОВ
+           ========================================================= */
+
+        async function loadEmployees() {
+            try {
+                const response = await fetch("/api/employees");
+
+                if (!response.ok) {
+                    showMessage(t("msg_failed_load_employees", "Failed to load employees."), "danger");
+                    return;
+                }
+
+                employees = await response.json();
+
+                const employeeSelect = document.getElementById("employee_select");
+                employeeSelect.innerHTML = `
+                    <option value="">${t("preferences_select_employee", "Select employee")}</option>
+                    ${employees.map(employee => `
+                        <option value="${employee.id}">${employee.full_name}</option>
+                    `).join("")}
+                `;
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_load_employees", "Server error while loading employees."), "danger");
+            }
+        }
+
+        /* =========================================================
+           LOAD WEEK PREFERENCES / ЗАГРУЗКА ПОЖЕЛАНИЙ ЗА НЕДЕЛЮ
+           ========================================================= */
+
+        async function loadWeekPreferences() {
+            const weekStart = document.getElementById("week_start").value;
+            const employeeId = Number(document.getElementById("employee_select").value);
+
+            if (!weekStart) {
+                showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
+                return;
+            }
+
+            if (!employeeId) {
+                showMessage(t("msg_select_employee", "Please select an employee."), "warning");
+                return;
+            }
+
+            weekDates = buildWeek(weekStart);
+
+            try {
+                const response = await fetch(`/api/employee-week-preferences?week_start_date=${encodeURIComponent(weekStart)}`);
+
+                if (!response.ok) {
+                    showMessage(t("msg_failed_load_preferences", "Failed to load preferences."), "danger");
+                    return;
+                }
+
+                const preferences = await response.json();
+
+                preferencesMap = {};
+                preferences
+                    .filter(item => item.employee_id === employeeId)
+                    .forEach(item => {
+                        preferencesMap[item.preference_date] = item.preference_type;
+                    });
+
+                renderTable(employeeId);
+                showMessage(t("msg_preferences_loaded", "Preferences loaded successfully."), "success");
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_load_preferences", "Server error while loading preferences."), "danger");
+            }
+        }
+
+        /* =========================================================
+           TABLE RENDER / ОТРИСОВКА ТАБЛИЦЫ
+           ========================================================= */
+
+        function renderTable(employeeId) {
+            const thead = document.getElementById("thead");
+            const tbody = document.getElementById("tbody");
+
+            const employee = employees.find(item => item.id === employeeId);
+
+            if (!employee) {
+                thead.innerHTML = "";
+                tbody.innerHTML = `
+                    <tr>
+                        <td>${t("preferences_employee_not_found", "Employee not found")}</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            thead.innerHTML = `
+                <tr>
+                    <th data-i18n="preferences_day_column">${t("preferences_day_column", "Day")}</th>
+                    <th data-i18n="preferences_date_column">${t("preferences_date_column", "Date")}</th>
+                    <th data-i18n="preferences_value_column">${t("preferences_value_column", "Preference")}</th>
+                    <th>${t("common_actions", "Actions")}</th>
+                </tr>
+            `;
+
+            tbody.innerHTML = weekDates.map((date, index) => {
+                const selectedValue = preferencesMap[date] || "no_preference";
+
+                return `
+                    <tr>
+                        <td class="day-name">${getWeekdayName(index)}</td>
+                        <td class="date-text">${date}</td>
+                        <td>
+                            <select
+                                class="preference-select preference-select-field"
+                                data-employee-id="${employeeId}"
+                                data-date="${date}"
+                            >
+                                ${getPreferenceOptions(selectedValue)}
+                            </select>
+                        </td>
+                        <td>
+                            <button
+                                class="btn btn-secondary"
+                                type="button"
+                                onclick="deletePreference(${employeeId}, '${date}')"
+                            >
+                                ${t("preferences_clear_button", "Clear")}
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        /* =========================================================
+           SAVE PREFERENCES / СОХРАНЕНИЕ ПОЖЕЛАНИЙ
+           ========================================================= */
+
+        async function savePreferences() {
+            const weekStart = document.getElementById("week_start").value;
+            const employeeId = Number(document.getElementById("employee_select").value);
+            const selects = document.querySelectorAll(".preference-select-field");
+
+            if (!weekStart) {
+                showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
+                return;
+            }
+
+            if (!employeeId) {
+                showMessage(t("msg_select_employee", "Please select an employee."), "warning");
+                return;
+            }
+
+            if (selects.length === 0) {
+                showMessage(t("msg_nothing_to_save", "Nothing to save."), "warning");
+                return;
+            }
+
+            try {
+                const responses = await Promise.all(
+                    Array.from(selects).map(select => {
+                        return fetch("/api/employee-week-preferences", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                employee_id: employeeId,
+                                week_start_date: weekStart,
+                                preference_date: select.dataset.date,
+                                preference_type: select.value
+                            })
+                        });
+                    })
+                );
+
+                const failed = responses.filter(response => !response.ok);
+
+                if (failed.length > 0) {
+                    showMessage(t("msg_some_preferences_not_saved", "Some preferences were not saved."), "warning");
+                    return;
+                }
+
+                showMessage(t("msg_preferences_saved", "Preferences saved successfully."), "success");
+                await loadWeekPreferences();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_save_preferences", "Server error while saving preferences."), "danger");
+            }
+        }
+
+        async function deletePreference(employeeId, preferenceDate) {
+            try {
+                const response = await fetch(
+                    `/api/employee-week-preferences?employee_id=${employeeId}&preference_date=${encodeURIComponent(preferenceDate)}`,
+                    { method: "DELETE" }
+                );
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("msg_failed_delete_preference", "Failed to clear preference."), "danger");
+                    return;
+                }
+
+                delete preferencesMap[preferenceDate];
+                renderTable(employeeId);
+                showMessage(t("msg_preference_deleted", "Preference cleared successfully."), "success");
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_delete_preference", "Server error while clearing preference."), "danger");
+            }
+        }
+    </script>
+</body>
+
+</html>

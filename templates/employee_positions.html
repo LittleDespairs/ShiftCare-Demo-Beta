@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Positions - Schedule App</title>
+
+    <!--
+        Shared stylesheet / Общий файл стилей
+        Reused across the redesigned pages.
+        Используется на всех переделанных страницах.
+    -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    <style>
+        /* =========================================================
+           PAGE-SPECIFIC STYLES / СТИЛИ ТОЛЬКО ДЛЯ СТРАНИЦЫ НАЗНАЧЕНИЙ
+           ========================================================= */
+
+        .assignments-layout {
+            display: grid;
+            grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
+            gap: 22px;
+        }
+
+        .assignment-form-panel {
+            position: sticky;
+            top: 28px;
+            align-self: start;
+        }
+
+        .subsection-title {
+            margin: 0 0 14px;
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+
+        .subsection-text {
+            margin: 0 0 18px;
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+
+        .helper-text {
+            font-size: 0.8rem;
+            color: var(--muted);
+            line-height: 1.45;
+            margin-top: 6px;
+        }
+
+        .rules-box {
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: #f8fafc;
+            padding: 14px;
+        }
+
+        .rules-title {
+            margin: 0 0 10px;
+            font-size: 0.9rem;
+            font-weight: 800;
+        }
+
+        .check-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 0.9rem;
+            line-height: 1.45;
+            color: var(--text);
+        }
+
+        .check-row input[type="checkbox"] {
+            margin-top: 2px;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary);
+            flex-shrink: 0;
+        }
+
+        .assignments-table-shell {
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: #fff;
+        }
+
+        .assignments-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 980px;
+        }
+
+        .assignments-table th,
+        .assignments-table td {
+            padding: 14px 14px;
+            border-bottom: 1px solid var(--border);
+            text-align: start;
+            vertical-align: top;
+        }
+
+        .assignments-table th {
+            background: #f8fafc;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        body.rtl .assignments-table th,
+        body.rtl .assignments-table td {
+            text-align: right;
+        }
+
+        body.ltr .assignments-table th,
+        body.ltr .assignments-table td {
+            text-align: left;
+        }
+
+        .assignments-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .strong-cell {
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .mini-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            line-height: 1;
+            border: 1px solid transparent;
+        }
+
+        .mini-badge.yes {
+            background: #dcfce7;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .mini-badge.no {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+
+        .table-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .table-btn {
+            border: none;
+            border-radius: 12px;
+            min-height: 36px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 800;
+            transition: transform var(--transition), background var(--transition);
+        }
+
+        .table-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .table-btn.delete {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .table-btn.edit {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        body.rtl .list-header {
+            flex-direction: row-reverse;
+        }
+
+        .notes-box {
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 18px;
+            background: #f8fafc;
+            margin-top: 18px;
+        }
+
+        .notes-box ul {
+            margin: 0;
+            padding-inline-start: 18px;
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 0.9rem;
+        }
+
+        #message-box {
+            margin-bottom: 16px;
+        }
+
+        .page-message {
+            border-radius: 14px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .page-message.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .page-message.warning {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+
+        .page-message.danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .page-message.info {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        .sidebar-top-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .sidebar-toggle {
+            width: 42px;
+            height: 42px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background var(--transition), transform var(--transition);
+            margin-top: 12px;
+        }
+
+        .sidebar-toggle:hover {
+            background: #f8fafc;
+            transform: translateY(-1px);
+        }
+
+        body.sidebar-collapsed {
+            --sidebar-width: 88px;
+        }
+
+        body.sidebar-collapsed .brand-text,
+        body.sidebar-collapsed .sidebar-section-title {
+            display: none;
+        }
+
+        body.sidebar-collapsed .sidebar-top-row {
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        body.sidebar-collapsed .nav-label {
+            display: none;
+        }
+
+        body.sidebar-collapsed .nav-item {
+            justify-content: center;
+            padding-inline: 10px;
+        }
+
+        body.sidebar-collapsed .nav-icon {
+            width: auto;
+        }
+
+        @media (max-width: 1200px) {
+            .assignments-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .assignment-form-panel {
+                position: static;
+            }
+        }
+
+        @media (max-width: 920px) {
+            body.mobile-sidebar-hidden .sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body class="app-shell ltr">
+    <div class="app-layout">
+        <!--
+            SIDEBAR / БОКОВОЕ МЕНЮ
+            Main navigation for the app.
+            Основная навигация приложения.
+        -->
+        <aside class="sidebar">
+            <div class="sidebar-top-row">
+                <div class="brand" style="border-bottom:none; padding:0; flex:1;">
+                    <div class="brand-logo">SA</div>
+                    <div class="brand-text">
+                        <h1 class="brand-title" data-i18n="app_title">Schedule App</h1>
+                        <p class="brand-subtitle" data-i18n="app_subtitle">Nursing staff scheduling</p>
+                    </div>
+                </div>
+
+                <button id="sidebar-toggle" class="sidebar-toggle" type="button" data-i18n-title="toggle_sidebar"
+                    title="Toggle menu">
+                    ☰
+                </button>
+            </div>
+
+            <div>
+                <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
+
+                <nav class="nav-list">
+                    <a href="/" class="nav-item">
+                        <span class="nav-icon">⌂</span>
+                        <span class="nav-label" data-i18n="nav_dashboard">Dashboard</span>
+                    </a>
+
+                    <a href="/schedule" class="nav-item">
+                        <span class="nav-icon">🗓</span>
+                        <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
+                    </a>
+
+                    <a href="/employees" class="nav-item">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-label" data-i18n="nav_employees">Employees</span>
+                    </a>
+
+                    <a href="/weekly-preferences" class="nav-item">
+                        <span class="nav-icon">✦</span>
+                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                    </a>
+
+                    <a href="/settings" class="nav-item">
+                        <span class="nav-icon">⚙</span>
+                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                    </a>
+                </nav>
+            </div>
+        </aside>
+
+        <!--
+            MAIN CONTENT / ОСНОВНОЕ СОДЕРЖИМОЕ
+            Header + form + table.
+            Заголовок + форма + таблица.
+        -->
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 class="page-title" data-i18n="assignments_page_title">Employee positions</h2>
+                    <p class="page-subtitle" data-i18n="assignments_page_subtitle">
+                        Assign employees to positions and manage their scheduling priority.
+                    </p>
+                </div>
+
+                <div class="topbar-actions">
+                    <div class="lang-switcher">
+                        <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+                        <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+                        <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+                    </div>
+                </div>
+            </header>
+
+            <div id="message-box"></div>
+
+            <div class="assignments-layout">
+                <!--
+                    LEFT COLUMN / ЛЕВАЯ КОЛОНКА
+                    Assignment form.
+                    Форма назначения.
+                -->
+                <section class="panel assignment-form-panel">
+                    <div class="panel-body">
+                        <h3 class="subsection-title" data-i18n="assignments_form_title">Assignment form</h3>
+                        <p class="subsection-text" data-i18n="assignments_form_subtitle">
+                            Link one employee to one position and set priority settings.
+                        </p>
+
+                        <form id="assignment-form" class="form-grid">
+                            <div>
+                                <label class="form-label" for="employee_select" data-i18n="assignments_employee">
+                                    Employee
+                                </label>
+                                <select id="employee_select" class="select" required>
+                                    <option value="" data-i18n="assignments_select_employee">Select employee</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="form-label" for="position_select" data-i18n="assignments_position">
+                                    Position
+                                </label>
+                                <select id="position_select" class="select" required>
+                                    <option value="" data-i18n="assignments_select_position">Select position</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="form-label" for="priority_score" data-i18n="assignments_priority_score">
+                                    Priority score
+                                </label>
+                                <input type="number" id="priority_score" class="input" min="0" max="100" value="50"
+                                    required>
+                                <div class="helper-text" data-i18n="assignments_priority_hint">
+                                    Higher values can be used to favor this employee for this position.
+                                </div>
+                            </div>
+
+                            <div class="rules-box">
+                                <h4 class="rules-title" data-i18n="assignments_options_title">Assignment options</h4>
+
+                                <label class="check-row">
+                                    <input type="checkbox" id="is_primary">
+                                    <span data-i18n="assignments_is_primary">
+                                        Primary position for this employee
+                                    </span>
+                                </label>
+
+                                <label class="check-row" style="margin-top:10px;">
+                                    <input type="checkbox" id="is_fallback_only">
+                                    <span data-i18n="assignments_is_fallback_only">
+                                        Fallback only
+                                    </span>
+                                </label>
+                            </div>
+
+                            <button id="assignment-submit-button" type="submit" class="btn btn-primary"
+                                data-i18n="assignments_add_button">
+                                Assign position
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="resetAssignmentForm()">
+                                Reset
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <!--
+                    RIGHT COLUMN / ПРАВАЯ КОЛОНКА
+                    Assignment list + notes.
+                    Список назначений + заметки.
+                -->
+                <section>
+                    <div class="panel">
+                        <div class="panel-body">
+                            <div class="list-header">
+                                <div>
+                                    <h3 class="subsection-title" style="margin-bottom:6px;"
+                                        data-i18n="assignments_list_title">
+                                        Assignment list
+                                    </h3>
+                                    <p class="subsection-text" style="margin:0;" data-i18n="assignments_list_subtitle">
+                                        All employee-to-position links currently saved in the system.
+                                    </p>
+                                </div>
+
+                                <button id="reload-btn" class="btn btn-secondary" type="button"
+                                    data-i18n="assignments_reload_button">
+                                    Reload
+                                </button>
+                            </div>
+
+                            <div class="assignments-table-shell">
+                                <table class="assignments-table">
+                                    <thead>
+                                        <tr>
+                                            <th data-i18n="assignments_table_employee">Employee</th>
+                                            <th data-i18n="assignments_table_position">Position</th>
+                                            <th data-i18n="assignments_table_primary">Primary</th>
+                                            <th data-i18n="assignments_table_priority">Priority</th>
+                                            <th data-i18n="assignments_table_fallback">Fallback only</th>
+                                            <th data-i18n="assignments_table_actions">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="assignments-table-body">
+                                        <tr>
+                                            <td colspan="6" data-i18n="assignments_empty_list">No assignments yet</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="notes-box">
+                        <h4 class="subsection-title" style="font-size:0.98rem; margin-bottom:10px;"
+                            data-i18n="assignments_notes_title">
+                            Notes
+                        </h4>
+                        <ul>
+                            <li data-i18n="assignments_note_1">
+                                One employee can be assigned to multiple positions.
+                            </li>
+                            <li data-i18n="assignments_note_2">
+                                The schedule page uses these assignments to decide who can work in each position.
+                            </li>
+                            <li data-i18n="assignments_note_3">
+                                Removing an assignment also removes related schedule entries for that employee and
+                                position.
+                            </li>
+                        </ul>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/i18n.js"></script>
+
+    <script>
+        let allEmployees = [];
+        let allPositions = [];
+        let editingAssignmentKey = null;
+
+        function getSavedSidebarState() {
+            return localStorage.getItem("scheduleAppSidebar") || "expanded";
+        }
+
+        function applySidebarState(state) {
+            document.body.classList.remove("sidebar-collapsed", "mobile-sidebar-hidden");
+
+            if (window.innerWidth <= 920) {
+                if (state === "hidden") {
+                    document.body.classList.add("mobile-sidebar-hidden");
+                }
+                return;
+            }
+
+            if (state === "collapsed") {
+                document.body.classList.add("sidebar-collapsed");
+            }
+        }
+
+        function toggleSidebar() {
+            if (window.innerWidth <= 920) {
+                const hiddenNow = document.body.classList.contains("mobile-sidebar-hidden");
+                const nextState = hiddenNow ? "expanded" : "hidden";
+                localStorage.setItem("scheduleAppSidebar", nextState);
+                applySidebarState(nextState);
+                return;
+            }
+
+            const collapsedNow = document.body.classList.contains("sidebar-collapsed");
+            const nextState = collapsedNow ? "expanded" : "collapsed";
+            localStorage.setItem("scheduleAppSidebar", nextState);
+            applySidebarState(nextState);
+        }
+
+        function bindSidebarToggle() {
+            const button = document.getElementById("sidebar-toggle");
+            if (!button) return;
+
+            button.addEventListener("click", toggleSidebar);
+
+            window.addEventListener("resize", () => {
+                applySidebarState(getSavedSidebarState());
+            });
+        }
+
+        function t(key, fallback = "") {
+            if (typeof translate === "function") {
+                return translate(key);
+            }
+            return fallback || key;
+        }
+
+        function showMessage(text, type = "info") {
+            const box = document.getElementById("message-box");
+            box.innerHTML = `<div class="page-message ${type}">${text}</div>`;
+        }
+
+        function boolBadge(value) {
+            const yesText = t("common_yes", "Yes");
+            const noText = t("common_no", "No");
+
+            return value
+                ? `<span class="mini-badge yes">${yesText}</span>`
+                : `<span class="mini-badge no">${noText}</span>`;
+        }
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            bindSidebarToggle();
+            applySidebarState(getSavedSidebarState());
+
+            document.getElementById("assignment-form").addEventListener("submit", handleAssignmentSubmit);
+            document.getElementById("reload-btn").addEventListener("click", loadAssignmentsPageData);
+
+            await loadAssignmentsPageData();
+        });
+
+        document.addEventListener("app-language-changed", () => {
+            loadAssignmentsPageData();
+        });
+
+        async function loadAssignmentsPageData() {
+            try {
+                const [employeesResponse, positionsResponse, assignmentsResponse] = await Promise.all([
+                    fetch("/api/employees"),
+                    fetch("/api/positions"),
+                    fetch("/api/employee-positions")
+                ]);
+
+                if (!employeesResponse.ok || !positionsResponse.ok || !assignmentsResponse.ok) {
+                    showMessage(t("msg_failed_load_assignment_data", "Failed to load assignment data."), "danger");
+                    return;
+                }
+
+                allEmployees = await employeesResponse.json();
+                allPositions = await positionsResponse.json();
+                const assignments = await assignmentsResponse.json();
+
+                fillEmployeeSelect();
+                fillPositionSelect();
+                renderAssignmentsTable(assignments);
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_load_assignment_data", "Server error while loading assignment data."), "danger");
+            }
+        }
+
+        function fillEmployeeSelect() {
+            const select = document.getElementById("employee_select");
+
+            select.innerHTML = `
+                <option value="">${t("assignments_select_employee", "Select employee")}</option>
+                ${allEmployees.map(employee => `
+                    <option value="${employee.id}">${employee.full_name}</option>
+                `).join("")}
+            `;
+        }
+
+        function fillPositionSelect() {
+            const select = document.getElementById("position_select");
+
+            select.innerHTML = `
+                <option value="">${t("assignments_select_position", "Select position")}</option>
+                ${allPositions.map(position => `
+                    <option value="${position.id}">${position.name}</option>
+                `).join("")}
+            `;
+        }
+
+        async function handleAssignmentSubmit(event) {
+            event.preventDefault();
+
+            const employeeId = Number(document.getElementById("employee_select").value);
+            const positionId = Number(document.getElementById("position_select").value);
+            const isPrimary = document.getElementById("is_primary").checked;
+            const priorityScore = Number(document.getElementById("priority_score").value);
+            const isFallbackOnly = document.getElementById("is_fallback_only").checked;
+
+            if (!employeeId) {
+                showMessage(t("msg_select_employee", "Please select an employee."), "warning");
+                return;
+            }
+
+            if (!positionId) {
+                showMessage(t("msg_select_position", "Please select a position."), "warning");
+                return;
+            }
+
+            try {
+                const payload = {
+                    employee_id: employeeId,
+                    position_id: positionId,
+                    is_primary: isPrimary,
+                    priority_score: priorityScore,
+                    is_fallback_only: isFallbackOnly
+                };
+
+                const response = await fetch("/api/employee-positions", {
+                    method: editingAssignmentKey === null ? "POST" : "PUT",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("msg_failed_assign_position", "Failed to assign position."), "danger");
+                    return;
+                }
+
+                const result = await response.json();
+                showMessage(result.message, "success");
+
+                resetAssignmentForm();
+
+                await loadAssignmentsPageData();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_save_assignment", "Server error while saving assignment."), "danger");
+            }
+        }
+
+        async function deleteAssignment(employeeId, positionId) {
+            const isConfirmed = confirm(
+                t("msg_confirm_delete_assignment", "Are you sure you want to remove this assignment?")
+            );
+
+            if (!isConfirmed) {
+                return;
+            }
+
+            try {
+                const response = await fetch(
+                    `/api/employee-positions?employee_id=${employeeId}&position_id=${positionId}`,
+                    { method: "DELETE" }
+                );
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("msg_failed_delete_assignment", "Failed to delete assignment."), "danger");
+                    return;
+                }
+
+                const result = await response.json();
+                showMessage(result.message, "success");
+
+                await loadAssignmentsPageData();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_delete_assignment", "Server error while deleting assignment."), "danger");
+            }
+        }
+
+        function editAssignment(item) {
+            editingAssignmentKey = `${item.employee_id}:${item.position_id}`;
+            document.getElementById("employee_select").value = item.employee_id;
+            document.getElementById("position_select").value = item.position_id;
+            document.getElementById("priority_score").value = item.priority_score;
+            document.getElementById("is_primary").checked = item.is_primary;
+            document.getElementById("is_fallback_only").checked = item.is_fallback_only;
+            document.getElementById("employee_select").disabled = true;
+            document.getElementById("position_select").disabled = true;
+            document.getElementById("assignment-submit-button").textContent = t("assignments_update_button", "Update assignment");
+            showMessage(`${t("msg_editing_assignment", "Editing assignment")}: ${item.employee_name} - ${item.position_name}`, "info");
+        }
+
+        function resetAssignmentForm() {
+            document.getElementById("assignment-form").reset();
+            document.getElementById("priority_score").value = 50;
+            document.getElementById("employee_select").disabled = false;
+            document.getElementById("position_select").disabled = false;
+            document.getElementById("assignment-submit-button").textContent = t("assignments_add_button", "Assign position");
+            editingAssignmentKey = null;
+        }
+
+        function renderAssignmentsTable(assignments) {
+            const tableBody = document.getElementById("assignments-table-body");
+
+            if (assignments.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="6">${t("assignments_empty_list", "No assignments yet")}</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tableBody.innerHTML = assignments.map(item => `
+                <tr>
+                    <td class="strong-cell">${item.employee_name}</td>
+                    <td class="strong-cell">${item.position_name}</td>
+                    <td>${boolBadge(item.is_primary)}</td>
+                    <td>${item.priority_score}</td>
+                    <td>${boolBadge(item.is_fallback_only)}</td>
+                    <td>
+                        <div class="table-actions">
+                            <button
+                                class="table-btn edit"
+                                onclick='editAssignment(${JSON.stringify(item)})'
+                                type="button"
+                            >
+                                ${t("assignments_edit_button", "Edit")}
+                            </button>
+                            <button
+                                class="table-btn delete"
+                                onclick="deleteAssignment(${item.employee_id}, ${item.position_id})"
+                                type="button"
+                            >
+                                ${t("assignments_delete_button", "Remove")}
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join("");
+        }
+    </script>
+</body>
+
+</html>

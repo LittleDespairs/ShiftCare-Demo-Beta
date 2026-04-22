@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shift Templates - Schedule App</title>
+
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    <style>
+        .templates-layout {
+            display: grid;
+            grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
+            gap: 22px;
+        }
+
+        .template-form-panel {
+            position: sticky;
+            top: 28px;
+            align-self: start;
+        }
+
+        .subsection-title {
+            margin: 0 0 14px;
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+
+        .subsection-text {
+            margin: 0 0 18px;
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+
+        .double-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .rules-box {
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: #f8fafc;
+            padding: 14px;
+        }
+
+        .rules-title {
+            margin: 0 0 10px;
+            font-size: 0.9rem;
+            font-weight: 800;
+        }
+
+        .check-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .check-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 0.9rem;
+            line-height: 1.45;
+            color: var(--text);
+        }
+
+        .check-row input[type="checkbox"] {
+            margin-top: 2px;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary);
+            flex-shrink: 0;
+        }
+
+        .templates-table-shell {
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: #fff;
+        }
+
+        .templates-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 980px;
+        }
+
+        .templates-table th,
+        .templates-table td {
+            padding: 14px 14px;
+            border-bottom: 1px solid var(--border);
+            text-align: start;
+            vertical-align: top;
+        }
+
+        .templates-table th {
+            background: #f8fafc;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        body.rtl .templates-table th,
+        body.rtl .templates-table td {
+            text-align: right;
+        }
+
+        body.ltr .templates-table th,
+        body.ltr .templates-table td {
+            text-align: left;
+        }
+
+        .templates-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .template-name-cell {
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .mini-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            line-height: 1;
+            border: 1px solid transparent;
+        }
+
+        .mini-badge.yes {
+            background: #dcfce7;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .mini-badge.no {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+
+        .table-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .table-btn {
+            border: none;
+            border-radius: 12px;
+            min-height: 36px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 800;
+            transition: transform var(--transition), background var(--transition);
+        }
+
+        .table-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .table-btn.edit {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .table-btn.delete {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        body.rtl .list-header {
+            flex-direction: row-reverse;
+        }
+
+        .notes-box {
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 18px;
+            background: #f8fafc;
+            margin-top: 18px;
+        }
+
+        .notes-box ul {
+            margin: 0;
+            padding-inline-start: 18px;
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 0.9rem;
+        }
+
+        #message-box {
+            margin-bottom: 16px;
+        }
+
+        .page-message {
+            border-radius: 14px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .page-message.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .page-message.warning {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+
+        .page-message.danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .page-message.info {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        .sidebar-top-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .sidebar-toggle {
+            width: 42px;
+            height: 42px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background var(--transition), transform var(--transition);
+            margin-top: 12px;
+        }
+
+        .sidebar-toggle:hover {
+            background: #f8fafc;
+            transform: translateY(-1px);
+        }
+
+        body.sidebar-collapsed {
+            --sidebar-width: 88px;
+        }
+
+        body.sidebar-collapsed .brand-text,
+        body.sidebar-collapsed .sidebar-section-title {
+            display: none;
+        }
+
+        body.sidebar-collapsed .sidebar-top-row {
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        body.sidebar-collapsed .nav-label {
+            display: none;
+        }
+
+        body.sidebar-collapsed .nav-item {
+            justify-content: center;
+            padding-inline: 10px;
+        }
+
+        body.sidebar-collapsed .nav-icon {
+            width: auto;
+        }
+
+        @media (max-width: 1200px) {
+            .templates-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .template-form-panel {
+                position: static;
+            }
+        }
+
+        @media (max-width: 920px) {
+            .double-grid {
+                grid-template-columns: 1fr;
+            }
+
+            body.mobile-sidebar-hidden .sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body class="app-shell ltr">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-top-row">
+                <div class="brand" style="border-bottom:none; padding:0; flex:1;">
+                    <div class="brand-logo">SA</div>
+                    <div class="brand-text">
+                        <h1 class="brand-title" data-i18n="app_title">Schedule App</h1>
+                        <p class="brand-subtitle" data-i18n="app_subtitle">Nursing staff scheduling</p>
+                    </div>
+                </div>
+
+                <button id="sidebar-toggle" class="sidebar-toggle" type="button" data-i18n-title="toggle_sidebar"
+                    title="Toggle menu">
+                    ☰
+                </button>
+            </div>
+
+            <div>
+                <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
+
+                <nav class="nav-list">
+                    <a href="/" class="nav-item">
+                        <span class="nav-icon">⌂</span>
+                        <span class="nav-label" data-i18n="nav_dashboard">Dashboard</span>
+                    </a>
+
+                    <a href="/schedule" class="nav-item">
+                        <span class="nav-icon">🗓</span>
+                        <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
+                    </a>
+
+                    <a href="/employees" class="nav-item">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-label" data-i18n="nav_employees">Employees</span>
+                    </a>
+
+                    <a href="/weekly-preferences" class="nav-item">
+                        <span class="nav-icon">✦</span>
+                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                    </a>
+
+                    <a href="/settings" class="nav-item">
+                        <span class="nav-icon">⚙</span>
+                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                    </a>
+                </nav>
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 class="page-title" data-i18n="templates_page_title">Shift templates</h2>
+                    <p class="page-subtitle" data-i18n="templates_page_subtitle">
+                        Create and manage reusable shift templates for schedule generation and manual assignment.
+                    </p>
+                </div>
+
+                <div class="topbar-actions">
+                    <div class="lang-switcher">
+                        <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+                        <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+                        <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+                    </div>
+                </div>
+            </header>
+
+            <div id="message-box"></div>
+
+            <div class="templates-layout">
+                <section class="panel template-form-panel">
+                    <div class="panel-body">
+                        <h3 class="subsection-title" data-i18n="templates_form_title">Shift template form</h3>
+                        <p class="subsection-text" data-i18n="templates_form_subtitle">
+                            Add or edit a reusable shift template.
+                        </p>
+
+                        <form id="shift-template-form" class="form-grid">
+                            <div>
+                                <label class="form-label" for="name" data-i18n="templates_name">Template name</label>
+                                <input type="text" id="name" class="input"
+                                    data-i18n-placeholder="templates_name_placeholder"
+                                    placeholder="Example: Morning 06:30-13:30" required>
+                            </div>
+
+                            <div>
+                                <label class="form-label" for="category" data-i18n="templates_category">Shift
+                                    category</label>
+                                <select id="category" class="select" required>
+                                    <option value="" data-i18n="templates_select_category">Select category</option>
+                                    <option value="morning" data-i18n="shift_morning">Morning</option>
+                                    <option value="evening" data-i18n="shift_evening">Evening</option>
+                                    <option value="night" data-i18n="shift_night">Night</option>
+                                </select>
+                            </div>
+
+                            <div class="double-grid">
+                                <div>
+                                    <label class="form-label" for="start_time" data-i18n="templates_start_time">Start
+                                        time</label>
+                                    <input type="time" id="start_time" class="input" required>
+                                </div>
+
+                                <div>
+                                    <label class="form-label" for="end_time" data-i18n="templates_end_time">End
+                                        time</label>
+                                    <input type="time" id="end_time" class="input" required>
+                                </div>
+                            </div>
+
+                            <div class="rules-box">
+                                <h4 class="rules-title" data-i18n="templates_flags_title">Template options</h4>
+
+                                <div class="check-list">
+                                    <label class="check-row">
+                                        <input type="checkbox" id="is_overnight">
+                                        <span data-i18n="templates_is_overnight">Overnight shift</span>
+                                    </label>
+
+                                    <label class="check-row">
+                                        <input type="checkbox" id="is_active" checked>
+                                        <span data-i18n="templates_is_active">Active template</span>
+                                    </label>
+
+                                    <label class="check-row">
+                                        <input type="checkbox" id="is_split_only">
+                                        <span data-i18n="templates_is_split_only">Split-shift only</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary" id="template-submit-button"
+                                data-i18n="templates_add_button">
+                                Add shift template
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <section>
+                    <div class="panel">
+                        <div class="panel-body">
+                            <div class="list-header">
+                                <div>
+                                    <h3 class="subsection-title" style="margin-bottom:6px;"
+                                        data-i18n="templates_list_title">
+                                        Template list
+                                    </h3>
+                                    <p class="subsection-text" style="margin:0;" data-i18n="templates_list_subtitle">
+                                        All shift templates currently saved in the system.
+                                    </p>
+                                </div>
+
+                                <button id="reload-btn" class="btn btn-secondary" type="button"
+                                    data-i18n="templates_reload_button">
+                                    Reload
+                                </button>
+                            </div>
+
+                            <div class="templates-table-shell">
+                                <table class="templates-table">
+                                    <thead>
+                                        <tr>
+                                            <th data-i18n="templates_table_id">ID</th>
+                                            <th data-i18n="templates_table_name">Name</th>
+                                            <th data-i18n="templates_table_category">Category</th>
+                                            <th data-i18n="templates_table_start">Start</th>
+                                            <th data-i18n="templates_table_end">End</th>
+                                            <th data-i18n="templates_table_overnight">Overnight</th>
+                                            <th data-i18n="templates_table_active">Active</th>
+                                            <th data-i18n="templates_table_split_only">Split only</th>
+                                            <th data-i18n="templates_table_actions">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="shift-templates-table-body">
+                                        <tr>
+                                            <td colspan="9" data-i18n="templates_empty_list">No shift templates yet</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="notes-box">
+                        <h4 class="subsection-title" style="font-size:0.98rem; margin-bottom:10px;"
+                            data-i18n="templates_notes_title">
+                            Notes
+                        </h4>
+                        <ul>
+                            <li data-i18n="templates_note_1">
+                                Category defines the logical role of the shift: morning, evening, or night.
+                            </li>
+                            <li data-i18n="templates_note_2">
+                                Overnight means the shift ends on the following day.
+                            </li>
+                            <li data-i18n="templates_note_3">
+                                Split-only templates are intended for paired split shifts, not standalone usage.
+                            </li>
+                        </ul>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/i18n.js"></script>
+
+    <script>
+        let editingTemplateId = null;
+
+        function getSavedSidebarState() {
+            return localStorage.getItem("scheduleAppSidebar") || "expanded";
+        }
+
+        function applySidebarState(state) {
+            document.body.classList.remove("sidebar-collapsed", "mobile-sidebar-hidden");
+
+            if (window.innerWidth <= 920) {
+                if (state === "hidden") {
+                    document.body.classList.add("mobile-sidebar-hidden");
+                }
+                return;
+            }
+
+            if (state === "collapsed") {
+                document.body.classList.add("sidebar-collapsed");
+            }
+        }
+
+        function toggleSidebar() {
+            if (window.innerWidth <= 920) {
+                const hiddenNow = document.body.classList.contains("mobile-sidebar-hidden");
+                const nextState = hiddenNow ? "expanded" : "hidden";
+                localStorage.setItem("scheduleAppSidebar", nextState);
+                applySidebarState(nextState);
+                return;
+            }
+
+            const collapsedNow = document.body.classList.contains("sidebar-collapsed");
+            const nextState = collapsedNow ? "expanded" : "collapsed";
+            localStorage.setItem("scheduleAppSidebar", nextState);
+            applySidebarState(nextState);
+        }
+
+        function bindSidebarToggle() {
+            const button = document.getElementById("sidebar-toggle");
+            if (!button) return;
+
+            button.addEventListener("click", toggleSidebar);
+
+            window.addEventListener("resize", () => {
+                applySidebarState(getSavedSidebarState());
+            });
+        }
+
+        function t(key, fallback = "") {
+            if (typeof translate === "function") {
+                return translate(key);
+            }
+            return fallback || key;
+        }
+
+        function showMessage(text, type = "info") {
+            const box = document.getElementById("message-box");
+            box.innerHTML = `<div class="page-message ${type}">${text}</div>`;
+        }
+
+        function boolBadge(value) {
+            const yesText = t("common_yes", "Yes");
+            const noText = t("common_no", "No");
+
+            return value
+                ? `<span class="mini-badge yes">${yesText}</span>`
+                : `<span class="mini-badge no">${noText}</span>`;
+        }
+
+        function categoryLabel(category) {
+            if (category === "morning") return t("shift_morning", "Morning");
+            if (category === "evening") return t("shift_evening", "Evening");
+            if (category === "night") return t("shift_night", "Night");
+            return category;
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            bindSidebarToggle();
+            applySidebarState(getSavedSidebarState());
+
+            const form = document.getElementById("shift-template-form");
+            const reloadButton = document.getElementById("reload-btn");
+
+            form.addEventListener("submit", handleShiftTemplateSubmit);
+            reloadButton.addEventListener("click", loadShiftTemplates);
+
+            loadShiftTemplates();
+        });
+
+        document.addEventListener("app-language-changed", () => {
+            updateSubmitButtonText();
+            loadShiftTemplates();
+        });
+
+        function updateSubmitButtonText() {
+            const button = document.getElementById("template-submit-button");
+            if (!button) return;
+
+            if (editingTemplateId !== null) {
+                button.textContent = t("templates_update_button", "Update shift template");
+            } else {
+                button.textContent = t("templates_add_button", "Add shift template");
+            }
+        }
+
+        async function handleShiftTemplateSubmit(event) {
+            event.preventDefault();
+
+            const payload = {
+                name: document.getElementById("name").value.trim(),
+                category: document.getElementById("category").value,
+                start_time: document.getElementById("start_time").value,
+                end_time: document.getElementById("end_time").value,
+                is_overnight: document.getElementById("is_overnight").checked,
+                is_active: document.getElementById("is_active").checked,
+                is_split_only: document.getElementById("is_split_only").checked
+            };
+
+            if (!payload.name) {
+                showMessage(t("msg_enter_template_name", "Please enter template name."), "warning");
+                return;
+            }
+
+            if (!payload.category) {
+                showMessage(t("msg_select_shift_category", "Please select shift category."), "warning");
+                return;
+            }
+
+            if (!payload.start_time || !payload.end_time) {
+                showMessage(t("msg_enter_start_end_time", "Please enter start and end time."), "warning");
+                return;
+            }
+
+            try {
+                let response;
+
+                if (editingTemplateId !== null) {
+                    response = await fetch(`/api/shift-templates/${editingTemplateId}`, {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    response = await fetch("/api/shift-templates", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                }
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("msg_failed_save_template", "Failed to save shift template."), "danger");
+                    return;
+                }
+
+                const result = await response.json();
+                showMessage(result.message, "success");
+
+                resetShiftTemplateForm();
+                await loadShiftTemplates();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_save_template", "Server error while saving shift template."), "danger");
+            }
+        }
+
+        function editShiftTemplate(template) {
+            document.getElementById("name").value = template.name;
+            document.getElementById("category").value = template.category;
+            document.getElementById("start_time").value = template.start_time;
+            document.getElementById("end_time").value = template.end_time;
+            document.getElementById("is_overnight").checked = template.is_overnight;
+            document.getElementById("is_active").checked = template.is_active;
+            document.getElementById("is_split_only").checked = template.is_split_only;
+
+            editingTemplateId = template.id;
+            updateSubmitButtonText();
+
+            showMessage(`${t("msg_editing_template", "Editing template")}: ${template.name}`, "info");
+        }
+
+        async function deleteShiftTemplate(templateId) {
+            const isConfirmed = confirm(
+                t("msg_confirm_delete_template", "Are you sure you want to delete this shift template?")
+            );
+
+            if (!isConfirmed) return;
+
+            try {
+                const response = await fetch(`/api/shift-templates/${templateId}`, {
+                    method: "DELETE"
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("msg_failed_delete_template", "Failed to delete shift template."), "danger");
+                    return;
+                }
+
+                const result = await response.json();
+                showMessage(result.message, "success");
+
+                if (editingTemplateId === templateId) {
+                    resetShiftTemplateForm();
+                }
+
+                await loadShiftTemplates();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_delete_template", "Server error while deleting shift template."), "danger");
+            }
+        }
+
+        function resetShiftTemplateForm() {
+            document.getElementById("shift-template-form").reset();
+            document.getElementById("is_active").checked = true;
+            document.getElementById("is_split_only").checked = false;
+            editingTemplateId = null;
+            updateSubmitButtonText();
+        }
+
+        async function loadShiftTemplates() {
+            try {
+                const response = await fetch("/api/shift-templates");
+
+                if (!response.ok) {
+                    showMessage(t("msg_failed_load_templates", "Failed to load shift templates."), "danger");
+                    return;
+                }
+
+                const templates = await response.json();
+                renderShiftTemplatesTable(templates);
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_load_templates", "Server error while loading shift templates."), "danger");
+            }
+        }
+
+        function renderShiftTemplatesTable(templates) {
+            const tableBody = document.getElementById("shift-templates-table-body");
+
+            if (templates.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="9">${t("templates_empty_list", "No shift templates yet")}</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tableBody.innerHTML = templates.map(template => `
+                <tr>
+                    <td>${template.id}</td>
+                    <td class="template-name-cell">${template.name}</td>
+                    <td>${categoryLabel(template.category)}</td>
+                    <td>${template.start_time}</td>
+                    <td>${template.end_time}</td>
+                    <td>${boolBadge(template.is_overnight)}</td>
+                    <td>${boolBadge(template.is_active)}</td>
+                    <td>${boolBadge(template.is_split_only)}</td>
+                    <td>
+                        <div class="table-actions">
+                            <button
+                                class="table-btn edit"
+                                onclick='editShiftTemplate(${JSON.stringify(template)})'
+                                type="button"
+                            >
+                                ${t("templates_edit_button", "Edit")}
+                            </button>
+
+                            <button
+                                class="table-btn delete"
+                                onclick="deleteShiftTemplate(${template.id})"
+                                type="button"
+                            >
+                                ${t("templates_delete_button", "Delete")}
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join("");
+        }
+    </script>
+</body>
+
+</html>

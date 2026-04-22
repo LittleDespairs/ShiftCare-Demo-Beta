@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coverage Requirements - Schedule App</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 14px;
+            align-items: end;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            align-items: end;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .table-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .coverage-layout {
+            display: grid;
+            gap: 22px;
+        }
+
+        .positions-table-shell {
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: #fff;
+        }
+
+        .positions-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 860px;
+        }
+
+        .positions-table th,
+        .positions-table td {
+            padding: 14px;
+            border-bottom: 1px solid var(--border);
+            text-align: start;
+            vertical-align: top;
+        }
+
+        .positions-table th {
+            background: #f8fafc;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .muted-cell {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .table-btn {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #fff;
+            cursor: pointer;
+            padding: 7px 10px;
+            font-size: 0.84rem;
+            font-weight: 800;
+        }
+
+        .table-btn.edit {
+            color: var(--primary);
+            border-color: #bfdbfe;
+            background: #eff6ff;
+        }
+
+        .table-btn.delete {
+            color: var(--danger);
+            border-color: #fecaca;
+            background: #fef2f2;
+        }
+
+        .page-message {
+            border-radius: 14px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 0.9rem;
+            line-height: 1.45;
+            margin-bottom: 16px;
+        }
+
+        .page-message.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .page-message.warning {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+
+        .page-message.danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .check-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+            color: var(--text);
+        }
+
+        @media (max-width: 1100px) {
+            .form-grid,
+            .settings-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .form-grid,
+            .settings-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body class="app-shell ltr">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">SA</div>
+                <div class="brand-text">
+                    <h1 class="brand-title" data-i18n="app_title">Schedule App</h1>
+                    <p class="brand-subtitle" data-i18n="app_subtitle">Nursing staff scheduling</p>
+                </div>
+            </div>
+
+            <div>
+                <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
+                <nav class="nav-list">
+                    <a href="/" class="nav-item">
+                        <span class="nav-icon">⌂</span>
+                        <span class="nav-label" data-i18n="nav_dashboard">Dashboard</span>
+                    </a>
+                    <a href="/schedule" class="nav-item">
+                        <span class="nav-icon">🗓</span>
+                        <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
+                    </a>
+                    <a href="/employees" class="nav-item">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-label" data-i18n="nav_employees">Employees</span>
+                    </a>
+                    <a href="/weekly-preferences" class="nav-item">
+                        <span class="nav-icon">✦</span>
+                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                    </a>
+                    <a href="/settings" class="nav-item active">
+                        <span class="nav-icon">⚙</span>
+                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                    </a>
+                </nav>
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 class="page-title" data-i18n="coverage_page_title">Coverage requirements</h2>
+                    <p class="page-subtitle" data-i18n="coverage_page_subtitle">Time-based staffing requirements by position.</p>
+                </div>
+                <div class="topbar-actions">
+                    <div class="lang-switcher">
+                        <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+                        <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+                        <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+                    </div>
+                    <a class="btn btn-secondary" href="/settings" data-i18n="common_back">Back</a>
+                </div>
+            </header>
+
+            <div class="coverage-layout">
+            <section class="panel">
+                <div class="panel-body">
+                    <h3 class="subsection-title" data-i18n="coverage_rest_title">Rest settings</h3>
+                    <p class="page-subtitle" style="margin-bottom:16px;" data-i18n="coverage_rest_subtitle">
+                        Configure minimum rest gaps used by manual validation and auto-generation.
+                    </p>
+
+                    <form id="rest-settings-form" class="settings-grid">
+                        <div>
+                            <label class="form-label" for="min_rest_minutes_between_morning_and_evening">
+                                <span data-i18n="coverage_rest_morning_evening">Morning to evening rest, minutes</span>
+                            </label>
+                            <input
+                                id="min_rest_minutes_between_morning_and_evening"
+                                class="input"
+                                type="number"
+                                min="0"
+                                max="1440"
+                                step="5"
+                                required
+                            >
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="min_rest_minutes_after_night_before_evening">
+                                <span data-i18n="coverage_rest_night_evening">Night to evening rest, minutes</span>
+                            </label>
+                            <input
+                                id="min_rest_minutes_after_night_before_evening"
+                                class="input"
+                                type="number"
+                                min="0"
+                                max="1440"
+                                step="5"
+                                required
+                            >
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="schedule_coverage_display_mode">
+                                <span data-i18n="coverage_display_mode">Schedule coverage display</span>
+                            </label>
+                            <select id="schedule_coverage_display_mode" class="input" required>
+                                <option value="interval" data-i18n="coverage_display_interval">By time intervals</option>
+                                <option value="category" data-i18n="coverage_display_category">By shift categories</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <div class="form-actions">
+                                <button class="btn btn-primary" type="submit" data-i18n="coverage_save_rest_settings">Save settings</button>
+                                <button class="btn btn-secondary" type="button" onclick="loadAppSettings()" data-i18n="common_reload">Reload</button>
+                            </div>
+                        </div>
+
+                    </form>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-body">
+                    <div id="message-box"></div>
+
+                    <form id="coverage-form" class="form-grid">
+                    <div>
+                        <label class="form-label" for="position_id" data-i18n="schedule_position">Position</label>
+                        <select id="position_id" class="input" required></select>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="start_time" data-i18n="coverage_start_time">Start</label>
+                        <input id="start_time" class="input" type="time" required>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="end_time" data-i18n="coverage_end_time">End</label>
+                        <input id="end_time" class="input" type="time" required>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="required_total" data-i18n="coverage_staff_required">Staff</label>
+                        <input id="required_total" class="input" type="number" min="0" max="50" value="1" required>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="required_female_min" data-i18n="coverage_women_required">Women</label>
+                        <input id="required_female_min" class="input" type="number" min="0" max="50" value="0" required>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="required_male_min" data-i18n="coverage_men_required">Men</label>
+                        <input id="required_male_min" class="input" type="number" min="0" max="50" value="0" required>
+                    </div>
+
+                    <div>
+                        <label class="check-row">
+                            <input id="is_overnight" type="checkbox">
+                            <span data-i18n="coverage_overnight">Overnight</span>
+                        </label>
+                        <div class="form-actions">
+                            <button id="submit-button" class="btn btn-primary" type="submit" data-i18n="coverage_add_button">Add</button>
+                            <button class="btn btn-secondary" type="button" onclick="resetForm()" data-i18n="common_reset">Reset</button>
+                        </div>
+                    </div>
+                    </form>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-body">
+                <div class="positions-table-shell">
+                    <table class="positions-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="coverage_table_id">ID</th>
+                                <th data-i18n="schedule_position">Position</th>
+                                <th data-i18n="coverage_table_time">Time</th>
+                                <th data-i18n="coverage_staff_required">Staff</th>
+                                <th data-i18n="coverage_women_required">Women</th>
+                                <th data-i18n="coverage_men_required">Men</th>
+                                <th data-i18n="coverage_overnight">Overnight</th>
+                                <th data-i18n="common_actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="coverage-table-body"></tbody>
+                    </table>
+                </div>
+                </div>
+            </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/i18n.js"></script>
+    <script>
+        let editingRequirementId = null;
+        let positions = [];
+        let cachedCoverageRequirements = [];
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            document.getElementById("coverage-form").addEventListener("submit", handleSubmit);
+            document.getElementById("rest-settings-form").addEventListener("submit", saveAppSettings);
+            await loadAppSettings();
+            await loadPositions();
+            await loadCoverageRequirements();
+        });
+
+        document.addEventListener("app-language-changed", () => {
+            renderTable(cachedCoverageRequirements);
+            updateSubmitButtonText();
+        });
+
+        function t(key, fallback = "") {
+            if (typeof translate === "function") {
+                return translate(key);
+            }
+            return fallback || key;
+        }
+
+        function showMessage(text, type = "info") {
+            const box = document.getElementById("message-box");
+            box.innerHTML = `<div class="page-message ${type}">${text}</div>`;
+        }
+
+        function boolText(value) {
+            return value ? t("common_yes", "Yes") : t("common_no", "No");
+        }
+
+        async function loadAppSettings() {
+            const response = await fetch("/api/app-settings");
+            if (!response.ok) {
+                showMessage(t("coverage_msg_failed_load_rest", "Failed to load rest settings."), "danger");
+                return;
+            }
+
+            const settings = await response.json();
+            document.getElementById("min_rest_minutes_between_morning_and_evening").value =
+                settings.min_rest_minutes_between_morning_and_evening;
+            document.getElementById("min_rest_minutes_after_night_before_evening").value =
+                settings.min_rest_minutes_after_night_before_evening;
+            document.getElementById("schedule_coverage_display_mode").value =
+                settings.schedule_coverage_display_mode || "interval";
+        }
+
+        async function saveAppSettings(event) {
+            event.preventDefault();
+
+            const payload = {
+                min_rest_minutes_between_morning_and_evening: Number(
+                    document.getElementById("min_rest_minutes_between_morning_and_evening").value
+                ),
+                min_rest_minutes_after_night_before_evening: Number(
+                    document.getElementById("min_rest_minutes_after_night_before_evening").value
+                ),
+                schedule_coverage_display_mode: document.getElementById("schedule_coverage_display_mode").value
+            };
+
+            const response = await fetch("/api/app-settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                showMessage(error.detail || t("coverage_msg_failed_save_rest", "Failed to save rest settings."), "danger");
+                return;
+            }
+
+            const result = await response.json();
+            showMessage(result.message, "success");
+            document.getElementById("min_rest_minutes_between_morning_and_evening").value =
+                result.settings.min_rest_minutes_between_morning_and_evening;
+            document.getElementById("min_rest_minutes_after_night_before_evening").value =
+                result.settings.min_rest_minutes_after_night_before_evening;
+            document.getElementById("schedule_coverage_display_mode").value =
+                result.settings.schedule_coverage_display_mode || "interval";
+        }
+
+        async function loadPositions() {
+            const response = await fetch("/api/positions");
+            if (!response.ok) {
+                showMessage(t("msg_failed_load_positions", "Failed to load positions."), "danger");
+                return;
+            }
+            positions = await response.json();
+            const select = document.getElementById("position_id");
+            select.innerHTML = positions
+                .map(position => `<option value="${position.id}">${position.name}</option>`)
+                .join("");
+        }
+
+        function getPayload() {
+            return {
+                position_id: Number(document.getElementById("position_id").value),
+                start_time: document.getElementById("start_time").value,
+                end_time: document.getElementById("end_time").value,
+                required_total: Number(document.getElementById("required_total").value),
+                required_female_min: Number(document.getElementById("required_female_min").value),
+                required_male_min: Number(document.getElementById("required_male_min").value),
+                is_overnight: document.getElementById("is_overnight").checked
+            };
+        }
+
+        async function handleSubmit(event) {
+            event.preventDefault();
+            const payload = getPayload();
+
+            if (payload.required_female_min > payload.required_total) {
+                showMessage(t("coverage_msg_women_gt_staff", "Women minimum cannot be greater than staff total."), "warning");
+                return;
+            }
+            if (payload.required_male_min > payload.required_total) {
+                showMessage(t("coverage_msg_men_gt_staff", "Men minimum cannot be greater than staff total."), "warning");
+                return;
+            }
+            if (payload.required_female_min + payload.required_male_min > payload.required_total) {
+                showMessage(t("coverage_msg_gender_gt_staff", "Women and men minimums cannot be greater than staff total."), "warning");
+                return;
+            }
+
+            const url = editingRequirementId === null
+                ? "/api/coverage-requirements"
+                : `/api/coverage-requirements/${editingRequirementId}`;
+
+            const response = await fetch(url, {
+                method: editingRequirementId === null ? "POST" : "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                showMessage(error.detail || t("coverage_msg_failed_save", "Failed to save coverage requirement."), "danger");
+                return;
+            }
+
+            const result = await response.json();
+            showMessage(result.message, "success");
+            resetForm();
+            await loadCoverageRequirements();
+        }
+
+        async function loadCoverageRequirements() {
+            const response = await fetch("/api/coverage-requirements");
+            if (!response.ok) {
+                showMessage(t("coverage_msg_failed_load", "Failed to load coverage requirements."), "danger");
+                return;
+            }
+            const requirements = await response.json();
+            cachedCoverageRequirements = requirements;
+            renderTable(requirements);
+        }
+
+        function editRequirement(requirement) {
+            editingRequirementId = requirement.id;
+            document.getElementById("position_id").value = requirement.position_id;
+            document.getElementById("start_time").value = requirement.start_time;
+            document.getElementById("end_time").value = requirement.end_time;
+            document.getElementById("required_total").value = requirement.required_total;
+            document.getElementById("required_female_min").value = requirement.required_female_min;
+            document.getElementById("required_male_min").value = requirement.required_male_min;
+            document.getElementById("is_overnight").checked = requirement.is_overnight;
+            updateSubmitButtonText();
+        }
+
+        async function deleteRequirement(requirementId) {
+            if (!confirm(t("coverage_msg_confirm_delete", "Delete coverage requirement?"))) return;
+
+            const response = await fetch(`/api/coverage-requirements/${requirementId}`, {
+                method: "DELETE"
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                showMessage(error.detail || t("coverage_msg_failed_delete", "Failed to delete coverage requirement."), "danger");
+                return;
+            }
+
+            const result = await response.json();
+            showMessage(result.message, "success");
+            await loadCoverageRequirements();
+        }
+
+        function resetForm() {
+            document.getElementById("coverage-form").reset();
+            document.getElementById("required_total").value = 1;
+            document.getElementById("required_female_min").value = 0;
+            document.getElementById("required_male_min").value = 0;
+            editingRequirementId = null;
+            updateSubmitButtonText();
+        }
+
+        function updateSubmitButtonText() {
+            const button = document.getElementById("submit-button");
+            if (!button) return;
+            button.textContent = editingRequirementId === null
+                ? t("coverage_add_button", "Add")
+                : t("coverage_update_button", "Update");
+        }
+
+        function renderTable(requirements) {
+            const body = document.getElementById("coverage-table-body");
+            if (requirements.length === 0) {
+                body.innerHTML = `<tr><td colspan="8" class="muted-cell">${t("coverage_empty_list", "No coverage requirements yet")}</td></tr>`;
+                return;
+            }
+
+            body.innerHTML = requirements.map(requirement => `
+                <tr>
+                    <td>${requirement.id}</td>
+                    <td>${requirement.position_name || requirement.position_id}</td>
+                    <td>${requirement.start_time} - ${requirement.end_time}</td>
+                    <td>${requirement.required_total}</td>
+                    <td>${requirement.required_female_min}</td>
+                    <td>${requirement.required_male_min}</td>
+                    <td>${boolText(requirement.is_overnight)}</td>
+                    <td>
+                        <div class="table-actions">
+                            <button class="table-btn edit" type="button" onclick='editRequirement(${JSON.stringify(requirement)})'>${t("common_edit", "Edit")}</button>
+                            <button class="table-btn delete" type="button" onclick="deleteRequirement(${requirement.id})">${t("common_delete", "Delete")}</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join("");
+        }
+    </script>
+</body>
+
+</html>
