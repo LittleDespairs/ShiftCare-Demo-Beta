@@ -1,3 +1,4 @@
+import database as database_module
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -10,12 +11,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from pydantic import BaseModel, Field, model_validator
 
 from database import get_connection, init_db
+from excel_export import build_schedule_export_workbook
 
+APP_VERSION = "0.12.1_beta"
+APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
 
 tags_metadata = [
     {"name": "Pages", "description": "Frontend pages / HTML страницы"},
@@ -30,9 +32,9 @@ tags_metadata = [
 ]
 
 app = FastAPI(
-    title="Schedule App - Nursing Staff Scheduling 0.11.3_alpha",
+    title=APP_TITLE,
     description="Web application for nursing staff scheduling",
-    version="0.11.3_alpha",
+    version=APP_VERSION,
     openapi_tags=tags_metadata,
 )
 
@@ -105,6 +107,12 @@ class EmployeePositionCreate(BaseModel):
     priority_score: int = Field(ge=0, le=100, default=50)
     is_fallback_only: bool = False
 
+    @model_validator(mode="after")
+    def validate_assignment_flags(self):
+        if self.is_primary and self.is_fallback_only:
+            raise ValueError("assignment cannot be both primary and fallback-only")
+        return self
+
 
 class ShiftTemplateCreate(BaseModel):
     name: str = Field(min_length=2, max_length=100)
@@ -114,6 +122,16 @@ class ShiftTemplateCreate(BaseModel):
     is_overnight: bool = False
     is_active: bool = True
     is_split_only: bool = False
+
+    @model_validator(mode="after")
+    def validate_time_window(self):
+        start = parse_time_string(self.start_time)
+        end = parse_time_string(self.end_time)
+        if start == end:
+            raise ValueError("shift start_time and end_time cannot be the same")
+        if not self.is_overnight and end <= start:
+            raise ValueError("non-overnight shift must end after start_time")
+        return self
 
 
 class ShiftRequirementCreate(BaseModel):
@@ -145,14 +163,18 @@ class CoverageRequirementCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_requirement(self):
-        parse_time_string(self.start_time)
-        parse_time_string(self.end_time)
+        start = parse_time_string(self.start_time)
+        end = parse_time_string(self.end_time)
         if self.required_female_min > self.required_total:
             raise ValueError("required_female_min cannot be greater than required_total")
         if self.required_male_min > self.required_total:
             raise ValueError("required_male_min cannot be greater than required_total")
         if self.required_female_min + self.required_male_min > self.required_total:
             raise ValueError("gender minimums cannot be greater than required_total")
+        if not self.is_overnight and end <= start:
+            raise ValueError("non-overnight coverage interval must end after start_time")
+        if start == end:
+            raise ValueError("coverage interval start_time and end_time cannot be the same")
         return self
 
 
@@ -203,10 +225,28 @@ class AutoGenerateScheduleRequest(BaseModel):
     position_id: int
     week_start_date: str
 
+    @model_validator(mode="after")
+    def validate_week_start_date(self):
+        parse_date_string(self.week_start_date)
+        return self
+
 
 class ClearWeekScheduleRequest(BaseModel):
     position_id: int
     week_start_date: str
+
+    @model_validator(mode="after")
+    def validate_week_start_date(self):
+        parse_date_string(self.week_start_date)
+        return self
+
+
+class DatabaseBackupCreateRequest(BaseModel):
+    label: str = Field(default="manual", min_length=1, max_length=50)
+
+
+class DatabaseRestoreRequest(BaseModel):
+    backup_name: str = Field(min_length=1, max_length=255)
 
 
 class AppSettingsUpdate(BaseModel):
@@ -427,6 +467,18 @@ def fetch_one_or_404(cursor, query: str, params: tuple, message: str):
     if not row:
         raise HTTPException(status_code=404, detail=message)
     return row
+
+
+def fetch_count(cursor, query: str, params: tuple = ()) -> int:
+    cursor.execute(query, params)
+    return int(cursor.fetchone()[0])
+
+
+def create_recovery_backup(label: str) -> str:
+    try:
+        return database_module.create_database_backup(label).name
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to create safety backup: {exc}") from exc
 
 
 def get_employee_week_shift_count(connection, employee_id: int, week_start_date: str) -> int:
@@ -962,40 +1014,34 @@ def validate_manual_schedule_entry_basics(connection, entry: ScheduleEntryCreate
     fetch_one_or_404(cursor, "SELECT id FROM shift_templates WHERE id = ?", (entry.shift_template_id,), "Shift template not found")
 
 
-def get_export_label(key: str, lang: str) -> str:
-    labels = {
-        "en": {
-            "sick": "Sick",
-            "day_off": "Day off",
-            "no_show": "No-show",
-        },
-        "ru": {
-            "sick": "Больничный",
-            "day_off": "Выходной",
-            "no_show": "Неявка",
-        },
-        "he": {
-            "sick": "מחלה",
-            "day_off": "יום חופשי",
-            "no_show": "אי הגעה",
-        },
-    }
-    return labels.get(lang, labels["en"]).get(key, key)
-
-
-def build_schedule_cell_text(entries: list[dict], day_status: dict | None = None, lang: str = "en") -> str:
-    if day_status and day_status.get("status_type") in {"sick", "day_off"}:
-        return get_export_label(day_status["status_type"], lang)
-
-    return "\n".join(
-        get_export_label("no_show", lang) if entry.get("no_show") else entry["shift_template_name"]
-        for entry in sorted(entries, key=lambda item: item["start_time"])
-    )
-
-
 # =========================
 # Pages
 # =========================
+
+
+@app.get("/api/database/backups", tags=["Settings"])
+def get_database_backups():
+    return {"backups": database_module.list_database_backups()}
+
+
+@app.post("/api/database/backups", tags=["Settings"])
+def create_database_backup_endpoint(request_data: DatabaseBackupCreateRequest):
+    backup_path = database_module.create_database_backup(request_data.label)
+    return {
+        "message": "Database backup created successfully",
+        "backup_name": backup_path.name,
+    }
+
+
+@app.post("/api/database/restore", tags=["Settings"])
+def restore_database_backup_endpoint(request_data: DatabaseRestoreRequest):
+    try:
+        result = database_module.restore_database_backup(request_data.backup_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Database restored successfully", **result}
 
 
 @app.get("/", tags=["Pages"])
@@ -1134,9 +1180,46 @@ def delete_employee(employee_id: int):
     try:
         cursor = connection.cursor()
         fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (employee_id,), "Employee not found")
+        backup_name = create_recovery_backup("delete_employee")
         cursor.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
         connection.commit()
-        return {"message": "Employee deleted successfully"}
+        return {"message": "Employee deleted successfully", "backup_name": backup_name}
+    finally:
+        connection.close()
+
+
+@app.get("/api/employees/{employee_id}/delete-impact", tags=["Employees"])
+def get_employee_delete_impact(employee_id: int):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        employee_row = fetch_one_or_404(
+            cursor,
+            "SELECT id, full_name FROM employees WHERE id = ?",
+            (employee_id,),
+            "Employee not found",
+        )
+        return {
+            "employee_id": employee_row["id"],
+            "employee_name": employee_row["full_name"],
+            "assignments": fetch_count(cursor, "SELECT COUNT(*) FROM employee_positions WHERE employee_id = ?", (employee_id,)),
+            "schedule_entries": fetch_count(cursor, "SELECT COUNT(*) FROM schedule_entries WHERE employee_id = ?", (employee_id,)),
+            "general_preferences": fetch_count(
+                cursor,
+                "SELECT COUNT(*) FROM employee_preferences WHERE employee_id = ?",
+                (employee_id,),
+            ),
+            "weekly_preferences": fetch_count(
+                cursor,
+                "SELECT COUNT(*) FROM employee_week_preferences WHERE employee_id = ?",
+                (employee_id,),
+            ),
+            "day_statuses": fetch_count(
+                cursor,
+                "SELECT COUNT(*) FROM employee_day_statuses WHERE employee_id = ?",
+                (employee_id,),
+            ),
+        }
     finally:
         connection.close()
 
@@ -1202,9 +1285,37 @@ def delete_position(position_id: int):
     try:
         cursor = connection.cursor()
         fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (position_id,), "Position not found")
+        backup_name = create_recovery_backup("delete_position")
         cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
         connection.commit()
-        return {"message": "Position deleted successfully"}
+        return {"message": "Position deleted successfully", "backup_name": backup_name}
+    finally:
+        connection.close()
+
+
+@app.get("/api/positions/{position_id}/delete-impact", tags=["Positions"])
+def get_position_delete_impact(position_id: int):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        position_row = fetch_one_or_404(
+            cursor,
+            "SELECT id, name FROM positions WHERE id = ?",
+            (position_id,),
+            "Position not found",
+        )
+        return {
+            "position_id": position_row["id"],
+            "position_name": position_row["name"],
+            "assignments": fetch_count(cursor, "SELECT COUNT(*) FROM employee_positions WHERE position_id = ?", (position_id,)),
+            "schedule_entries": fetch_count(cursor, "SELECT COUNT(*) FROM schedule_entries WHERE position_id = ?", (position_id,)),
+            "shift_requirements": fetch_count(cursor, "SELECT COUNT(*) FROM shift_requirements WHERE position_id = ?", (position_id,)),
+            "coverage_requirements": fetch_count(
+                cursor,
+                "SELECT COUNT(*) FROM coverage_requirements WHERE position_id = ?",
+                (position_id,),
+            ),
+        }
     finally:
         connection.close()
 
@@ -1295,11 +1406,44 @@ def delete_employee_position(employee_id: int, position_id: int):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        backup_name = create_recovery_backup("delete_assignment")
         cursor.execute("DELETE FROM employee_positions WHERE employee_id = ? AND position_id = ?", (employee_id, position_id))
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Assignment not found")
         connection.commit()
-        return {"message": "Employee assignment deleted successfully"}
+        return {"message": "Employee assignment deleted successfully", "backup_name": backup_name}
+    finally:
+        connection.close()
+
+
+@app.get("/api/employee-positions/delete-impact", tags=["Assignments"])
+def get_employee_position_delete_impact(employee_id: int, position_id: int):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        assignment_row = fetch_one_or_404(
+            cursor,
+            """
+            SELECT ep.employee_id, ep.position_id, e.full_name AS employee_name, p.name AS position_name
+            FROM employee_positions ep
+            JOIN employees e ON e.id = ep.employee_id
+            JOIN positions p ON p.id = ep.position_id
+            WHERE ep.employee_id = ? AND ep.position_id = ?
+            """,
+            (employee_id, position_id),
+            "Assignment not found",
+        )
+        return {
+            "employee_id": assignment_row["employee_id"],
+            "position_id": assignment_row["position_id"],
+            "employee_name": assignment_row["employee_name"],
+            "position_name": assignment_row["position_name"],
+            "schedule_entries": fetch_count(
+                cursor,
+                "SELECT COUNT(*) FROM schedule_entries WHERE employee_id = ? AND position_id = ?",
+                (employee_id, position_id),
+            ),
+        }
     finally:
         connection.close()
 
@@ -1388,13 +1532,39 @@ def delete_shift_template(template_id: int):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        backup_name = create_recovery_backup("delete_shift_template")
         cursor.execute("DELETE FROM shift_templates WHERE id = ?", (template_id,))
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Shift template not found")
         connection.commit()
-        return {"message": "Shift template deleted successfully"}
+        return {"message": "Shift template deleted successfully", "backup_name": backup_name}
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="Cannot delete shift template because it is used in schedule")
+    finally:
+        connection.close()
+
+
+@app.get("/api/shift-templates/{template_id}/delete-impact", tags=["Shift Templates"])
+def get_shift_template_delete_impact(template_id: int):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        template_row = fetch_one_or_404(
+            cursor,
+            "SELECT id, name, category FROM shift_templates WHERE id = ?",
+            (template_id,),
+            "Shift template not found",
+        )
+        return {
+            "template_id": template_row["id"],
+            "template_name": template_row["name"],
+            "category": template_row["category"],
+            "schedule_entries": fetch_count(
+                cursor,
+                "SELECT COUNT(*) FROM schedule_entries WHERE shift_template_id = ?",
+                (template_id,),
+            ),
+        }
     finally:
         connection.close()
 
@@ -1759,6 +1929,49 @@ def get_employee_day_status_map(connection, employee_ids: list[int], dates: list
     return {(row["employee_id"], row["date"]): dict(row) for row in cursor.fetchall()}
 
 
+def sync_employee_day_off_status_for_date(connection, cursor, employee_id: int, date_string: str) -> None:
+    cursor.execute(
+        """
+        SELECT 1
+        FROM schedule_entries
+        WHERE employee_id = ? AND date = ?
+        LIMIT 1
+        """,
+        (employee_id, date_string),
+    )
+    has_any_schedule_entry = cursor.fetchone() is not None
+
+    if has_any_schedule_entry:
+        cursor.execute(
+            """
+            DELETE FROM employee_day_statuses
+            WHERE employee_id = ? AND date = ? AND status_type = 'day_off'
+            """,
+            (employee_id, date_string),
+        )
+        return
+
+    cursor.execute(
+        """
+        SELECT status_type
+        FROM employee_day_statuses
+        WHERE employee_id = ? AND date = ?
+        """,
+        (employee_id, date_string),
+    )
+    existing_status = cursor.fetchone()
+    if existing_status is not None:
+        return
+
+    cursor.execute(
+        """
+        INSERT INTO employee_day_statuses (employee_id, date, status_type)
+        VALUES (?, ?, 'day_off')
+        """,
+        (employee_id, date_string),
+    )
+
+
 def sync_generated_day_off_statuses(
     connection,
     cursor,
@@ -1784,17 +1997,17 @@ def sync_generated_day_off_statuses(
 
     entries = get_schedule_entries(connection, dates=dates)
     employee_id_set = set(employee_ids)
-    worked_days = {
+    scheduled_days = {
         (entry["employee_id"], entry["date"])
         for entry in entries
-        if entry["employee_id"] in employee_id_set and not entry.get("no_show")
+        if entry["employee_id"] in employee_id_set
     }
     day_status_map = get_employee_day_status_map(connection, employee_ids, dates)
 
     inserted_count = 0
     for employee_id in employee_ids:
         for date_string in dates:
-            if (employee_id, date_string) in worked_days:
+            if (employee_id, date_string) in scheduled_days:
                 continue
             if (employee_id, date_string) in day_status_map:
                 continue
@@ -1881,6 +2094,7 @@ def add_schedule_entry(entry: ScheduleEntryCreate):
             """,
             (entry.employee_id, entry.position_id, entry.date, entry.shift_template_id),
         )
+        sync_employee_day_off_status_for_date(connection, cursor, entry.employee_id, entry.date)
         connection.commit()
         return {"message": "Schedule entry added successfully", "schedule_entry": {**entry.model_dump(), "id": cursor.lastrowid}}
     finally:
@@ -1892,9 +2106,14 @@ def delete_schedule_entry(schedule_entry_id: int):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        entry_row = fetch_one_or_404(
+            cursor,
+            "SELECT employee_id, date FROM schedule_entries WHERE id = ?",
+            (schedule_entry_id,),
+            "Schedule entry not found",
+        )
         cursor.execute("DELETE FROM schedule_entries WHERE id = ?", (schedule_entry_id,))
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Schedule entry not found")
+        sync_employee_day_off_status_for_date(connection, cursor, entry_row["employee_id"], entry_row["date"])
         connection.commit()
         return {"message": "Schedule entry deleted successfully", "deleted_count": cursor.rowcount}
     finally:
@@ -1924,6 +2143,7 @@ def clear_week_schedule(request_data: ClearWeekScheduleRequest):
     try:
         week_dates = build_week_dates(request_data.week_start_date)
         cursor = connection.cursor()
+        backup_name = create_recovery_backup("clear_week")
         cursor.execute(
             f"""
             DELETE FROM schedule_entries
@@ -1945,7 +2165,60 @@ def clear_week_schedule(request_data: ClearWeekScheduleRequest):
                 [*employee_ids, *week_dates],
             )
         connection.commit()
-        return {"message": "Week schedule cleared successfully", "deleted_count": deleted_count}
+        return {
+            "message": "Week schedule cleared successfully",
+            "deleted_count": deleted_count,
+            "backup_name": backup_name,
+        }
+    finally:
+        connection.close()
+
+
+@app.get("/api/schedule/clear-week-preview", tags=["Schedule"])
+def get_clear_week_schedule_preview(position_id: int, week_start_date: str):
+    connection = get_connection()
+    try:
+        week_dates = build_week_dates(week_start_date)
+        cursor = connection.cursor()
+        position_row = fetch_one_or_404(
+            cursor,
+            "SELECT id, name FROM positions WHERE id = ?",
+            (position_id,),
+            "Position not found",
+        )
+        employees = load_position_employees(connection, position_id)
+        employee_ids = [employee["id"] for employee in employees]
+        day_status_count = 0
+
+        if employee_ids:
+            cursor.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM employee_day_statuses
+                WHERE status_type = 'day_off'
+                  AND employee_id IN ({','.join(['?'] * len(employee_ids))})
+                  AND date IN ({','.join(['?'] * len(week_dates))})
+                """,
+                [*employee_ids, *week_dates],
+            )
+            day_status_count = int(cursor.fetchone()[0])
+
+        return {
+            "position_id": position_row["id"],
+            "position_name": position_row["name"],
+            "week_start_date": week_start_date,
+            "assigned_employees": len(employee_ids),
+            "schedule_entries": fetch_count(
+                cursor,
+                f"""
+                SELECT COUNT(*)
+                FROM schedule_entries
+                WHERE position_id = ? AND date IN ({','.join(['?'] * len(week_dates))})
+                """,
+                (position_id, *week_dates),
+            ),
+            "day_off_statuses": day_status_count,
+        }
     finally:
         connection.close()
 
@@ -3493,75 +3766,15 @@ def export_schedule_excel(week_start_date: str, position_id: int, lang: str = "e
         employees = load_position_employees(connection, position_id)
         entries = get_schedule_entries(connection, position_id=position_id, dates=week_dates)
         day_status_map = get_employee_day_status_map(connection, [employee["id"] for employee in employees], week_dates)
-        grouped_entries: dict[tuple[int, str], list[dict]] = {}
-        for entry in entries:
-            grouped_entries.setdefault((entry["employee_id"], entry["date"]), []).append(entry)
-
-        workbook = Workbook()
-        worksheet = workbook.active
-        worksheet.title = "Schedule"
-        worksheet.sheet_view.rightToLeft = True
-
-        header_fill = PatternFill("solid", fgColor="D9EAF7")
-        date_fill = PatternFill("solid", fgColor="F3F6F9")
-        thin_side = Side(style="thin", color="CCCCCC")
-        thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
-        center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-        worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=9)
-        worksheet["A1"] = f"Schedule export - {position['name']} - week starting {week_start_date}"
-        worksheet["A1"].font = Font(bold=True, size=14)
-        worksheet["A1"].alignment = center
-
-        headers = ["Employee", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Weekly total"]
-        for col_index, header in enumerate(headers, start=1):
-            cell = worksheet.cell(row=3, column=col_index, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = header_fill
-            cell.alignment = center
-            cell.border = thin_border
-
-        for index, current_date in enumerate(["", *week_dates, ""], start=1):
-            cell = worksheet.cell(row=4, column=index, value=current_date)
-            cell.fill = date_fill
-            cell.alignment = center
-            cell.border = thin_border
-
-        for row_index, employee in enumerate(employees, start=5):
-            name_cell = worksheet.cell(row=row_index, column=1, value=employee["full_name"])
-            name_cell.font = Font(bold=True)
-            name_cell.alignment = center
-            name_cell.border = thin_border
-            weekly_count = 0
-            max_lines = 1
-            for day_offset, current_date in enumerate(week_dates, start=2):
-                day_entries = grouped_entries.get((employee["id"], current_date), [])
-                day_status = day_status_map.get((employee["id"], current_date))
-                if not (day_status and day_status.get("status_type") in {"sick", "day_off"}):
-                    weekly_count += sum(1 for entry in day_entries if not entry.get("no_show"))
-                text = build_schedule_cell_text(day_entries, day_status, lang)
-                max_lines = max(max_lines, text.count("\n") + 1 if text else 1)
-                cell = worksheet.cell(row=row_index, column=day_offset, value=text)
-                cell.alignment = center
-                cell.border = thin_border
-            total_cell = worksheet.cell(row=row_index, column=9, value=weekly_count)
-            total_cell.alignment = center
-            total_cell.border = thin_border
-            worksheet.row_dimensions[row_index].height = max(22, max_lines * 18)
-
-        for column in "ABCDEFGHI":
-            worksheet.column_dimensions[column].width = 24 if column != "I" else 12
-        worksheet.freeze_panes = "B5"
-        worksheet.page_setup.orientation = "landscape"
-        worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
-        worksheet.page_setup.fitToWidth = 1
-        worksheet.page_setup.fitToHeight = 0
-        worksheet.print_title_rows = "1:4"
-        worksheet.print_options.horizontalCentered = True
-
-        output = BytesIO()
-        workbook.save(output)
-        output.seek(0)
+        output = build_schedule_export_workbook(
+            position=position,
+            week_start_date=week_start_date,
+            week_dates=week_dates,
+            employees=employees,
+            entries=entries,
+            day_status_map=day_status_map,
+            lang=lang,
+        )
         safe_position_name = position["name"].replace(" ", "_")
         filename = f"schedule_{safe_position_name}_{week_start_date}.xlsx"
         return StreamingResponse(

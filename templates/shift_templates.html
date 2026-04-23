@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shift Templates - Schedule App</title>
 
-    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
+<link rel="stylesheet" href="/static/css/style.css?v=0.12.1_beta">
 
     <style>
         .templates-layout {
@@ -360,7 +360,7 @@
 
                     <a href="/weekly-preferences" class="nav-item">
                         <span class="nav-icon">✦</span>
-                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                        <span class="nav-label" data-i18n="nav_requests">Preferences</span>
                     </a>
 
                     <a href="/settings" class="nav-item">
@@ -528,7 +528,7 @@
         </main>
     </div>
 
-    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
+<script src="/static/js/i18n.js?v=0.12.1_beta"></script>
 
     <script>
         let editingTemplateId = null;
@@ -588,6 +588,14 @@
 
         function showMessage(text, type = "info") {
             renderPageMessage("message-box", text, type);
+        }
+
+        function formatDeleteImpactList(items) {
+            const rows = items
+                .filter(item => item && item.label)
+                .map(item => `<li><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value ?? 0)}</li>`)
+                .join("");
+            return rows ? `<ul>${rows}</ul>` : "";
         }
 
         function boolBadge(value) {
@@ -692,7 +700,10 @@
                 }
 
                 const result = await response.json();
-                showMessage(result.message, "success");
+                const backupSuffix = result.backup_name
+                    ? ` ${t("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
+                    : "";
+                showMessage(`${result.message}${backupSuffix}`, "success");
 
                 resetShiftTemplateForm();
                 await loadShiftTemplates();
@@ -718,10 +729,32 @@
         }
 
         async function deleteShiftTemplate(templateId) {
-            const isConfirmed = await appConfirm(
-                t("msg_confirm_delete_template", "Are you sure you want to delete this shift template?"),
-                { confirmText: t("common_delete", "Delete") }
-            );
+            let confirmMessage = `<p>${escapeHtml(t("msg_confirm_delete_template", "Are you sure you want to delete this shift template?"))}</p>`;
+
+            try {
+                const impactResponse = await fetch(`/api/shift-templates/${templateId}/delete-impact`);
+                if (impactResponse.ok) {
+                    const impact = await impactResponse.json();
+                    confirmMessage += formatDeleteImpactList([
+                        { label: t("confirm_impact_template", "Template"), value: impact.template_name },
+                        { label: t("templates_category", "Shift category"), value: categoryLabel(impact.category) },
+                        { label: t("confirm_impact_schedule_entries", "Schedule entries"), value: impact.schedule_entries }
+                    ]);
+                    if (impact.schedule_entries > 0) {
+                        confirmMessage += `<p>${escapeHtml(t("confirm_impact_in_use_warning", "This template is still used in the schedule and deletion will be blocked."))}</p>`;
+                    }
+                } else {
+                    confirmMessage += `<p>${escapeHtml(t("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+                }
+            } catch (error) {
+                console.error(error);
+                confirmMessage += `<p>${escapeHtml(t("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+            }
+
+            const isConfirmed = await appConfirm(confirmMessage, {
+                confirmText: t("common_delete", "Delete"),
+                html: true
+            });
 
             if (!isConfirmed) return;
 
@@ -737,7 +770,10 @@
                 }
 
                 const result = await response.json();
-                showMessage(result.message, "success");
+                const backupSuffix = result.backup_name
+                    ? ` ${t("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
+                    : "";
+                showMessage(`${result.message}${backupSuffix}`, "success");
 
                 if (editingTemplateId === templateId) {
                     resetShiftTemplateForm();
@@ -782,7 +818,14 @@
             if (templates.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="9">${t("templates_empty_list", "No shift templates yet")}</td>
+                        <td colspan="9">
+                            ${typeof renderEmptyState === "function"
+                                ? renderEmptyState({
+                                    title: t("templates_empty_state_title", "No shift templates yet"),
+                                    text: t("templates_empty_state_text", "Create reusable shift templates before generating or editing schedules.")
+                                })
+                                : t("templates_empty_list", "No shift templates yet")}
+                        </td>
                     </tr>
                 `;
                 return;

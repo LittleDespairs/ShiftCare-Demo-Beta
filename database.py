@@ -1,6 +1,7 @@
 import shutil
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Base directory / Базовая папка проекта
@@ -25,6 +26,75 @@ def get_database_path() -> Path:
 
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
+
+
+def get_backup_dir() -> Path:
+    backup_dir = DATABASE_PATH.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    return backup_dir
+
+
+def _sanitize_backup_label(label: str) -> str:
+    filtered = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in (label or "backup"))
+    filtered = filtered.strip("_")
+    return filtered or "backup"
+
+
+def validate_sqlite_file(path: Path) -> None:
+    with path.open("rb") as file_handle:
+        header = file_handle.read(16)
+    if header != b"SQLite format 3\x00":
+        raise ValueError("Uploaded file is not a valid SQLite database")
+
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("PRAGMA quick_check")
+    finally:
+        connection.close()
+
+
+def create_database_backup(label: str = "manual") -> Path:
+    source = DATABASE_PATH
+    if not source.exists():
+        raise FileNotFoundError(f"Database file does not exist: {source}")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_name = f"{source.stem}_{timestamp}_{_sanitize_backup_label(label)}.db"
+    backup_path = get_backup_dir() / backup_name
+    shutil.copy2(source, backup_path)
+    return backup_path
+
+
+def list_database_backups(limit: int = 20) -> list[dict]:
+    backups = sorted(get_backup_dir().glob("*.db"), key=lambda path: path.stat().st_mtime, reverse=True)
+    results = []
+    for backup_path in backups[:limit]:
+        stat = backup_path.stat()
+        results.append(
+            {
+                "name": backup_path.name,
+                "size_bytes": stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+            }
+        )
+    return results
+
+
+def restore_database_backup(backup_name: str) -> dict:
+    backup_path = (get_backup_dir() / backup_name).resolve()
+    backup_dir = get_backup_dir().resolve()
+    if backup_dir not in backup_path.parents:
+        raise ValueError("Backup path is outside the backup directory")
+    if not backup_path.exists():
+        raise FileNotFoundError(f"Backup file does not exist: {backup_name}")
+
+    validate_sqlite_file(backup_path)
+    pre_restore_backup = create_database_backup("pre_restore")
+    shutil.copy2(backup_path, DATABASE_PATH)
+    return {
+        "restored_backup": backup_path.name,
+        "pre_restore_backup": pre_restore_backup.name,
+    }
 
 
 def get_connection():
@@ -140,6 +210,11 @@ def init_db():
         ON schedule_entries (position_id, date)
     """)
 
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_positions_position_employee
+        ON employee_positions (position_id, employee_id)
+    """)
+
     # ==========================================
     # Shift requirements / Требования к сменам
     # ==========================================
@@ -200,6 +275,16 @@ def init_db():
             UNIQUE(employee_id, date),
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
         )
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_day_statuses_employee_date
+        ON employee_day_statuses (employee_id, date)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_employee_week
+        ON employee_week_preferences (employee_id, week_start_date, preference_date)
     """)
 
     cursor.execute("""

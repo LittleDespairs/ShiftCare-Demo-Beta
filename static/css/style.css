@@ -589,6 +589,42 @@ body.rtl .info-value {
     box-shadow: var(--shadow);
 }
 
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 18px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 16px;
+    background: #f8fafc;
+}
+
+.empty-state-title {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 800;
+    color: var(--text);
+}
+
+.empty-state-text {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+
+.empty-state-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+body.rtl .empty-state {
+    align-items: flex-start;
+}
+
 .form-grid {
     display: grid;
     gap: 14px;
@@ -936,7 +972,7 @@ body.rtl .app-footer {
     padding: 16px 20px 20px;
 }
 
-/* Alpha 0.11.3: shared mobile/RTL hardening for data-heavy pages. */
+/* Beta 0.12.1: shared mobile/RTL hardening for data-heavy pages. */
 .table-clean {
     min-width: 720px;
 }
@@ -997,5 +1033,13 @@ body.rtl input[type="date"] {
 
     .table-clean {
         min-width: 640px;
+    }
+
+    .empty-state-actions {
+        width: 100%;
+    }
+
+    .empty-state-actions .btn {
+        width: 100%;
     }
 }

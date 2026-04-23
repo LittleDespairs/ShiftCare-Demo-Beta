@@ -8,6 +8,14 @@ function employeeText(key, fallback = "") {
     return fallback || key;
 }
 
+function formatDeleteImpactList(items) {
+    const rows = items
+        .filter(item => item && item.label)
+        .map(item => `<li><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value ?? 0)}</li>`)
+        .join("");
+    return rows ? `<ul>${rows}</ul>` : "";
+}
+
 // Initialize page / Инициализация страницы
 document.addEventListener("DOMContentLoaded", () => {
     const employeeForm = document.getElementById("employee-form");
@@ -128,7 +136,10 @@ async function handleEmployeeSubmit(event) {
         }
 
         const result = await response.json();
-        showMessage(result.message, "success");
+        const backupSuffix = result.backup_name
+            ? ` ${employeeText("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
+            : "";
+        showMessage(`${result.message}${backupSuffix}`, "success");
 
         resetForm();
         await loadEmployees();
@@ -165,10 +176,32 @@ function editEmployee(employee) {
 
 // Delete employee / Удаляем сотрудника
 async function deleteEmployee(employeeId) {
-    const isConfirmed = await appConfirm(
-        employeeText("msg_confirm_delete_employee", "Are you sure you want to delete this employee?"),
-        { confirmText: employeeText("common_delete", "Delete") }
-    );
+    let confirmMessage = `<p>${escapeHtml(employeeText("msg_confirm_delete_employee", "Are you sure you want to delete this employee?"))}</p>`;
+
+    try {
+        const impactResponse = await fetch(`/api/employees/${employeeId}/delete-impact`);
+        if (impactResponse.ok) {
+            const impact = await impactResponse.json();
+            confirmMessage += formatDeleteImpactList([
+                { label: employeeText("confirm_impact_employee", "Employee"), value: impact.employee_name },
+                { label: employeeText("confirm_impact_assignments", "Assignments"), value: impact.assignments },
+                { label: employeeText("confirm_impact_schedule_entries", "Schedule entries"), value: impact.schedule_entries },
+                { label: employeeText("confirm_impact_general_preferences", "General preferences"), value: impact.general_preferences },
+                { label: employeeText("confirm_impact_weekly_preferences", "Weekly preferences"), value: impact.weekly_preferences },
+                { label: employeeText("confirm_impact_day_statuses", "Day statuses"), value: impact.day_statuses }
+            ]);
+        } else {
+            confirmMessage += `<p>${escapeHtml(employeeText("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+        }
+    } catch (error) {
+        console.error("Load employee delete impact error:", error);
+        confirmMessage += `<p>${escapeHtml(employeeText("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+    }
+
+    const isConfirmed = await appConfirm(confirmMessage, {
+        confirmText: employeeText("common_delete", "Delete"),
+        html: true
+    });
 
     if (!isConfirmed) {
         return;
@@ -186,7 +219,10 @@ async function deleteEmployee(employeeId) {
         }
 
         const result = await response.json();
-        showMessage(result.message, "success");
+        const backupSuffix = result.backup_name
+            ? ` ${employeeText("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
+            : "";
+        showMessage(`${result.message}${backupSuffix}`, "success");
 
         // If deleted employee was being edited / Если удалён редактируемый сотрудник
         if (editingEmployeeId === employeeId) {

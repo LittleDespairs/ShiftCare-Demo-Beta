@@ -11,7 +11,7 @@
         Reused across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
+<link rel="stylesheet" href="/static/css/style.css?v=0.12.1_beta">
 
     <style>
         /* =========================================================
@@ -302,7 +302,7 @@
 
                     <a href="/weekly-preferences" class="nav-item active">
                         <span class="nav-icon">✦</span>
-                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                        <span class="nav-label" data-i18n="nav_requests">Preferences</span>
                     </a>
 
                     <a href="/settings" class="nav-item">
@@ -323,7 +323,7 @@
                 <div class="page-heading">
                     <h2 class="page-title" data-i18n="preferences_page_title">Weekly preferences</h2>
                     <p class="page-subtitle" data-i18n="preferences_page_subtitle">
-                        Set weekly employee requests, restrictions, and preferred day rules.
+                        Set weekly employee preferences, restrictions, and preferred day rules.
                     </p>
                 </div>
 
@@ -416,7 +416,7 @@
     </div>
 
     <!-- Shared i18n / Общий перевод -->
-    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
+<script src="/static/js/i18n.js?v=0.12.1_beta"></script>
 
     <script>
         /* =========================================================
@@ -558,6 +558,32 @@
             `).join("");
         }
 
+        function renderPreferencesEmptyState(titleKey, titleFallback, textKey, textFallback, actionHtml = "") {
+            const thead = document.getElementById("thead");
+            const tbody = document.getElementById("tbody");
+            thead.innerHTML = "";
+            tbody.innerHTML = `
+                <tr>
+                    <td>
+                        ${typeof renderEmptyState === "function"
+                            ? renderEmptyState({
+                                title: t(titleKey, titleFallback),
+                                text: t(textKey, textFallback),
+                                actionHtml
+                            })
+                            : t(textKey, textFallback)}
+                    </td>
+                </tr>
+            `;
+        }
+
+        function updatePreferencesControlsAvailability() {
+            const hasEmployees = employees.length > 0;
+            document.getElementById("employee_select").disabled = !hasEmployees;
+            document.getElementById("load-btn").disabled = !hasEmployees;
+            document.getElementById("save-btn").disabled = !hasEmployees;
+        }
+
         /* =========================================================
            INIT / ИНИЦИАЛИЗАЦИЯ
            ========================================================= */
@@ -603,6 +629,26 @@
                         <option value="${Number(employee.id)}">${escapeHtml(employee.full_name)}</option>
                     `).join("")}
                 `;
+
+                updatePreferencesControlsAvailability();
+
+                if (employees.length === 0) {
+                    renderPreferencesEmptyState(
+                        "preferences_empty_no_employees_title",
+                        "No employees available",
+                        "preferences_empty_no_employees_text",
+                        "Add employees before collecting weekly preferences.",
+                        `<a class="btn btn-secondary" href="/employees">${t("common_open_employees", "Open employees")}</a>`
+                    );
+                    return;
+                }
+
+                renderPreferencesEmptyState(
+                    "preferences_empty_initial_title",
+                    "No week loaded",
+                    "preferences_empty_initial_text",
+                    "Select a week and an employee to review or update weekly preferences."
+                );
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_load_employees", "Server error while loading employees."), "danger");
@@ -665,12 +711,12 @@
             const employee = employees.find(item => item.id === employeeId);
 
             if (!employee) {
-                thead.innerHTML = "";
-                tbody.innerHTML = `
-                    <tr>
-                        <td>${t("preferences_employee_not_found", "Employee not found")}</td>
-                    </tr>
-                `;
+                renderPreferencesEmptyState(
+                    "preferences_empty_initial_title",
+                    "Employee not found",
+                    "preferences_empty_initial_text",
+                    "Select a week and an employee to review or update weekly preferences."
+                );
                 return;
             }
 

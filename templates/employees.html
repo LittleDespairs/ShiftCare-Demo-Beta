@@ -11,7 +11,7 @@
         This file is reused across the whole app.
         Этот файл используется во всём приложении.
     -->
-    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
+<link rel="stylesheet" href="/static/css/style.css?v=0.12.1_beta">
 
     <style>
         /* =========================================================
@@ -405,7 +405,7 @@
 
                     <a href="/weekly-preferences" class="nav-item">
                         <span class="nav-icon">✦</span>
-                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                        <span class="nav-label" data-i18n="nav_requests">Preferences</span>
                     </a>
 
                     <a href="/settings" class="nav-item">
@@ -619,7 +619,7 @@
     </div>
 
     <!-- Shared i18n / Общий i18n -->
-    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
+<script src="/static/js/i18n.js?v=0.12.1_beta"></script>
 
     <script>
         /* =========================================================
@@ -723,7 +723,12 @@
                 tableBody.innerHTML = `
                     <tr>
                         <td colspan="9" class="employee-meta-cell">
-                            ${typeof translate === "function" ? translate("employees_empty_list") : "No employees yet"}
+                            ${typeof renderEmptyState === "function"
+                                ? renderEmptyState({
+                                    title: translate("employees_empty_state_title"),
+                                    text: translate("employees_empty_state_text")
+                                })
+                                : (typeof translate === "function" ? translate("employees_empty_list") : "No employees yet")}
                         </td>
                     </tr>
                 `;
@@ -814,7 +819,7 @@
         We keep using your current JS file.
         Мы продолжаем использовать твой текущий JS-файл.
     -->
-    <script src="/static/js/employees.js?v=0.11.3_alpha"></script>
+<script src="/static/js/employees.js?v=0.12.1_beta"></script>
 </body>
 
 </html>

@@ -1,0 +1,157 @@
+# Beta Changelog
+
+This file tracks the beta builds in the `0.12.x_beta` line.
+
+## 0.12.1_beta - 2026-04-23
+
+### Release Focus
+
+Establish the beta baseline and remove alpha-specific naming and leftover files.
+
+### What Changed
+
+- Switched the project version from `0.11.3_alpha` to `0.12.1_beta`.
+- Renamed the PyInstaller spec file to `ScheduleApp_0.12.1_beta.spec`.
+- Updated runtime version references in the app, templates, and static assets.
+- Removed obsolete root-level files and stale alpha cleanup artifacts.
+- Verified clean database initialization and packaged database copy behavior.
+
+### User Impact
+
+- The app now consistently identifies itself as a beta build.
+- Build artifacts and packaged output use the same beta naming as the running app.
+- The project root is cleaner and easier to maintain.
+
+### Technical Impact
+
+- Version drift between the app, templates, and packaging config was removed.
+- The workspace now has a cleaner baseline for the next beta iterations.
+
+### Notes
+
+- This build establishes the beta baseline.
+- Packaging verification was continued in later beta stages.
+
+## 0.12.2_beta - 2026-04-23
+
+### Release Focus
+
+Strengthen regression protection so beta changes can land without breaking core workflows.
+
+### What Changed
+
+- Expanded backend regression coverage beyond generation-report-only tests.
+- Added regression tests for:
+  - employee CRUD,
+  - position CRUD,
+  - shift template CRUD,
+  - weekly preference upsert/delete,
+  - schedule status updates,
+  - clear-week operations,
+  - app settings persistence,
+  - generation-weight persistence.
+- Added a two-position end-to-end weekly auto-generation test.
+- Added edge-case coverage for weekend restrictions, staff shortage, and `day_off` synchronization.
+
+### User Impact
+
+- Core scheduling operations are less likely to regress between beta builds.
+- Manual fixes and generation-related flows now have better safety coverage.
+
+### Technical Impact
+
+- The backend moved from narrow test coverage to practical workflow coverage.
+- The project gained a stable test bootstrap for database-backed regression runs.
+
+### Notes
+
+- The regression suite reached `18` passing tests at this stage.
+
+## 0.12.3_beta - 2026-04-23
+
+### Release Focus
+
+Improve the main scheduling surface so generation output is easier to understand and fix manually.
+
+### What Changed
+
+- Added a dedicated generation summary panel on the schedule screen.
+- Localized generation summaries and related notifications across supported languages.
+- Reduced routine success-message noise for common schedule edits.
+- Highlighted dates with generation issues directly in the schedule header and coverage row.
+- Improved sync behavior for `day_off` after manual shift add/delete operations.
+- Added clearer schedule empty states, next-step hints, and action gating.
+- Improved weekly table scrolling and layout behavior for mobile and RTL usage.
+
+### User Impact
+
+- Generation results are no longer buried in a single long message.
+- It is easier to see which exact days need manual attention after generation.
+- The main weekly workspace behaves more predictably on smaller screens and RTL layouts.
+- The screen gives better guidance when setup is incomplete.
+
+### Technical Impact
+
+- The schedule page now has structured summary rendering instead of relying on ad hoc message output.
+- UI state handling for generation, reloads, and localized rendering became more explicit.
+
+### Notes
+
+- This build concentrated on the schedule screen as the main work surface.
+- Remaining deeper safety and packaging hardening continued in the next stage.
+
+## 0.12.4_beta - 2026-04-23
+
+### Release Focus
+
+Add data-safety features, cleanup guarantees, stronger destructive confirmations, and final beta hardening.
+
+### What Changed
+
+- Added delete-impact preview endpoints for:
+  - employees,
+  - positions,
+  - assignments,
+  - shift templates.
+- Added a clear-week preview endpoint with affected-record counts.
+- Updated destructive confirmations to show related-record impact before deletion.
+- Added a settings-level backup/restore flow for the database.
+- Added automatic recovery backups before destructive deletes and clear-week actions.
+- Added stricter validation for:
+  - conflicting assignment flags,
+  - invalid non-overnight time windows.
+- Added more SQLite indexes for assignment lookup, weekly preferences, and day statuses.
+- Added regression coverage for:
+  - backup/restore,
+  - cascade cleanup,
+  - delete-impact previews,
+  - export summary content,
+  - `only_night` preference edge cases,
+  - packaged frozen-path resolution.
+- Moved Excel export-building logic out of `main.py` into `excel_export.py`.
+- Added a coordinator summary worksheet to Excel export.
+- Added shared empty-state panels and prerequisite-aware feedback on management screens.
+- Disabled assignment and coverage forms until required setup data exists.
+- Standardized `Preferences` and `Assignments` terminology across UI and guide content.
+- Added recovery-backup details to destructive-action success feedback.
+- Built the packaged Windows app with PyInstaller and smoke-tested the generated `.exe`.
+
+### User Impact
+
+- Destructive actions are safer and easier to understand before confirming them.
+- Recovery from accidental deletes or cleanup actions is now practical through backups.
+- Exported Excel files provide a clearer high-level summary for coordination work.
+- Admin screens now explain what is missing instead of just showing empty tables.
+- Terminology across the app is more consistent and easier to follow.
+
+### Technical Impact
+
+- Data integrity and safety guarantees are stronger across entity deletion flows.
+- The main application module is less overloaded after export logic extraction.
+- Beta coverage now includes both runtime and packaged-mode verification.
+
+### Notes
+
+- The backend regression suite reached `27` passing tests.
+- The packaged build stores bundled templates, static assets, and `schedule_app.db` under `_internal`.
+- The generated Windows `.exe` served `/schedule` with `200` during smoke verification.

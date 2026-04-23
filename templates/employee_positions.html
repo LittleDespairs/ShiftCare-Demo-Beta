@@ -4,14 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employee Positions - Schedule App</title>
+    <title>Assignments - Schedule App</title>
 
     <!--
         Shared stylesheet / Общий файл стилей
         Reused across the redesigned pages.
         Используется на всех переделанных страницах.
     -->
-    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
+<link rel="stylesheet" href="/static/css/style.css?v=0.12.1_beta">
 
     <style>
         /* =========================================================
@@ -365,7 +365,7 @@
 
                     <a href="/weekly-preferences" class="nav-item">
                         <span class="nav-icon">✦</span>
-                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                        <span class="nav-label" data-i18n="nav_requests">Preferences</span>
                     </a>
 
                     <a href="/settings" class="nav-item">
@@ -384,7 +384,7 @@
         <main class="main-area">
             <header class="topbar">
                 <div class="page-heading">
-                    <h2 class="page-title" data-i18n="assignments_page_title">Employee positions</h2>
+                    <h2 class="page-title" data-i18n="assignments_page_title">Assignments</h2>
                     <p class="page-subtitle" data-i18n="assignments_page_subtitle">
                         Assign employees to positions and manage their scheduling priority.
                     </p>
@@ -543,7 +543,7 @@
         </main>
     </div>
 
-    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
+<script src="/static/js/i18n.js?v=0.12.1_beta"></script>
 
     <script>
         let allEmployees = [];
@@ -607,6 +607,14 @@
             renderPageMessage("message-box", text, type);
         }
 
+        function formatDeleteImpactList(items) {
+            const rows = items
+                .filter(item => item && item.label)
+                .map(item => `<li><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value ?? 0)}</li>`)
+                .join("");
+            return rows ? `<ul>${rows}</ul>` : "";
+        }
+
         function boolBadge(value) {
             const yesText = t("common_yes", "Yes");
             const noText = t("common_no", "No");
@@ -652,6 +660,10 @@
 
                 fillEmployeeSelect();
                 fillPositionSelect();
+                updateAssignmentFormAvailability();
+                if (allEmployees.length === 0 || allPositions.length === 0) {
+                    showMessage(t("assignments_missing_prereq_text", "Create employees and positions first, then return here to link them."), "info");
+                }
                 renderAssignmentsTable(assignments);
             } catch (error) {
                 console.error(error);
@@ -679,6 +691,25 @@
                     <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
                 `).join("")}
             `;
+        }
+
+        function updateAssignmentFormAvailability() {
+            const hasEmployees = allEmployees.length > 0;
+            const hasPositions = allPositions.length > 0;
+            const canAssign = hasEmployees && hasPositions;
+            const employeeSelect = document.getElementById("employee_select");
+            const positionSelect = document.getElementById("position_select");
+            const priorityScore = document.getElementById("priority_score");
+            const isPrimary = document.getElementById("is_primary");
+            const isFallbackOnly = document.getElementById("is_fallback_only");
+            const submitButton = document.getElementById("assignment-submit-button");
+
+            employeeSelect.disabled = !canAssign || editingAssignmentKey !== null;
+            positionSelect.disabled = !canAssign || editingAssignmentKey !== null;
+            priorityScore.disabled = !canAssign;
+            isPrimary.disabled = !canAssign;
+            isFallbackOnly.disabled = !canAssign;
+            submitButton.disabled = !canAssign;
         }
 
         async function handleAssignmentSubmit(event) {
@@ -724,7 +755,10 @@
                 }
 
                 const result = await response.json();
-                showMessage(result.message, "success");
+                const backupSuffix = result.backup_name
+                    ? ` ${t("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
+                    : "";
+                showMessage(`${result.message}${backupSuffix}`, "success");
 
                 resetAssignmentForm();
 
@@ -736,10 +770,31 @@
         }
 
         async function deleteAssignment(employeeId, positionId) {
-            const isConfirmed = await appConfirm(
-                t("msg_confirm_delete_assignment", "Are you sure you want to remove this assignment?"),
-                { confirmText: t("assignments_delete_button", "Remove") }
-            );
+            let confirmMessage = `<p>${escapeHtml(t("msg_confirm_delete_assignment", "Are you sure you want to remove this assignment?"))}</p>`;
+
+            try {
+                const impactResponse = await fetch(
+                    `/api/employee-positions/delete-impact?employee_id=${employeeId}&position_id=${positionId}`
+                );
+                if (impactResponse.ok) {
+                    const impact = await impactResponse.json();
+                    confirmMessage += formatDeleteImpactList([
+                        { label: t("confirm_impact_employee", "Employee"), value: impact.employee_name },
+                        { label: t("confirm_impact_position", "Position"), value: impact.position_name },
+                        { label: t("confirm_impact_schedule_entries", "Schedule entries"), value: impact.schedule_entries }
+                    ]);
+                } else {
+                    confirmMessage += `<p>${escapeHtml(t("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+                }
+            } catch (error) {
+                console.error(error);
+                confirmMessage += `<p>${escapeHtml(t("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+            }
+
+            const isConfirmed = await appConfirm(confirmMessage, {
+                confirmText: t("assignments_delete_button", "Remove"),
+                html: true
+            });
 
             if (!isConfirmed) {
                 return;
@@ -758,7 +813,10 @@
                 }
 
                 const result = await response.json();
-                showMessage(result.message, "success");
+                const backupSuffix = result.backup_name
+                    ? ` ${t("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
+                    : "";
+                showMessage(`${result.message}${backupSuffix}`, "success");
 
                 await loadAssignmentsPageData();
             } catch (error) {
@@ -787,15 +845,42 @@
             document.getElementById("position_select").disabled = false;
             document.getElementById("assignment-submit-button").textContent = t("assignments_add_button", "Assign position");
             editingAssignmentKey = null;
+            updateAssignmentFormAvailability();
         }
 
         function renderAssignmentsTable(assignments) {
             const tableBody = document.getElementById("assignments-table-body");
 
             if (assignments.length === 0) {
+                const missingPrereq = allEmployees.length === 0 || allPositions.length === 0;
+                const actionParts = [];
+
+                if (allEmployees.length === 0) {
+                    actionParts.push(`<a class="btn btn-secondary" href="/employees">${t("common_open_employees", "Open employees")}</a>`);
+                }
+                if (allPositions.length === 0) {
+                    actionParts.push(`<a class="btn btn-secondary" href="/positions">${t("common_open_positions", "Open positions")}</a>`);
+                }
+
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="6">${t("assignments_empty_list", "No assignments yet")}</td>
+                        <td colspan="6">
+                            ${typeof renderEmptyState === "function"
+                                ? renderEmptyState({
+                                    title: t(
+                                        missingPrereq ? "assignments_missing_prereq_title" : "assignments_empty_state_title",
+                                        missingPrereq ? "Assignments need employees and positions" : "No assignments yet"
+                                    ),
+                                    text: t(
+                                        missingPrereq ? "assignments_missing_prereq_text" : "assignments_empty_state_text",
+                                        missingPrereq
+                                            ? "Create employees and positions first, then return here to link them."
+                                            : "Link employees to positions so they can appear in the schedule."
+                                    ),
+                                    actionHtml: actionParts.join("")
+                                })
+                                : t("assignments_empty_list", "No assignments yet")}
+                        </td>
                     </tr>
                 `;
                 return;

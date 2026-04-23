@@ -35,6 +35,8 @@
         let weekDates = [];
         let pendingShiftTarget = null;
         let pendingStatusTarget = null;
+        let lastGenerationSummary = null;
+        let scheduleDataLoaded = false;
 
         /* =========================================================
            PAGE INIT / ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ
@@ -61,7 +63,13 @@
             const positionId = Number(document.getElementById("position_select").value);
             if (weekDates.length > 0 && positionId) {
                 renderScheduleTable(positionId);
+            } else {
+                renderScheduleInitialState();
             }
+            if (lastGenerationSummary) {
+                renderGenerationSummary(lastGenerationSummary);
+            }
+            updateScheduleActionAvailability();
         });
 
         /* =========================================================
@@ -177,6 +185,14 @@
                 .replace(/'/g, "&#39;");
         }
 
+        function formatConfirmImpactList(items) {
+            const rows = items
+                .filter(item => item && item.label)
+                .map(item => `<li><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value ?? 0)}</li>`)
+                .join("");
+            return rows ? `<ul>${rows}</ul>` : "";
+        }
+
         function formatApiError(errorValue) {
             // Convert backend error payload to readable HTML text
             // Преобразуем ответ backend с ошибкой в понятный HTML-текст
@@ -243,6 +259,15 @@
                 [/day status blocks employee/g, t("generation_reason_day_status", "day status blocks employee")],
                 [/employee is not assigned to this position/g, t("generation_reason_not_assigned", "employee is not assigned to this position")],
                 [/employee reached max shifts/g, t("generation_reason_max_shifts", "employee reached max shifts")],
+                [/employee reached weekly maximum shifts/g, t("generation_reason_weekly_max_shifts", "employee reached weekly maximum shifts")],
+                [/employee preferences or permissions block this shift/g, t("generation_reason_preference_or_permission", "employee preferences or permissions block this shift")],
+                [/mandatory weekly day off would be violated/g, t("generation_reason_mandatory_day_off", "mandatory weekly day off would be violated")],
+                [/employee already has an overlapping shift/g, t("generation_reason_overlapping_shift", "employee already has an overlapping shift")],
+                [/employee cannot work morning and evening on the same day/g, t("generation_reason_cannot_split_day", "employee cannot work morning and evening on the same day")],
+                [/employee already has another shift type that cannot be paired/g, t("generation_reason_unpairable_shift_type", "employee already has another shift type that cannot be paired")],
+                [/morning-evening combo requires split-only templates/g, t("generation_reason_split_only_combo", "morning-evening combo requires split-only templates")],
+                [/weekly preference blocks morning-evening combo/g, t("generation_reason_weekly_preference_split", "weekly preference blocks morning-evening combo")],
+                [/employee already has two shifts that day/g, t("generation_reason_two_shifts_day", "employee already has two shifts that day")],
                 [/employee requested off or vacation/g, t("generation_reason_off_or_vacation", "employee requested off or vacation")],
                 [/shift conflicts with employee preference/g, t("generation_reason_preference_conflict", "shift conflicts with employee preference")],
                 [/morning after night is forbidden/g, t("generation_reason_morning_after_night", "morning after night is forbidden")],
@@ -251,6 +276,8 @@
                 [/weekly day off would be violated/g, t("generation_reason_weekly_day_off", "weekly day off would be violated")],
                 [/consecutive night limit reached/g, t("generation_reason_consecutive_nights", "consecutive night limit reached")],
                 [/consecutive split limit reached/g, t("generation_reason_consecutive_splits", "consecutive split limit reached")],
+                [/too many consecutive night shifts/g, t("generation_reason_too_many_consecutive_nights", "too many consecutive night shifts")],
+                [/too many consecutive split shifts/g, t("generation_reason_too_many_consecutive_splits", "too many consecutive split shifts")],
                 [/candidates existed, but they did not improve coverage without overfilling other intervals/g, t("generation_reason_no_coverage_gain", "candidates existed, but they did not improve coverage without overfilling other intervals")]
             ];
 
@@ -282,6 +309,15 @@
             return errors.map(item => localizeGenerationWarning(item)).join("<br>");
         }
 
+        function getLocalizedFeasibilityStatus(status) {
+            const value = String(status || "ok").toLowerCase();
+            const mapping = {
+                ok: t("generation_feasibility_status_ok", "OK"),
+                blocking: t("generation_feasibility_status_blocking", "Blocking")
+            };
+            return mapping[value] || capitalizeFirstLetter(value);
+        }
+
 
         function getWeekdayName(index) {
             // Get translated weekday name / Получаем переведённое название дня недели
@@ -301,6 +337,190 @@
         function clearMessage() {
             // Clear current message / Очищаем текущее сообщение
             document.getElementById("message-box").innerHTML = "";
+            clearGenerationSummary();
+        }
+
+        function clearGenerationSummary() {
+            const section = document.getElementById("generation-summary-section");
+            const content = document.getElementById("generation-summary-content");
+            if (content) {
+                content.innerHTML = "";
+            }
+            if (section) {
+                section.hidden = true;
+            }
+            lastGenerationSummary = null;
+        }
+
+        function formatGenerationIssueText(issue) {
+            if (!issue) return "";
+            const parts = [];
+            if (issue.date) {
+                parts.push(issue.date);
+            }
+            if (issue.slot && issue.slot.start && issue.slot.end) {
+                parts.push(`${issue.slot.start}-${issue.slot.end}`);
+            }
+            if (issue.shift_category) {
+                parts.push(capitalizeFirstLetter(issue.shift_category));
+            }
+
+            const prefix = parts.length > 0 ? `${parts.join(" · ")}: ` : "";
+            return localizeGenerationWarning(`${prefix}${issue.message || ""}`);
+        }
+
+        function formatUnfilledReportText(report) {
+            if (!report) return "";
+
+            if (report.kind === "interval") {
+                const prefix = `${report.date} · ${report.slot.start}-${report.slot.end}`;
+                const missing = `${t("generation_missing_total", "Missing total")}: ${Number(report.missing.total)}; `
+                    + `${t("generation_missing_female", "Missing female")}: ${Number(report.missing.female)}; `
+                    + `${t("generation_missing_male", "Missing male")}: ${Number(report.missing.male)}`;
+                const reasons = report.reasons ? ` ${t("generation_reasons", "Reasons")}: ${localizeGenerationWarning(report.reasons)}` : "";
+                return `${escapeHtml(prefix)} - ${escapeHtml(missing)}${reasons}`;
+            }
+
+            const prefix = `${report.date} · ${capitalizeFirstLetter(report.shift_category || report.kind || "")}`;
+            const missing = `${t("generation_missing_total", "Missing total")}: ${Number(report.missing.total)}; `
+                + `${t("generation_missing_female", "Missing female")}: ${Number(report.missing.female)}; `
+                + `${t("generation_missing_male", "Missing male")}: ${Number(report.missing.male)}`;
+            const reasons = report.reasons ? ` ${t("generation_reasons", "Reasons")}: ${localizeGenerationWarning(report.reasons)}` : "";
+            return `${escapeHtml(prefix)} - ${escapeHtml(missing)}${reasons}`;
+        }
+
+        function renderGenerationSummary(summary) {
+            const section = document.getElementById("generation-summary-section");
+            const content = document.getElementById("generation-summary-content");
+            if (!section || !content || !summary || !summary.result) {
+                return;
+            }
+
+            const result = summary.result;
+            const hardConstraints = (result.feasibility_report && result.feasibility_report.hard_constraints) || [];
+            const softConstraints = (result.feasibility_report && result.feasibility_report.soft_constraints) || [];
+            const unfilledReports = result.unfilled_reports || [];
+            const warnings = result.errors || [];
+            const selectedPosition = allPositions.find(item => item.id === summary.positionId);
+
+            const stats = [
+                {
+                    label: t("msg_created_count", "Created"),
+                    value: Number(result.created_count || 0),
+                    note: t("generation_created_note", "New schedule entries added by auto-generation.")
+                },
+                {
+                    label: t("msg_optimization_moved", "Optimized moves"),
+                    value: Number(result.optimization_moved_count || 0),
+                    note: t("generation_optimized_note", "Existing generated entries reassigned for a better balance.")
+                },
+                {
+                    label: t("generation_day_off_count", "Generated day off"),
+                    value: Number(result.day_off_count || 0),
+                    note: t("generation_day_off_note", "Automatic day-off statuses created for uncovered employee days.")
+                },
+                {
+                    label: t("generation_hard_constraints", "Hard constraints"),
+                    value: hardConstraints.length,
+                    note: t("generation_hard_note", "Blocking issues found by the pre-check.")
+                },
+                {
+                    label: t("generation_soft_constraints", "Soft constraints"),
+                    value: softConstraints.length,
+                    note: t("generation_soft_note", "Warnings that still allowed generation to continue.")
+                },
+                {
+                    label: t("generation_unfilled_count", "Unfilled requirements"),
+                    value: unfilledReports.length,
+                    note: t("generation_unfilled_note", "Coverage gaps that remained after generation.")
+                }
+            ];
+
+            const sections = [];
+
+            sections.push(`
+                <div class="generation-section-card ${warnings.length > 0 || unfilledReports.length > 0 || hardConstraints.length > 0 ? "warning" : "success"}">
+                    <h4 class="generation-section-title">${t("generation_run_overview", "Run overview")}</h4>
+                    <div class="generation-summary-muted">
+                        ${escapeHtml(t("generation_summary_week", "Week"))}: ${escapeHtml(summary.weekStart)}
+                        <br>
+                        ${escapeHtml(t("generation_summary_position", "Position"))}: ${escapeHtml(selectedPosition ? selectedPosition.name : String(summary.positionId))}
+                        <br>
+                        ${escapeHtml(t("generation_summary_status", "Feasibility status"))}: ${escapeHtml(getLocalizedFeasibilityStatus(result.feasibility_report && result.feasibility_report.status))}
+                    </div>
+                </div>
+            `);
+
+            if (hardConstraints.length > 0) {
+                sections.push(`
+                    <div class="generation-section-card danger">
+                        <h4 class="generation-section-title">${t("generation_hard_constraints", "Hard constraints")}</h4>
+                        <ul class="generation-section-list">
+                            ${hardConstraints.map(issue => `<li>${formatGenerationIssueText(issue)}</li>`).join("")}
+                        </ul>
+                    </div>
+                `);
+            }
+
+            if (softConstraints.length > 0) {
+                sections.push(`
+                    <div class="generation-section-card warning">
+                        <h4 class="generation-section-title">${t("generation_soft_constraints", "Soft constraints")}</h4>
+                        <ul class="generation-section-list">
+                            ${softConstraints.map(issue => `<li>${formatGenerationIssueText(issue)}</li>`).join("")}
+                        </ul>
+                    </div>
+                `);
+            }
+
+            if (unfilledReports.length > 0) {
+                sections.push(`
+                    <div class="generation-section-card warning">
+                        <h4 class="generation-section-title">${t("generation_unfilled_title", "Remaining unfilled requirements")}</h4>
+                        <ul class="generation-section-list">
+                            ${unfilledReports.map(report => `<li>${formatUnfilledReportText(report)}</li>`).join("")}
+                        </ul>
+                    </div>
+                `);
+            }
+
+            if (warnings.length > 0) {
+                sections.push(`
+                    <div class="generation-section-card warning">
+                        <h4 class="generation-section-title">${t("msg_warnings", "Warnings")}</h4>
+                        <ul class="generation-section-list">
+                            ${warnings.map(item => `<li>${localizeGenerationWarning(item)}</li>`).join("")}
+                        </ul>
+                    </div>
+                `);
+            }
+
+            if (sections.length === 1) {
+                sections.push(`
+                    <div class="generation-section-card success">
+                        <h4 class="generation-section-title">${t("generation_summary_clean_title", "Clean generation result")}</h4>
+                        <div class="generation-summary-muted">
+                            ${escapeHtml(t("generation_summary_clean_text", "The run finished without warnings, hard blockers, or remaining uncovered requirements."))}
+                        </div>
+                    </div>
+                `);
+            }
+
+            content.innerHTML = `
+                <div class="generation-summary-grid">
+                    ${stats.map(stat => `
+                        <div class="generation-stat">
+                            <div class="generation-stat-label">${escapeHtml(stat.label)}</div>
+                            <div class="generation-stat-value">${escapeHtml(stat.value)}</div>
+                            <div class="generation-stat-note">${escapeHtml(stat.note)}</div>
+                        </div>
+                    `).join("")}
+                </div>
+                <div class="generation-sections">
+                    ${sections.join("")}
+                </div>
+            `;
+            section.hidden = false;
         }
 
         /* =========================================================
@@ -309,12 +529,97 @@
 
         function bindPageButtons() {
             // Main action buttons / Основные кнопки страницы
-            document.getElementById("load-btn").addEventListener("click", loadSchedulePageData);
+            document.getElementById("load-btn").addEventListener("click", () => {
+                loadSchedulePageData({ showLoadedMessage: false });
+            });
             document.getElementById("auto-generate-btn").addEventListener("click", autoGenerateSchedule);
             document.getElementById("clear-week-btn").addEventListener("click", clearWeekSchedule);
             document.getElementById("export-excel-btn").addEventListener("click", exportScheduleExcel);
             document.getElementById("clear-message-btn").addEventListener("click", clearMessage);
             document.getElementById("schedule_coverage_display_mode").addEventListener("change", saveScheduleDisplayMode);
+            document.getElementById("generation-summary-clear-btn").addEventListener("click", clearGenerationSummary);
+            document.getElementById("week_start").addEventListener("change", updateScheduleActionAvailability);
+            document.getElementById("position_select").addEventListener("change", updateScheduleActionAvailability);
+        }
+
+        function setScheduleWorkspaceHint(html = "") {
+            const container = document.getElementById("schedule-workspace-hint");
+            if (!container) return;
+            container.innerHTML = html;
+        }
+
+        function renderScheduleWorkspaceEmptyState(options = {}) {
+            return typeof renderEmptyState === "function"
+                ? renderEmptyState(options)
+                : escapeHtml(options.text || "");
+        }
+
+        function renderScheduleInitialState() {
+            const tbody = document.getElementById("schedule-tbody");
+            const thead = document.getElementById("schedule-thead");
+            const hasPositions = allPositions.length > 0;
+            const actionHtml = hasPositions
+                ? ""
+                : `<a class="btn btn-secondary" href="/positions">${t("common_open_positions", "Open positions")}</a>`;
+
+            scheduleDataLoaded = false;
+            thead.innerHTML = "";
+            setScheduleWorkspaceHint(
+                renderScheduleWorkspaceEmptyState({
+                    title: t(
+                        hasPositions ? "schedule_workspace_ready_title" : "schedule_no_positions_title",
+                        hasPositions ? "Schedule workspace" : "Schedule needs positions"
+                    ),
+                    text: t(
+                        hasPositions ? "schedule_workspace_ready_text" : "schedule_no_positions_text",
+                        hasPositions
+                            ? "Choose a week and position, then load the table to start editing or generating."
+                            : "Create at least one position before loading or generating a weekly schedule."
+                    ),
+                    actionHtml
+                })
+            );
+            tbody.innerHTML = `
+                <tr>
+                    <td style="padding:24px;">
+                        ${renderScheduleWorkspaceEmptyState({
+                            title: t(
+                                hasPositions ? "schedule_workspace_ready_title" : "schedule_no_positions_title",
+                                hasPositions ? "Schedule workspace" : "Schedule needs positions"
+                            ),
+                            text: t(
+                                hasPositions ? "schedule_initial_hint" : "schedule_no_positions_text",
+                                hasPositions
+                                    ? "Select a week and a position, then load the schedule."
+                                    : "Create at least one position before loading or generating a weekly schedule."
+                            ),
+                            actionHtml
+                        })}
+                    </td>
+                </tr>
+            `;
+            updateScheduleActionAvailability();
+        }
+
+        function updateScheduleActionAvailability() {
+            const weekStart = document.getElementById("week_start").value;
+            const positionId = Number(document.getElementById("position_select").value);
+            const hasPositions = allPositions.length > 0;
+            const hasContext = Boolean(weekStart && positionId);
+            const loadButton = document.getElementById("load-btn");
+            const generateButton = document.getElementById("auto-generate-btn");
+            const clearButton = document.getElementById("clear-week-btn");
+            const exportButton = document.getElementById("export-excel-btn");
+
+            loadButton.disabled = !hasPositions || !hasContext;
+            generateButton.disabled = !scheduleDataLoaded || !hasContext;
+            clearButton.disabled = !scheduleDataLoaded || !hasContext;
+            exportButton.disabled = !scheduleDataLoaded || !hasContext;
+
+            loadButton.title = hasPositions ? "" : t("schedule_no_positions_text", "Create at least one position before loading or generating a weekly schedule.");
+            generateButton.title = scheduleDataLoaded ? "" : t("schedule_action_generation_hint", "Generation is available after the selected week is loaded.");
+            clearButton.title = scheduleDataLoaded ? "" : t("schedule_action_clear_hint", "Clear week becomes available after the selected week is loaded.");
+            exportButton.title = scheduleDataLoaded ? "" : t("schedule_action_export_hint", "Export becomes available after the selected week is loaded.");
         }
 
         /* =========================================================
@@ -334,12 +639,19 @@
                 allPositions = await response.json();
 
                 const select = document.getElementById("position_select");
+                if (allPositions.length === 0) {
+                    select.innerHTML = `<option value="">${t("positions_empty_list", "No positions yet")}</option>`;
+                    renderScheduleInitialState();
+                    return;
+                }
+
                 select.innerHTML = `
                     <option value="">${t("schedule_select_position", "Select position")}</option>
                     ${allPositions.map(position => `
                         <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
                     `).join("")}
                 `;
+                renderScheduleInitialState();
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_load_positions", "Server error while loading positions."), "danger");
@@ -417,8 +729,13 @@
             // Main loading flow for the schedule page
             // Основной процесс загрузки данных для страницы расписания
             const showLoadedMessage = options.showLoadedMessage !== false;
+            const preserveGenerationSummary = options.preserveGenerationSummary === true;
             const weekStart = document.getElementById("week_start").value;
             const positionId = Number(document.getElementById("position_select").value);
+
+            if (!preserveGenerationSummary) {
+                clearGenerationSummary();
+            }
 
             if (!weekStart) {
                 showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
@@ -476,13 +793,17 @@
                 syncScheduleDisplaySelect();
                 allShiftTemplates = await shiftTemplatesResponse.json();
                 allDayStatuses = await dayStatusesResponse.json();
+                scheduleDataLoaded = true;
 
                 renderScheduleTable(positionId);
+                updateScheduleActionAvailability();
                 if (showLoadedMessage) {
                     showMessage(t("msg_schedule_loaded", "Schedule loaded successfully."), "success");
                 }
             } catch (error) {
                 console.error(error);
+                scheduleDataLoaded = false;
+                updateScheduleActionAvailability();
                 showMessage(t("msg_server_error_load_schedule", "Server error while loading schedule."), "danger");
             }
         }
@@ -567,30 +888,27 @@
                     return;
                 }
 
-                let message = `${t("msg_auto_generate_done", "Auto-generation finished.")} ${t("msg_created_count", "Created")}: ${result.created_count}.`;
-                if (result.optimization_moved_count && result.optimization_moved_count > 0) {
-                    message += `<br>${t("msg_optimization_moved", "Optimized moves")}: ${result.optimization_moved_count}.`;
-                }
-                if (result.feasibility_report) {
-                    const hardCount = (result.feasibility_report.hard_constraints || []).length;
-                    const softCount = (result.feasibility_report.soft_constraints || []).length;
-                    if (hardCount > 0 || softCount > 0) {
-                        message += `<br>${t("generation_hard_constraints", "Hard constraints")}: ${hardCount}.`;
-                        message += ` ${t("generation_soft_constraints", "Soft constraints")}: ${softCount}.`;
-                    }
-                }
-                if (result.unfilled_reports && result.unfilled_reports.length > 0) {
-                    message += `<br>${t("generation_unfilled_count", "Unfilled requirements")}: ${result.unfilled_reports.length}.`;
-                }
+                const hardCount = (result.feasibility_report?.hard_constraints || []).length;
+                const softCount = (result.feasibility_report?.soft_constraints || []).length;
+                const unfilledCount = (result.unfilled_reports || []).length;
+                const warningCount = (result.errors || []).length;
 
-                await loadSchedulePageData({ showLoadedMessage: false });
+                await loadSchedulePageData({
+                    showLoadedMessage: false,
+                    preserveGenerationSummary: true
+                });
 
-                if (result.errors && result.errors.length > 0) {
-                    message += `<br><strong>${t("msg_warnings", "Warnings")}:</strong><br>${formatGenerationWarnings(result.errors)}`;
-                    showMessage(message, "warning");
-                } else {
-                    showMessage(message, "success");
-                }
+                lastGenerationSummary = {
+                    weekStart,
+                    positionId,
+                    result
+                };
+                renderGenerationSummary(lastGenerationSummary);
+
+                showMessage(
+                    `${t("msg_auto_generate_done", "Auto-generation finished.")}<br>${escapeHtml(t("generation_summary_open_panel", "Detailed generation results are shown in the summary panel."))}`,
+                    warningCount > 0 || hardCount > 0 || unfilledCount > 0 ? "warning" : "success"
+                );
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_auto_generate", "Server error while auto-generating schedule."), "danger");
@@ -651,10 +969,34 @@
                 return;
             }
 
-            const isConfirmed = await appConfirm(
-                t("msg_confirm_clear_week", "Are you sure you want to delete the schedule for this week and this position?"),
-                { confirmText: t("common_delete", "Delete") }
-            );
+            let confirmMessage = `<p>${escapeHtml(t("msg_confirm_clear_week", "Are you sure you want to delete the schedule for this week and this position?"))}</p>`;
+
+            try {
+                const previewResponse = await fetch(
+                    `/api/schedule/clear-week-preview?position_id=${positionId}&week_start_date=${encodeURIComponent(weekStart)}`
+                );
+                if (previewResponse.ok) {
+                    const preview = await previewResponse.json();
+                    confirmMessage += formatConfirmImpactList([
+                        { label: t("confirm_impact_position", "Position"), value: preview.position_name },
+                        { label: t("confirm_impact_week", "Week"), value: preview.week_start_date },
+                        { label: t("confirm_impact_assigned_employees", "Assigned employees"), value: preview.assigned_employees },
+                        { label: t("confirm_impact_schedule_entries", "Schedule entries"), value: preview.schedule_entries },
+                        { label: t("confirm_impact_day_off_statuses", "Day-off statuses"), value: preview.day_off_statuses }
+                    ]);
+                } else {
+                    confirmMessage += `<p>${escapeHtml(t("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+                }
+            } catch (error) {
+                console.error(error);
+                confirmMessage += `<p>${escapeHtml(t("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+            }
+
+            const isConfirmed = await appConfirm(confirmMessage, {
+                title: t("msg_confirm_clear_week_title", "Clear week schedule"),
+                confirmText: t("common_delete", "Delete"),
+                html: true
+            });
 
             if (!isConfirmed) return;
 
@@ -679,7 +1021,13 @@
                     return;
                 }
 
-                showMessage(`${t("msg_week_cleared", "Week schedule cleared.")} ${t("msg_deleted_count", "Deleted")}: ${result.deleted_count}`, "success");
+                const backupSuffix = result.backup_name
+                    ? ` ${t("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
+                    : "";
+                showMessage(
+                    `${t("msg_week_cleared", "Week schedule cleared.")} ${t("msg_deleted_count", "Deleted")}: ${result.deleted_count}${backupSuffix}`,
+                    "success"
+                );
                 await loadSchedulePageData();
             } catch (error) {
                 console.error(error);
@@ -855,6 +1203,64 @@
             return t("shift_night", "Night");
         }
 
+        function getGenerationDateSummary(date) {
+            if (!lastGenerationSummary || !lastGenerationSummary.result) {
+                return null;
+            }
+
+            const result = lastGenerationSummary.result;
+            const feasibilityIssues = ((result.feasibility_report && result.feasibility_report.issues) || [])
+                .filter(issue => issue.date === date);
+            const hardCount = feasibilityIssues.filter(issue => issue.constraint_type === "hard").length;
+            const softCount = feasibilityIssues.filter(issue => issue.constraint_type === "soft").length;
+            const unfilledCount = (result.unfilled_reports || []).filter(report => report.date === date).length;
+
+            const totalCount = hardCount + softCount + unfilledCount;
+            if (totalCount === 0) {
+                return null;
+            }
+
+            return {
+                hardCount,
+                softCount,
+                unfilledCount,
+                totalCount,
+                severity: hardCount > 0 || unfilledCount > 0 ? "danger" : "warning"
+            };
+        }
+
+        function renderDateAttentionFlags(date) {
+            const summary = getGenerationDateSummary(date);
+            if (!summary) {
+                return "";
+            }
+
+            const flags = [];
+            if (summary.hardCount > 0) {
+                flags.push(`
+                    <span class="day-header-flag danger" title="${escapeHtml(t("generation_hard_constraints", "Hard constraints"))}">
+                        ${escapeHtml(`${t("generation_hard_short", "Hard")}: ${summary.hardCount}`)}
+                    </span>
+                `);
+            }
+            if (summary.softCount > 0) {
+                flags.push(`
+                    <span class="day-header-flag warning" title="${escapeHtml(t("generation_soft_constraints", "Soft constraints"))}">
+                        ${escapeHtml(`${t("generation_soft_short", "Soft")}: ${summary.softCount}`)}
+                    </span>
+                `);
+            }
+            if (summary.unfilledCount > 0) {
+                flags.push(`
+                    <span class="day-header-flag danger" title="${escapeHtml(t("generation_unfilled_count", "Unfilled requirements"))}">
+                        ${escapeHtml(`${t("generation_unfilled_short", "Gap")}: ${summary.unfilledCount}`)}
+                    </span>
+                `);
+            }
+
+            return `<div class="day-header-flags">${flags.join("")}</div>`;
+        }
+
         /* =========================================================
            TABLE RENDER / ОТРИСОВКА ТАБЛИЦЫ
            ========================================================= */
@@ -1013,7 +1419,7 @@
 
             return `
                 <td class="schedule-day-cell">
-                    <div class="schedule-day-inner">
+                    <div class="schedule-day-inner ${dayEntries.length > 0 ? "has-entries" : ""}">
                             <div class="add-box">
                             <div class="cell-actions">
                                 <button
@@ -1078,6 +1484,7 @@
             const tbody = document.getElementById("schedule-tbody");
 
             const employeesForPosition = getEmployeesForPosition(positionId);
+            const selectedPosition = allPositions.find(item => item.id === positionId);
 
             thead.innerHTML = `
                 <tr class="date-header-row">
@@ -1087,14 +1494,18 @@
                         </div>
                     </th>
 
-                    ${weekDates.map((date, index) => `
+                    ${weekDates.map((date, index) => {
+                const dateSummary = getGenerationDateSummary(date);
+                return `
                         <th>
-                            <div class="day-header">
+                            <div class="day-header ${dateSummary ? `has-attention ${dateSummary.severity}` : ""}">
                                 <div class="day-header-title">${escapeHtml(getWeekdayName(index))}</div>
                                 <div class="day-header-date">${escapeHtml(date)}</div>
+                                ${renderDateAttentionFlags(date)}
                             </div>
                         </th>
-                    `).join("")}
+                    `;
+            }).join("")}
                 </tr>
 
                 <tr class="coverage-header-row">
@@ -1104,13 +1515,16 @@
                         </div>
                     </th>
 
-                    ${weekDates.map(date => `
+                    ${weekDates.map(date => {
+                const dateSummary = getGenerationDateSummary(date);
+                return `
                         <th>
-                            <div class="coverage-header-cell">
+                            <div class="coverage-header-cell ${dateSummary ? `has-attention ${dateSummary.severity}` : ""}">
                                 ${renderCoverageSummary(positionId, date)}
                             </div>
                         </th>
-                    `).join("")}
+                    `;
+            }).join("")}
                 </tr>
             `;
 
@@ -1121,15 +1535,42 @@
             }
 
             if (employeesForPosition.length === 0) {
+                const actionHtml = [
+                    `<a class="btn btn-secondary" href="/employees">${t("common_open_employees", "Open employees")}</a>`,
+                    `<a class="btn btn-secondary" href="/employee-positions">${t("common_open_assignments", "Open assignments")}</a>`
+                ].join("");
+                setScheduleWorkspaceHint(
+                    renderScheduleWorkspaceEmptyState({
+                        title: t("schedule_no_employees_title", "This position has no assigned employees"),
+                        text: t("schedule_no_employees_text", "Add employees and link them to this position before filling the week."),
+                        actionHtml
+                    })
+                );
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="8" style="padding:24px;">
-                            ${t("schedule_no_employees_for_position", "No employees are assigned to this position.")}
+                            ${renderScheduleWorkspaceEmptyState({
+                                title: t("schedule_no_employees_title", "This position has no assigned employees"),
+                                text: selectedPosition
+                                    ? `${t("schedule_no_employees_for_position", "No employees are assigned to this position.")} ${t("schedule_no_employees_text", "Add employees and link them to this position before filling the week.")}`
+                                    : t("schedule_no_employees_text", "Add employees and link them to this position before filling the week."),
+                                actionHtml
+                            })}
                         </td>
                     </tr>
                 `;
+                updateScheduleActionAvailability();
                 return;
             }
+
+            setScheduleWorkspaceHint(
+                renderScheduleWorkspaceEmptyState({
+                    title: t("schedule_workspace_ready_title", "Schedule workspace"),
+                    text: selectedPosition
+                        ? `${escapeHtml(selectedPosition.name)} · ${escapeHtml(weekDates[0] || "")}`
+                        : t("schedule_workspace_ready_text", "Choose a week and position, then load the table to start editing or generating.")
+                })
+            );
 
             tbody.innerHTML = employeesForPosition.map(employee => `
                 <tr>
@@ -1148,6 +1589,7 @@
             `).join("");
 
             bindScheduleActions();
+            updateScheduleActionAvailability();
         }
 
         /* =========================================================
@@ -1406,7 +1848,6 @@
                     return;
                 }
 
-                showMessage(t("msg_shift_added", "Shift added successfully."), "success");
                 await refreshScheduleEntriesOnly();
             } catch (error) {
                 console.error(error);
@@ -1427,7 +1868,6 @@
                     return;
                 }
 
-                showMessage(t("msg_shift_deleted", "Shift deleted successfully."), "success");
                 await refreshScheduleEntriesOnly();
             } catch (error) {
                 console.error(error);
@@ -1451,12 +1891,6 @@
                     return;
                 }
 
-                showMessage(
-                    noShow
-                        ? t("msg_no_show_saved", "No-show status saved successfully.")
-                        : t("msg_no_show_removed", "No-show status removed successfully."),
-                    "success"
-                );
                 await refreshScheduleEntriesOnly();
             } catch (error) {
                 console.error(error);
@@ -1502,7 +1936,6 @@
                     return;
                 }
 
-                showMessage(t("msg_day_status_saved", "Day status saved successfully."), "success");
                 await refreshScheduleEntriesOnly();
             } catch (error) {
                 console.error(error);
@@ -1532,7 +1965,9 @@
 
                 allScheduleEntries = await scheduleResponse.json();
                 allDayStatuses = await dayStatusesResponse.json();
+                scheduleDataLoaded = true;
                 renderScheduleTable(positionId);
+                updateScheduleActionAvailability();
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_refresh_schedule_data", "Server error while refreshing schedule data."), "warning");

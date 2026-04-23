@@ -1,13 +1,5 @@
-import tempfile
 import unittest
-from pathlib import Path
-
-import database
-
-_TEMP_DIR = tempfile.TemporaryDirectory()
-database.DATABASE_PATH = Path(_TEMP_DIR.name) / "schedule_app_test.db"
-
-import main  # noqa: E402
+from tests.test_support import database, main
 from tests.fixtures.fixed_week import WEEK_DATES, WEEK_START_DATE  # noqa: E402
 
 
@@ -85,6 +77,66 @@ class GenerationReportTests(unittest.TestCase):
         self.assertEqual(inserted, 1)
         self.assertEqual(statuses, [(WEEK_DATES[1], "sick"), (WEEK_DATES[2], "day_off")])
 
+    def test_day_off_sync_does_not_create_day_off_for_no_show_shift(self):
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM schedule_entries")
+        cursor.execute("DELETE FROM employee_day_statuses")
+        cursor.execute("DELETE FROM shift_templates")
+        cursor.execute("DELETE FROM positions")
+        cursor.execute("DELETE FROM employees")
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (1, 'Employee A', 'female', 0, 3, 5, 1, 1, 1, 1)
+            """
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+            VALUES (1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id, no_show)
+            VALUES (1, 1, ?, 1, 1)
+            """,
+            (WEEK_DATES[0],),
+        )
+
+        inserted = main.sync_generated_day_off_statuses(
+            self.connection,
+            cursor,
+            [{"id": 1}],
+            1,
+            WEEK_DATES[:1],
+        )
+
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM employee_day_statuses
+            WHERE employee_id = 1 AND date = ?
+            """,
+            (WEEK_DATES[0],),
+        )
+        count = cursor.fetchone()[0]
+
+        self.assertEqual(inserted, 0)
+        self.assertEqual(count, 0)
+
     def test_feasibility_reports_blocking_male_staff_shortage(self):
         employees = [
             {
@@ -143,6 +195,63 @@ class GenerationReportTests(unittest.TestCase):
         self.assertTrue(any(issue["kind"] == "male_staff" for issue in report["issues"]))
         self.assertTrue(all(issue["constraint_type"] == "hard" for issue in report["hard_constraints"]))
         self.assertEqual(report["soft_constraints"], [])
+
+    def test_feasibility_report_blocks_when_required_staff_exceeds_available_staff(self):
+        employees = [
+            {
+                "id": 1,
+                "full_name": "Employee A",
+                "sex": "female",
+                "min_shifts_per_week": 0,
+                "target_shifts_per_week": 3,
+                "max_shifts_per_week": 5,
+                "can_work_night": True,
+                "can_work_weekends": True,
+                "can_work_evenings_after_night": True,
+                "can_work_mornings_and_evenings": True,
+                "is_primary": True,
+                "priority_score": 50,
+                "is_fallback_only": False,
+            }
+        ]
+        templates = [
+            {
+                "id": 1,
+                "name": "Morning",
+                "category": "morning",
+                "start_time": "06:00",
+                "end_time": "14:00",
+                "is_overnight": False,
+                "is_active": True,
+                "is_split_only": False,
+            }
+        ]
+        coverage_requirements = [
+            {
+                "id": 1,
+                "position_id": 1,
+                "start_time": "06:00",
+                "end_time": "14:00",
+                "required_total": 2,
+                "required_female_min": 0,
+                "required_male_min": 0,
+                "is_overnight": False,
+            }
+        ]
+
+        report = main.build_generation_feasibility_report(
+            self.connection,
+            employees,
+            templates,
+            coverage_requirements,
+            [],
+            1,
+            WEEK_START_DATE,
+            WEEK_DATES,
+        )
+
+        self.assertEqual(report["status"], "blocking")
+        self.assertTrue(any(issue["kind"] == "staff" for issue in report["issues"]))
 
     def test_interval_underfilled_report_has_structured_missing_counts(self):
         slot = {
@@ -262,6 +371,122 @@ class GenerationReportTests(unittest.TestCase):
                 WEEK_START_DATE,
             ),
             "morning-evening combo requires split-only templates",
+        )
+
+    def test_weekend_restriction_blocks_weekend_assignment(self):
+        employee = {
+            "id": 1,
+            "full_name": "Employee A",
+            "sex": "female",
+            "min_shifts_per_week": 0,
+            "target_shifts_per_week": 4,
+            "max_shifts_per_week": 6,
+            "can_work_night": True,
+            "can_work_weekends": False,
+            "can_work_evenings_after_night": True,
+            "can_work_mornings_and_evenings": True,
+        }
+        template = {
+            "id": 1,
+            "name": "Morning",
+            "category": "morning",
+            "start_time": "06:00",
+            "end_time": "14:00",
+            "is_overnight": False,
+            "is_active": True,
+            "is_split_only": False,
+        }
+
+        can_take = main.can_employee_take_template(
+            self.connection,
+            employee,
+            1,
+            "2026-04-24",
+            template,
+            WEEK_START_DATE,
+        )
+        reason = main.explain_employee_template_rejection(
+            self.connection,
+            employee,
+            1,
+            "2026-04-24",
+            template,
+            WEEK_START_DATE,
+        )
+
+        self.assertFalse(can_take)
+        self.assertEqual(reason, "employee preferences or permissions block this shift")
+
+    def test_only_night_preference_blocks_day_shift(self):
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM employees")
+        cursor.execute("DELETE FROM employee_preferences")
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (1, 'Employee A', 'female', 0, 4, 6, 1, 1, 1, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO employee_preferences (employee_id, allow_morning, allow_evening, allow_night, allow_morning_evening_combo)
+            VALUES (1, 0, 0, 1, 0)
+            """
+        )
+        employee = {
+            "id": 1,
+            "full_name": "Employee A",
+            "sex": "female",
+            "min_shifts_per_week": 0,
+            "target_shifts_per_week": 4,
+            "max_shifts_per_week": 6,
+            "can_work_night": True,
+            "can_work_weekends": True,
+            "can_work_evenings_after_night": True,
+            "can_work_mornings_and_evenings": False,
+        }
+        template = {
+            "id": 1,
+            "name": "Morning",
+            "category": "morning",
+            "start_time": "06:00",
+            "end_time": "14:00",
+            "is_overnight": False,
+            "is_active": True,
+            "is_split_only": False,
+        }
+
+        self.assertFalse(
+            main.can_employee_take_template(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[0],
+                template,
+                WEEK_START_DATE,
+            )
+        )
+        self.assertEqual(
+            main.explain_employee_template_rejection(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[0],
+                template,
+                WEEK_START_DATE,
+            ),
+            "employee preferences or permissions block this shift",
         )
 
 

@@ -41,12 +41,16 @@
             width: min(320px, 100%);
         }
 
+        .schedule-workspace-hint {
+            margin-bottom: 14px;
+        }
+
         /* Large schedule area / Большая область таблицы расписания */
         .schedule-shell {
             --schedule-date-header-height: 72px;
             --schedule-header-offset: 0px;
             position: relative;
-            overflow: visible;
+            overflow: auto;
             border: 1px solid #b8c3d4;
             border-radius: 16px;
             background: #d9e1ec;
@@ -54,6 +58,8 @@
                 0 22px 60px rgba(15, 23, 42, 0.14),
                 0 0 0 1px rgba(255, 255, 255, 0.7) inset;
             min-height: 320px;
+            max-width: 100%;
+            -webkit-overflow-scrolling: touch;
         }
 
         .schedule-panel {
@@ -223,6 +229,14 @@
             padding: 10px 10px;
         }
 
+        .day-header.has-attention {
+            background: #fff7ed;
+        }
+
+        .day-header.has-attention.danger {
+            background: #fef2f2;
+        }
+
         .day-header-title {
             font-size: 0.9rem;
             font-weight: 800;
@@ -233,6 +247,38 @@
             margin-top: 2px;
             font-size: 0.76rem;
             color: var(--muted);
+        }
+
+        .day-header-flags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .day-header-flag {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 22px;
+            padding: 0 8px;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            line-height: 1;
+            border: 1px solid transparent;
+        }
+
+        .day-header-flag.warning {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+
+        .day-header-flag.danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
         }
 
         /* Employee cell / Ячейка с именем сотрудника */
@@ -269,6 +315,11 @@
             flex-direction: column;
             gap: 8px;
             min-height: 126px;
+        }
+
+        .schedule-day-inner.has-entries .add-box {
+            background: #fff;
+            border-style: dashed;
         }
 
         .schedule-day-cell.has-day-status .schedule-day-inner {
@@ -637,6 +688,14 @@
             background: #f8fafc;
         }
 
+        .coverage-header-cell.has-attention {
+            background: #fff7ed;
+        }
+
+        .coverage-header-cell.has-attention.danger {
+            background: #fef2f2;
+        }
+
         .coverage-stack {
             display: flex;
             flex-direction: column;
@@ -687,6 +746,129 @@
         /* Message box spacing / Отступ для блока сообщений */
         #message-box {
             margin-bottom: 16px;
+        }
+
+        .generation-summary-panel {
+            margin-bottom: 22px;
+            border-color: #cbd5e1;
+            background: #f8fafc;
+        }
+
+        .generation-summary-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .generation-summary-title {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .generation-summary-subtitle {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 0.86rem;
+            line-height: 1.45;
+        }
+
+        .generation-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .generation-stat {
+            border: 1px solid #d7dee8;
+            border-radius: 10px;
+            background: #fff;
+            padding: 12px;
+            min-height: 84px;
+        }
+
+        .generation-stat-label {
+            font-size: 0.76rem;
+            font-weight: 700;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .generation-stat-value {
+            font-size: 1.35rem;
+            font-weight: 900;
+            color: var(--text);
+            line-height: 1;
+        }
+
+        .generation-stat-note {
+            margin-top: 8px;
+            font-size: 0.75rem;
+            color: var(--muted);
+            line-height: 1.35;
+        }
+
+        .generation-sections {
+            display: grid;
+            gap: 12px;
+        }
+
+        .generation-section-card {
+            border: 1px solid #d7dee8;
+            border-radius: 12px;
+            background: #fff;
+            padding: 14px;
+        }
+
+        .generation-section-card.success {
+            border-color: #bbf7d0;
+            background: #f0fdf4;
+        }
+
+        .generation-section-card.warning {
+            border-color: #fde68a;
+            background: #fffbeb;
+        }
+
+        .generation-section-card.danger {
+            border-color: #fecaca;
+            background: #fef2f2;
+        }
+
+        .generation-section-title {
+            margin: 0 0 10px;
+            font-size: 0.84rem;
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .generation-section-list {
+            margin: 0;
+            padding-left: 18px;
+            display: grid;
+            gap: 8px;
+            font-size: 0.82rem;
+            line-height: 1.45;
+            color: var(--text);
+        }
+
+        body.rtl .generation-section-list {
+            padding-left: 0;
+            padding-right: 18px;
+        }
+
+        .generation-section-list li {
+            margin: 0;
+        }
+
+        .generation-summary-muted {
+            font-size: 0.82rem;
+            color: var(--muted);
+            line-height: 1.45;
         }
 
         /* Simple alert replacement / Более аккуратные сообщения */
@@ -790,6 +972,10 @@
                 grid-column: span 12;
                 justify-content: flex-start;
             }
+
+            .generation-summary-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
         }
 
         @media (max-width: 920px) {
@@ -809,8 +995,44 @@
                 width: 100%;
             }
 
+            .generation-summary-header {
+                flex-direction: column;
+            }
+
+            .generation-summary-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .schedule-shell {
+                border-radius: 14px;
+            }
+
+            .employee-column {
+                min-width: 168px;
+                width: 168px;
+            }
+
+            .day-header,
+            .schedule-day-cell {
+                min-width: 136px;
+            }
+
             body.mobile-sidebar-hidden .sidebar {
                 display: none;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .generation-summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .shift-picker-overlay {
+                padding: 12px;
+            }
+
+            .shift-picker-modal {
+                max-height: calc(100vh - 24px);
             }
         }
 

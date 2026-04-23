@@ -11,7 +11,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
+<link rel="stylesheet" href="/static/css/style.css?v=0.12.1_beta">
 
     <style>
         /* =========================================================
@@ -117,6 +117,66 @@
             justify-content: flex-end;
             gap: 10px;
             flex-wrap: wrap;
+        }
+
+        .database-safety {
+            margin-top: 22px;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 20px;
+            background: #fff;
+            box-shadow: var(--shadow);
+        }
+
+        .database-safety-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            margin-bottom: 18px;
+        }
+
+        .database-backup-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .database-backup-list {
+            margin-top: 16px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .database-backup-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .database-backup-table th,
+        .database-backup-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border);
+            text-align: start;
+            vertical-align: middle;
+        }
+
+        .database-backup-table th {
+            background: #f8fafc;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 800;
+        }
+
+        .database-backup-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        body.rtl .database-backup-table th,
+        body.rtl .database-backup-table td {
+            text-align: right;
         }
 
         .settings-notes-title {
@@ -270,7 +330,7 @@
 
                     <a href="/weekly-preferences" class="nav-item">
                         <span class="nav-icon">✦</span>
-                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                        <span class="nav-label" data-i18n="nav_requests">Preferences</span>
                     </a>
 
                     <a href="/settings" class="nav-item active">
@@ -328,7 +388,7 @@
 
                 <a href="/employee-positions" class="settings-card">
                     <div class="settings-card-icon">🔗</div>
-                    <h3 class="settings-card-title" data-i18n="settings_assignments_title">Employee positions</h3>
+                    <h3 class="settings-card-title" data-i18n="settings_assignments_title">Assignments</h3>
                     <p class="settings-card-text" data-i18n="settings_assignments_text">
                         Assign employees to positions and define their priority and fallback role.
                     </p>
@@ -453,6 +513,46 @@
                 </form>
             </section>
 
+            <section class="database-safety">
+                <div class="database-safety-header">
+                    <div>
+                        <h3 class="generation-settings-title" data-i18n="settings_backup_title">Database safety</h3>
+                        <p class="generation-settings-text" data-i18n="settings_backup_text">
+                            Create manual backups and restore a recent backup if a destructive action needs to be rolled back.
+                        </p>
+                    </div>
+                </div>
+
+                <div id="database-message-box"></div>
+
+                <div class="database-backup-actions">
+                    <button id="create-database-backup-btn" class="btn btn-primary" type="button" data-i18n="settings_backup_create">
+                        Create backup
+                    </button>
+                    <button id="reload-database-backups-btn" class="btn btn-secondary" type="button" data-i18n="common_reload">
+                        Reload
+                    </button>
+                </div>
+
+                <div class="database-backup-list">
+                    <table class="database-backup-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="settings_backup_name">Backup</th>
+                                <th data-i18n="settings_backup_modified">Modified</th>
+                                <th data-i18n="settings_backup_size">Size</th>
+                                <th data-i18n="settings_backup_actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="database-backups-table-body">
+                            <tr>
+                                <td colspan="4" data-i18n="settings_backup_empty">No backups yet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             <div class="settings-notes">
                 <h3 class="settings-notes-title" data-i18n="settings_notes_title">Notes</h3>
                 <ul>
@@ -482,7 +582,7 @@
         </main>
     </div>
 
-    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
+<script src="/static/js/i18n.js?v=0.12.1_beta"></script>
 
     <script>
         function getSavedSidebarState() {
@@ -544,9 +644,135 @@
             "balance_night_weight",
             "balance_split_weight"
         ];
+        let databaseBackups = [];
+
+        function t(key, fallback = "") {
+            if (typeof translate === "function") {
+                return translate(key);
+            }
+            return fallback || key;
+        }
+
+        function escapeHtml(value) {
+            if (value === null || value === undefined) return "";
+            return String(value)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
 
         function showMessage(text, type = "info") {
             renderPageMessage("message-box", text, type);
+        }
+
+        function showDatabaseMessage(text, type = "info") {
+            renderPageMessage("database-message-box", text, type);
+        }
+
+        function formatBytes(value) {
+            const size = Number(value) || 0;
+            if (size < 1024) return `${size} B`;
+            if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+            return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+        }
+
+        function renderDatabaseBackups(backups) {
+            const tableBody = document.getElementById("database-backups-table-body");
+            if (!backups.length) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="4">
+                            ${typeof renderEmptyState === "function"
+                                ? renderEmptyState({
+                                    title: t("settings_backup_empty_title", "No backups yet"),
+                                    text: t("settings_backup_empty_text", "Create a manual backup before larger cleanup or destructive changes.")
+                                })
+                                : t("settings_backup_empty", "No backups yet")}
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tableBody.innerHTML = backups.map((backup) => `
+                <tr>
+                    <td>${escapeHtml(backup.name)}</td>
+                    <td>${escapeHtml(backup.modified_at)}</td>
+                    <td>${escapeHtml(formatBytes(backup.size_bytes))}</td>
+                    <td>
+                        <button class="btn btn-secondary restore-backup-btn" type="button" data-backup-name="${escapeHtml(backup.name)}">
+                            ${t("settings_backup_restore", "Restore")}
+                        </button>
+                    </td>
+                </tr>
+            `).join("");
+
+            tableBody.querySelectorAll(".restore-backup-btn").forEach((button) => {
+                button.addEventListener("click", async () => {
+                    await restoreBackup(button.dataset.backupName);
+                });
+            });
+        }
+
+        async function loadDatabaseBackups() {
+            const response = await fetch("/api/database/backups");
+            if (!response.ok) {
+                showDatabaseMessage(t("settings_backup_load_failed", "Failed to load backups."), "danger");
+                return;
+            }
+            const payload = await response.json();
+            databaseBackups = payload.backups || [];
+            renderDatabaseBackups(databaseBackups);
+        }
+
+        async function createDatabaseBackup() {
+            const response = await fetch("/api/database/backups", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ label: "manual" })
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                showDatabaseMessage(error.detail || t("settings_backup_create_failed", "Failed to create backup."), "danger");
+                return;
+            }
+            const result = await response.json();
+            showDatabaseMessage(
+                `${t("settings_backup_created", "Backup created")}: ${result.backup_name}`,
+                "success"
+            );
+            await loadDatabaseBackups();
+        }
+
+        async function restoreBackup(backupName) {
+            const confirmMessage = `<p>${escapeHtml(t("settings_backup_restore_confirm", "Restore this backup and replace the current database?"))}</p><p><strong>${escapeHtml(backupName)}</strong></p>`;
+            const isConfirmed = await appConfirm(confirmMessage, {
+                title: t("settings_backup_restore", "Restore"),
+                confirmText: t("settings_backup_restore", "Restore"),
+                html: true
+            });
+            if (!isConfirmed) {
+                return;
+            }
+
+            const response = await fetch("/api/database/restore", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ backup_name: backupName })
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                showDatabaseMessage(error.detail || t("settings_backup_restore_failed", "Failed to restore backup."), "danger");
+                return;
+            }
+            const result = await response.json();
+            showDatabaseMessage(
+                `${t("settings_backup_restored", "Backup restored")}: ${result.restored_backup}. ${t("settings_backup_pre_restore", "Current database was preserved as")}: ${result.pre_restore_backup}`,
+                "success"
+            );
+            await loadDatabaseBackups();
         }
 
         async function loadGenerationSettings() {
@@ -600,7 +826,10 @@
             applySidebarState(getSavedSidebarState());
             document.getElementById("generation-settings-form").addEventListener("submit", saveGenerationSettings);
             document.getElementById("reload-generation-settings-btn").addEventListener("click", loadGenerationSettings);
+            document.getElementById("create-database-backup-btn").addEventListener("click", createDatabaseBackup);
+            document.getElementById("reload-database-backups-btn").addEventListener("click", loadDatabaseBackups);
             loadGenerationSettings();
+            loadDatabaseBackups();
         });
     </script>
 </body>
