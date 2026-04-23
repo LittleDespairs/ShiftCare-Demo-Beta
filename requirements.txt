@@ -39,7 +39,6 @@ pyinstaller-hooks-contrib==2026.4
 python-dotenv==1.2.2
 python-multipart==0.0.26
 pythonnet==3.0.5
-pywebview==6.2.1
 pywin32-ctypes==0.2.3
 PyYAML==6.0.3
 rich==15.0.0

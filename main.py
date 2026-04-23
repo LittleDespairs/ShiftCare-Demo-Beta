@@ -30,9 +30,9 @@ tags_metadata = [
 ]
 
 app = FastAPI(
-    title="Schedule App - Nursing Staff Scheduling 0.11.1_alpha",
+    title="Schedule App - Nursing Staff Scheduling 0.11.2_alpha",
     description="Web application for nursing staff scheduling",
-    version="0.11.1_alpha",
+    version="0.11.2_alpha",
     openapi_tags=tags_metadata,
 )
 

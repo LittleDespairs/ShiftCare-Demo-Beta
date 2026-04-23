@@ -1,22 +1,65 @@
 import threading
 import time
 import socket
+import sys
 import traceback
-import webview
+import webbrowser
+from pathlib import Path
 import uvicorn
-
-try:
-    from main import app
-except Exception as error:
-    print("ERROR while importing app from main.py:")
-    print(error)
-    traceback.print_exc()
-    input("Press Enter to close...")
-    raise
 
 
 HOST = "127.0.0.1"
 PORT = 8000
+
+
+def get_log_path() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().with_suffix(".log")
+    return Path(__file__).resolve().with_suffix(".log")
+
+
+LOG_PATH = get_log_path()
+UVICORN_LOG_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "default": {
+            "class": "logging.NullHandler",
+        },
+    },
+    "loggers": {
+        "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "uvicorn.error": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "uvicorn.access": {"handlers": ["default"], "level": "INFO", "propagate": False},
+    },
+}
+
+
+def write_log(message: str) -> None:
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    with LOG_PATH.open("a", encoding="utf-8") as log_file:
+        log_file.write(f"[{timestamp}] {message}\n")
+
+
+def show_error(title: str, message: str) -> None:
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(None, message, title, 0x10)
+    except Exception:
+        pass
+
+
+try:
+    from main import app
+except Exception:
+    error_text = f"ERROR while importing app from main.py:\n{traceback.format_exc()}"
+    write_log(error_text)
+    show_error(
+        "Schedule App",
+        f"Application failed to start.\n\nDetails were saved to:\n{LOG_PATH}",
+    )
+    sys.exit(1)
 
 
 def is_server_ready(host: str, port: int) -> bool:
@@ -40,43 +83,40 @@ def wait_for_server(host: str, port: int, timeout: int = 20) -> bool:
 
 def run_server():
     try:
-        print("Starting uvicorn server...")
+        write_log("Starting uvicorn server...")
         uvicorn.run(
             app,
             host=HOST,
             port=PORT,
             reload=False,
-            log_level="info"
+            log_level="info",
+            log_config=UVICORN_LOG_CONFIG,
         )
-    except Exception as error:
-        print("ERROR while running server:")
-        print(error)
-        traceback.print_exc()
-        input("Press Enter to close...")
+    except Exception:
+        write_log(f"ERROR while running server:\n{traceback.format_exc()}")
 
 
 if __name__ == "__main__":
     try:
-        print("Launching application...")
+        write_log("Launching application...")
 
         server_thread = threading.Thread(target=run_server, daemon=False)
         server_thread.start()
 
-        print("Waiting for server...")
-        if not wait_for_server(HOST, PORT, timeout=20):
-            raise RuntimeError("Server did not start in time")
+        write_log("Waiting for server...")
+        if not wait_for_server(HOST, PORT, timeout=30):
+            raise RuntimeError(f"Server did not start in time. See log: {LOG_PATH}")
 
-        print("Server is ready. Opening window...")
-        webview.create_window(
+        url = f"http://{HOST}:{PORT}"
+        write_log(f"Server is ready. Opening browser: {url}")
+        webbrowser.open(url)
+
+        server_thread.join()
+
+    except Exception:
+        write_log(f"APPLICATION ERROR:\n{traceback.format_exc()}")
+        show_error(
             "Schedule App",
-            f"http://{HOST}:{PORT}",
-            width=1200,
-            height=800
+            f"Application failed to start.\n\nDetails were saved to:\n{LOG_PATH}",
         )
-        webview.start()
-
-    except Exception as error:
-        print("APPLICATION ERROR:")
-        print(error)
-        traceback.print_exc()
-        input("Press Enter to close...")
+        sys.exit(1)
