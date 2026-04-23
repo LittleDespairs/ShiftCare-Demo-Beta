@@ -11,7 +11,7 @@
         Reused across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
 
     <style>
         /* =========================================================
@@ -416,7 +416,7 @@
     </div>
 
     <!-- Shared i18n / Общий перевод -->
-    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
 
     <script>
         /* =========================================================
@@ -511,8 +511,7 @@
         }
 
         function showMessage(text, type = "info") {
-            const box = document.getElementById("message-box");
-            box.innerHTML = `<div class="page-message ${type}">${text}</div>`;
+            renderPageMessage("message-box", text, type);
         }
 
         function formatDate(dateObject) {
@@ -572,6 +571,7 @@
 
             document.getElementById("load-btn").addEventListener("click", loadWeekPreferences);
             document.getElementById("save-btn").addEventListener("click", savePreferences);
+            document.getElementById("tbody").addEventListener("click", handlePreferencesTableClick);
         });
 
         document.addEventListener("app-language-changed", () => {
@@ -600,7 +600,7 @@
                 employeeSelect.innerHTML = `
                     <option value="">${t("preferences_select_employee", "Select employee")}</option>
                     ${employees.map(employee => `
-                        <option value="${employee.id}">${employee.full_name}</option>
+                        <option value="${Number(employee.id)}">${escapeHtml(employee.full_name)}</option>
                     `).join("")}
                 `;
             } catch (error) {
@@ -688,8 +688,8 @@
 
                 return `
                     <tr>
-                        <td class="day-name">${getWeekdayName(index)}</td>
-                        <td class="date-text">${date}</td>
+                        <td class="day-name">${escapeHtml(getWeekdayName(index))}</td>
+                        <td class="date-text">${escapeHtml(date)}</td>
                         <td>
                             <select
                                 class="preference-select preference-select-field"
@@ -703,7 +703,9 @@
                             <button
                                 class="btn btn-secondary"
                                 type="button"
-                                onclick="deletePreference(${employeeId}, '${date}')"
+                                data-action="delete-preference"
+                                data-employee-id="${Number(employeeId)}"
+                                data-date="${escapeHtml(date)}"
                             >
                                 ${t("preferences_clear_button", "Clear")}
                             </button>
@@ -711,6 +713,12 @@
                     </tr>
                 `;
             }).join("");
+        }
+
+        function handlePreferencesTableClick(event) {
+            const button = event.target.closest('[data-action="delete-preference"]');
+            if (!button) return;
+            deletePreference(Number(button.dataset.employeeId), button.dataset.date);
         }
 
         /* =========================================================

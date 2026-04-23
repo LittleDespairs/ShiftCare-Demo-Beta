@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guide - Schedule App</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
+
+    <style>
+        .guide-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 280px;
+            gap: 22px;
+            align-items: start;
+        }
+
+        .guide-content {
+            display: grid;
+            gap: 18px;
+        }
+
+        .guide-section,
+        .guide-aside {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+        }
+
+        .guide-section {
+            padding: 24px;
+        }
+
+        .guide-section h3,
+        .guide-aside h3 {
+            margin: 0 0 10px;
+            font-size: 1.08rem;
+            color: var(--text);
+        }
+
+        .guide-section p,
+        .guide-aside p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.65;
+        }
+
+        .guide-steps {
+            margin: 14px 0 0;
+            padding-inline-start: 22px;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .guide-steps li + li {
+            margin-top: 8px;
+        }
+
+        .guide-link-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .guide-aside {
+            position: sticky;
+            top: 22px;
+            padding: 20px;
+        }
+
+        .guide-aside-list {
+            margin: 14px 0 0;
+            padding: 0;
+            list-style: none;
+            display: grid;
+            gap: 10px;
+        }
+
+        .guide-aside-list a {
+            display: block;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 700;
+            background: #f8fafc;
+        }
+
+        .guide-aside-list a:hover {
+            border-color: #bfdbfe;
+            background: #eff6ff;
+        }
+
+        body.rtl .guide-layout {
+            direction: rtl;
+        }
+
+        body.rtl .guide-steps {
+            padding-inline-start: 0;
+            padding-inline-end: 22px;
+        }
+
+        @media (max-width: 980px) {
+            .guide-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .guide-aside {
+                position: static;
+            }
+        }
+    </style>
+</head>
+
+<body class="app-shell ltr">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">SA</div>
+                <div class="brand-text">
+                    <h1 class="brand-title" data-i18n="app_title">Schedule App</h1>
+                    <p class="brand-subtitle" data-i18n="app_subtitle">Nursing staff scheduling</p>
+                </div>
+            </div>
+            <div>
+                <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
+                <button id="sidebar-toggle" class="sidebar-toggle" type="button" data-i18n-title="toggle_sidebar"
+                    title="Toggle menu">
+                    ☰
+                </button>
+                <nav class="nav-list">
+                    <a href="/" class="nav-item">
+                        <span class="nav-icon">⌂</span>
+                        <span class="nav-label" data-i18n="nav_dashboard">Home</span>
+                    </a>
+
+                    <a href="/schedule" class="nav-item">
+                        <span class="nav-icon">🗓</span>
+                        <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
+                    </a>
+
+                    <a href="/employees" class="nav-item">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-label" data-i18n="nav_employees">Employees</span>
+                    </a>
+
+                    <a href="/weekly-preferences" class="nav-item">
+                        <span class="nav-icon">✦</span>
+                        <span class="nav-label" data-i18n="nav_requests">Requests</span>
+                    </a>
+
+                    <a href="/settings" class="nav-item">
+                        <span class="nav-icon">⚙</span>
+                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                    </a>
+                </nav>
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 class="page-title" data-i18n="guide_page_title">User Guide</h2>
+                    <p class="page-subtitle" data-i18n="guide_page_subtitle">
+                        A simple explanation of how to prepare employees, collect requests, create a schedule, and export it.
+                    </p>
+                </div>
+
+                <div class="topbar-actions">
+                    <div class="lang-switcher">
+                        <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+                        <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+                        <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="guide-layout">
+                <div class="guide-content">
+                    <section id="start" class="guide-section">
+                        <h3 data-i18n="guide_start_title">What this app is for</h3>
+                        <p data-i18n="guide_start_text">
+                            Schedule App helps you build a weekly work schedule. You enter employees, roles, shift times, staffing needs, and personal requests. Then you can create the schedule automatically or adjust it by hand.
+                        </p>
+                    </section>
+
+                    <section id="setup" class="guide-section">
+                        <h3 data-i18n="guide_setup_title">Before creating a schedule</h3>
+                        <p data-i18n="guide_setup_text">
+                            Fill in the basic information once, then update it only when something changes.
+                        </p>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_setup_step_1">Open Employees and add every person who can appear in the schedule.</li>
+                            <li data-i18n="guide_setup_step_2">Open Settings, then Positions, and create the job roles used in your department.</li>
+                            <li data-i18n="guide_setup_step_3">Open Shift templates and add the real shift times, such as morning, evening, night, or split shifts.</li>
+                            <li data-i18n="guide_setup_step_4">Open Employee positions and connect each employee to the roles they can work.</li>
+                            <li data-i18n="guide_setup_step_5">Open Coverage requirements and write how many people are needed during each time period.</li>
+                        </ol>
+                        <div class="guide-link-row">
+                            <a class="btn btn-secondary" href="/employees" data-i18n="guide_open_employees">Open employees</a>
+                            <a class="btn btn-secondary" href="/settings" data-i18n="guide_open_settings">Open settings</a>
+                        </div>
+                    </section>
+
+                    <section id="requests" class="guide-section">
+                        <h3 data-i18n="guide_requests_title">Collect weekly requests</h3>
+                        <p data-i18n="guide_requests_text">
+                            Before planning the week, open Requests and mark days off, vacations, preferred shifts, and restrictions. This helps the system avoid assigning people when they are unavailable.
+                        </p>
+                        <div class="guide-link-row">
+                            <a class="btn btn-secondary" href="/weekly-preferences" data-i18n="guide_open_requests">Open requests</a>
+                        </div>
+                    </section>
+
+                    <section id="schedule" class="guide-section">
+                        <h3 data-i18n="guide_schedule_title">Create the weekly schedule</h3>
+                        <p data-i18n="guide_schedule_text">
+                            Open Schedule, choose the week and position, then load the table. Use Auto generate to let the system fill shifts. Review the warnings, then make any manual changes you need.
+                        </p>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_schedule_step_1">Choose the first day of the week.</li>
+                            <li data-i18n="guide_schedule_step_2">Choose the position you want to schedule.</li>
+                            <li data-i18n="guide_schedule_step_3">Click Load to see the current schedule.</li>
+                            <li data-i18n="guide_schedule_step_4">Click Auto generate if you want the app to fill missing shifts.</li>
+                            <li data-i18n="guide_schedule_step_5">Check warnings and coverage rows before you finish.</li>
+                        </ol>
+                        <div class="guide-link-row">
+                            <a class="btn btn-primary" href="/schedule" data-i18n="guide_open_schedule">Open schedule</a>
+                        </div>
+                    </section>
+
+                    <section id="manual" class="guide-section">
+                        <h3 data-i18n="guide_manual_title">Manual changes</h3>
+                        <p data-i18n="guide_manual_text">
+                            You can add or delete shifts manually. You can also mark a person as sick, day off, or no-show. Use these options when the real situation changes after the schedule was created.
+                        </p>
+                    </section>
+
+                    <section id="export" class="guide-section">
+                        <h3 data-i18n="guide_export_title">Share the schedule</h3>
+                        <p data-i18n="guide_export_text">
+                            When the week looks correct, use Export Excel on the Schedule page. The file is meant for printing, sending, or keeping as a weekly record.
+                        </p>
+                    </section>
+
+                    <section id="help" class="guide-section">
+                        <h3 data-i18n="guide_help_title">If something looks wrong</h3>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_help_step_1">Check that the employee is assigned to the selected position.</li>
+                            <li data-i18n="guide_help_step_2">Check that the employee is not blocked by a day off, vacation, sickness, or request.</li>
+                            <li data-i18n="guide_help_step_3">Check that the shift template is active and has the correct time.</li>
+                            <li data-i18n="guide_help_step_4">Check Coverage requirements to make sure the needed number of people is correct.</li>
+                        </ol>
+                    </section>
+                </div>
+
+                <aside class="guide-aside">
+                    <h3 data-i18n="guide_contents_title">On this page</h3>
+                    <p data-i18n="guide_contents_text">Use these links to jump to the part you need.</p>
+                    <ul class="guide-aside-list">
+                        <li><a href="#start" data-i18n="guide_contents_start">Purpose</a></li>
+                        <li><a href="#setup" data-i18n="guide_contents_setup">Setup</a></li>
+                        <li><a href="#requests" data-i18n="guide_contents_requests">Requests</a></li>
+                        <li><a href="#schedule" data-i18n="guide_contents_schedule">Schedule</a></li>
+                        <li><a href="#manual" data-i18n="guide_contents_manual">Manual changes</a></li>
+                        <li><a href="#export" data-i18n="guide_contents_export">Export</a></li>
+                        <li><a href="#help" data-i18n="guide_contents_help">Help</a></li>
+                    </ul>
+                </aside>
+            </div>
+
+            <footer class="app-footer">
+                <div class="footer-left" data-i18n="footer_version">
+                    Schedule App v0.11.3_alpha
+                </div>
+
+                <div class="footer-right">
+                    <a href="/docs" data-i18n="footer_docs">Documentation</a>
+                    <a href="/guide" data-i18n="footer_guide">Guide</a>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
+    <script>
+        document.addEventListener("app-language-changed", () => {
+            document.title = `${translate("guide_page_title")} - Schedule App`;
+        });
+    </script>
+</body>
+
+</html>

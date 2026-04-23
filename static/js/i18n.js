@@ -1,3 +1,13 @@
+window.escapeHtml = window.escapeHtml || function (value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+};
+
 const I18N_TRANSLATIONS = {
     en: {
         app_title: "Schedule App",
@@ -10,7 +20,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Requests",
         nav_settings: "Settings",
 
-        sidebar_footer_title: "Version 0.11.1_alpha",
+        sidebar_footer_title: "Version 0.11.3_alpha",
         sidebar_footer_text: "Interface redesign in progress. The current goal is a simpler and clearer workflow.",
 
         page_title: "Dashboard",
@@ -56,7 +66,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Documentation",
         footer_guide: "User Guide",
-        footer_version: "Schedule App v0.11.1_alpha",
+        footer_version: "Schedule App v0.11.3_alpha",
 
         quick_actions_title: "Quick actions",
         quick_action_schedule_title: "Open current week",
@@ -210,6 +220,19 @@ const I18N_TRANSLATIONS = {
         generation_reason_consecutive_nights: "consecutive night limit reached",
         generation_reason_consecutive_splits: "consecutive split limit reached",
         generation_reason_no_coverage_gain: "candidates existed, but they did not improve coverage without overfilling other intervals",
+        generation_precheck_blocking: "Pre-check blocking:",
+        generation_precheck_warning: "Pre-check warning:",
+        generation_precheck_no_slots: "No active coverage slots can be built from coverage requirements.",
+        generation_precheck_no_template: "No active shift template covers this required interval.",
+        generation_precheck_no_legacy_template: "No active non-split template exists for this legacy shift requirement.",
+        generation_precheck_staff_shortage: "Required staff is greater than employees assigned to the position.",
+        generation_precheck_female_shortage: "Required female staff is greater than available female employees.",
+        generation_precheck_male_shortage: "Required male staff is greater than available male employees.",
+        generation_precheck_no_candidate: "No eligible employee/template candidate can cover this interval.",
+        generation_precheck_emergency_only: "This interval is only coverable with emergency fatigue relaxation.",
+        generation_hard_constraints: "Hard constraints",
+        generation_soft_constraints: "Soft constraints",
+        generation_unfilled_count: "Unfilled requirements",
 
         msg_failed_refresh_schedule_data: "Failed to refresh schedule data.",
         msg_server_error_refresh_schedule_data: "Server error while refreshing schedule data.",
@@ -409,7 +432,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.11.1_alpha",
+        footer_version: "Schedule App v0.11.3_alpha",
 
         msg_enter_template_name: "Please enter template name.",
         msg_select_shift_category: "Please select shift category.",
@@ -483,11 +506,72 @@ const I18N_TRANSLATIONS = {
         settings_assignments_text: "Assign employees to positions and define their priority and fallback role.",
         settings_coverage_title: "Coverage requirements",
         settings_coverage_text: "Define how many employees are needed for each time interval.",
+        settings_generation_title: "Generation rules",
+        settings_generation_text: "Tune fatigue limits and balancing weights used by auto-generation.",
+        settings_max_work_days: "Max work days per week",
+        settings_max_nights: "Max consecutive nights",
+        settings_emergency_nights: "Emergency night limit",
+        settings_max_splits: "Max consecutive split days",
+        settings_emergency_splits: "Emergency split limit",
+        settings_night_evening_penalty: "Night to evening penalty",
+        settings_shortage_weight: "Coverage shortage weight",
+        settings_gender_bonus_weight: "Gender target bonus",
+        settings_missing_min_weight: "Missing minimum shift weight",
+        settings_target_distance_weight: "Target distance weight",
+        settings_night_weight: "Night balance weight",
+        settings_split_weight: "Split balance weight",
+        settings_save_generation: "Save generation settings",
+        settings_msg_failed_load_generation: "Failed to load generation settings.",
+        settings_msg_failed_save_generation: "Failed to save generation settings.",
+        settings_msg_generation_saved: "Generation settings saved.",
 
         settings_notes_title: "Notes",
         settings_note_1: "These sections are administrative and are usually configured less often than the weekly schedule.",
         settings_note_2: "The main weekly workflow still starts from the schedule page.",
         settings_note_3: "If needed later, this page can also include shift requirements and export settings.",
+
+        guide_page_title: "User Guide",
+        guide_page_subtitle: "A simple explanation of how to prepare employees, collect requests, create a schedule, and export it.",
+        guide_start_title: "What this app is for",
+        guide_start_text: "Schedule App helps you build a weekly work schedule. You enter employees, roles, shift times, staffing needs, and personal requests. Then you can create the schedule automatically or adjust it by hand.",
+        guide_setup_title: "Before creating a schedule",
+        guide_setup_text: "Fill in the basic information once, then update it only when something changes.",
+        guide_setup_step_1: "Open Employees and add every person who can appear in the schedule.",
+        guide_setup_step_2: "Open Settings, then Positions, and create the job roles used in your department.",
+        guide_setup_step_3: "Open Shift templates and add the real shift times, such as morning, evening, night, or split shifts.",
+        guide_setup_step_4: "Open Employee positions and connect each employee to the roles they can work.",
+        guide_setup_step_5: "Open Coverage requirements and write how many people are needed during each time period.",
+        guide_open_employees: "Open employees",
+        guide_open_settings: "Open settings",
+        guide_requests_title: "Collect weekly requests",
+        guide_requests_text: "Before planning the week, open Requests and mark days off, vacations, preferred shifts, and restrictions. This helps the system avoid assigning people when they are unavailable.",
+        guide_open_requests: "Open requests",
+        guide_schedule_title: "Create the weekly schedule",
+        guide_schedule_text: "Open Schedule, choose the week and position, then load the table. Use Auto generate to let the system fill shifts. Review the warnings, then make any manual changes you need.",
+        guide_schedule_step_1: "Choose the first day of the week.",
+        guide_schedule_step_2: "Choose the position you want to schedule.",
+        guide_schedule_step_3: "Click Load to see the current schedule.",
+        guide_schedule_step_4: "Click Auto generate if you want the app to fill missing shifts.",
+        guide_schedule_step_5: "Check warnings and coverage rows before you finish.",
+        guide_open_schedule: "Open schedule",
+        guide_manual_title: "Manual changes",
+        guide_manual_text: "You can add or delete shifts manually. You can also mark a person as sick, day off, or no-show. Use these options when the real situation changes after the schedule was created.",
+        guide_export_title: "Share the schedule",
+        guide_export_text: "When the week looks correct, use Export Excel on the Schedule page. The file is meant for printing, sending, or keeping as a weekly record.",
+        guide_help_title: "If something looks wrong",
+        guide_help_step_1: "Check that the employee is assigned to the selected position.",
+        guide_help_step_2: "Check that the employee is not blocked by a day off, vacation, sickness, or request.",
+        guide_help_step_3: "Check that the shift template is active and has the correct time.",
+        guide_help_step_4: "Check Coverage requirements to make sure the needed number of people is correct.",
+        guide_contents_title: "On this page",
+        guide_contents_text: "Use these links to jump to the part you need.",
+        guide_contents_start: "Purpose",
+        guide_contents_setup: "Setup",
+        guide_contents_requests: "Requests",
+        guide_contents_schedule: "Schedule",
+        guide_contents_manual: "Manual changes",
+        guide_contents_export: "Export",
+        guide_contents_help: "Help",
 
         common_actions: "Actions",
         common_back: "Back",
@@ -495,6 +579,8 @@ const I18N_TRANSLATIONS = {
         common_reset: "Reset",
         common_edit: "Edit",
         common_delete: "Delete",
+        common_cancel: "Cancel",
+        common_confirm: "Confirm",
 
         coverage_page_title: "Coverage requirements",
         coverage_page_subtitle: "Time-based staffing requirements by position.",
@@ -539,7 +625,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Пожелания",
         nav_settings: "Настройки",
 
-        sidebar_footer_title: "Версия 0.11.1_alpha",
+        sidebar_footer_title: "Версия 0.11.3_alpha",
         sidebar_footer_text: "Сейчас идёт редизайн интерфейса. Главная цель — сделать рабочий процесс проще и понятнее.",
 
         page_title: "Главная",
@@ -585,7 +671,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.11.1_alpha",
+        footer_version: "Schedule App v0.11.3_alpha",
 
         quick_actions_title: "Быстрые действия",
         quick_action_schedule_title: "Открыть текущую неделю",
@@ -743,6 +829,19 @@ const I18N_TRANSLATIONS = {
         generation_reason_consecutive_nights: "достигнут лимит ночных смен подряд",
         generation_reason_consecutive_splits: "достигнут лимит сплит-смен подряд",
         generation_reason_no_coverage_gain: "кандидаты были, но они не улучшали покрытие без переполнения других интервалов",
+        generation_precheck_blocking: "Предварительная проверка, блокирующая проблема:",
+        generation_precheck_warning: "Предварительная проверка, предупреждение:",
+        generation_precheck_no_slots: "Не удалось построить активные интервалы покрытия из требований.",
+        generation_precheck_no_template: "Нет активного шаблона смены, который закрывает этот обязательный интервал.",
+        generation_precheck_no_legacy_template: "Нет активного не-сплит шаблона для этого требования к смене.",
+        generation_precheck_staff_shortage: "Требуется больше сотрудников, чем назначено на эту должность.",
+        generation_precheck_female_shortage: "Требуется больше женщин, чем доступно среди сотрудников.",
+        generation_precheck_male_shortage: "Требуется больше мужчин, чем доступно среди сотрудников.",
+        generation_precheck_no_candidate: "Нет подходящей пары сотрудник/шаблон для закрытия этого интервала.",
+        generation_precheck_emergency_only: "Этот интервал закрывается только с аварийным ослаблением правил усталости.",
+        generation_hard_constraints: "Жёсткие ограничения",
+        generation_soft_constraints: "Мягкие ограничения",
+        generation_unfilled_count: "Незакрытые требования",
 
         msg_failed_refresh_schedule_data: "Не удалось обновить данные расписания.",
         msg_server_error_refresh_schedule_data: "Ошибка сервера при обновлении данных расписания.",
@@ -1008,11 +1107,72 @@ const I18N_TRANSLATIONS = {
 
         settings_coverage_title: "Требования покрытия",
         settings_coverage_text: "Задайте, сколько сотрудников нужно на каждом временном интервале.",
+        settings_generation_title: "Правила генерации",
+        settings_generation_text: "Настройка лимитов усталости и весов баланса для автогенерации.",
+        settings_max_work_days: "Максимум рабочих дней в неделю",
+        settings_max_nights: "Максимум ночей подряд",
+        settings_emergency_nights: "Аварийный лимит ночей",
+        settings_max_splits: "Максимум сплит-дней подряд",
+        settings_emergency_splits: "Аварийный лимит сплит-дней",
+        settings_night_evening_penalty: "Штраф ночь → вечер",
+        settings_shortage_weight: "Вес недобора покрытия",
+        settings_gender_bonus_weight: "Бонус целевого пола",
+        settings_missing_min_weight: "Вес недобора минимума смен",
+        settings_target_distance_weight: "Вес отклонения от цели",
+        settings_night_weight: "Вес ночных смен",
+        settings_split_weight: "Вес сплит-смен",
+        settings_save_generation: "Сохранить настройки генерации",
+        settings_msg_failed_load_generation: "Не удалось загрузить настройки генерации.",
+        settings_msg_failed_save_generation: "Не удалось сохранить настройки генерации.",
+        settings_msg_generation_saved: "Настройки генерации сохранены.",
 
         settings_notes_title: "Заметки",
         settings_note_1: "Эти разделы административные и обычно настраиваются реже, чем недельное расписание.",
         settings_note_2: "Основной еженедельный рабочий процесс всё равно начинается со страницы расписания.",
         settings_note_3: "При необходимости позже сюда можно добавить требования к сменам и настройки экспорта.",
+
+        guide_page_title: "Руководство пользователя",
+        guide_page_subtitle: "Простое объяснение, как подготовить сотрудников, собрать пожелания, создать расписание и выгрузить его.",
+        guide_start_title: "Для чего нужно приложение",
+        guide_start_text: "Schedule App помогает составлять рабочее расписание на неделю. Вы вносите сотрудников, должности, время смен, нужное количество людей и личные пожелания. После этого расписание можно создать автоматически или поправить вручную.",
+        guide_setup_title: "Перед созданием расписания",
+        guide_setup_text: "Основные данные заполняются один раз, а потом меняются только при необходимости.",
+        guide_setup_step_1: "Откройте Сотрудники и добавьте всех людей, которые могут появляться в расписании.",
+        guide_setup_step_2: "Откройте Настройки, затем Должности, и создайте роли, которые используются в отделении.",
+        guide_setup_step_3: "Откройте Шаблоны смен и добавьте реальное время смен: утро, вечер, ночь или разделённые смены.",
+        guide_setup_step_4: "Откройте Должности сотрудников и привяжите каждого сотрудника к ролям, в которых он может работать.",
+        guide_setup_step_5: "Откройте Требования покрытия и укажите, сколько людей нужно в каждый промежуток времени.",
+        guide_open_employees: "Открыть сотрудников",
+        guide_open_settings: "Открыть настройки",
+        guide_requests_title: "Соберите пожелания на неделю",
+        guide_requests_text: "Перед планированием недели откройте Пожелания и отметьте выходные, отпуска, предпочтительные смены и ограничения. Так система не будет ставить людей туда, где они недоступны.",
+        guide_open_requests: "Открыть пожелания",
+        guide_schedule_title: "Создайте недельное расписание",
+        guide_schedule_text: "Откройте Расписание, выберите неделю и должность, затем загрузите таблицу. Нажмите Автогенерация, если хотите, чтобы система заполнила смены. После этого проверьте предупреждения и внесите ручные изменения, если они нужны.",
+        guide_schedule_step_1: "Выберите первый день недели.",
+        guide_schedule_step_2: "Выберите должность, для которой нужно составить расписание.",
+        guide_schedule_step_3: "Нажмите Загрузить, чтобы увидеть текущее расписание.",
+        guide_schedule_step_4: "Нажмите Автогенерация, если хотите заполнить недостающие смены.",
+        guide_schedule_step_5: "Перед завершением проверьте предупреждения и строки покрытия.",
+        guide_open_schedule: "Открыть расписание",
+        guide_manual_title: "Ручные изменения",
+        guide_manual_text: "Смены можно добавлять и удалять вручную. Также можно отметить болезнь, выходной или неявку. Используйте эти действия, когда реальная ситуация изменилась после составления расписания.",
+        guide_export_title: "Передайте расписание",
+        guide_export_text: "Когда неделя выглядит правильно, нажмите Экспорт Excel на странице Расписание. Файл можно распечатать, отправить или сохранить как недельный отчёт.",
+        guide_help_title: "Если что-то выглядит неправильно",
+        guide_help_step_1: "Проверьте, что сотрудник привязан к выбранной должности.",
+        guide_help_step_2: "Проверьте, что сотрудник не заблокирован выходным, отпуском, болезнью или пожеланием.",
+        guide_help_step_3: "Проверьте, что шаблон смены активен и в нём указано правильное время.",
+        guide_help_step_4: "Проверьте Требования покрытия и убедитесь, что нужное количество людей указано правильно.",
+        guide_contents_title: "На этой странице",
+        guide_contents_text: "Используйте ссылки, чтобы перейти к нужной части.",
+        guide_contents_start: "Назначение",
+        guide_contents_setup: "Подготовка",
+        guide_contents_requests: "Пожелания",
+        guide_contents_schedule: "Расписание",
+        guide_contents_manual: "Ручные изменения",
+        guide_contents_export: "Экспорт",
+        guide_contents_help: "Помощь",
 
         common_actions: "Действия",
         common_back: "Назад",
@@ -1020,6 +1180,8 @@ const I18N_TRANSLATIONS = {
         common_reset: "Сбросить",
         common_edit: "Изменить",
         common_delete: "Удалить",
+        common_cancel: "Отмена",
+        common_confirm: "Подтвердить",
 
         coverage_page_title: "Требования покрытия",
         coverage_page_subtitle: "Настройка потребности в персонале по временным интервалам и должностям.",
@@ -1064,7 +1226,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "בקשות",
         nav_settings: "הגדרות",
 
-        sidebar_footer_title: "גרסה 0.11.1_alpha",
+        sidebar_footer_title: "גרסה 0.11.3_alpha",
         sidebar_footer_text: "כעת מתבצע עיצוב מחדש של הממשק. המטרה היא להפוך את תהליך העבודה לפשוט וברור יותר.",
 
         page_title: "דף הבית",
@@ -1260,6 +1422,19 @@ const I18N_TRANSLATIONS = {
         generation_reason_consecutive_nights: "הגיע למגבלת לילות רצופים",
         generation_reason_consecutive_splits: "הגיע למגבלת משמרות מפוצלות רצופות",
         generation_reason_no_coverage_gain: "היו מועמדים, אך הם לא שיפרו את הכיסוי בלי עודף במקטעים אחרים",
+        generation_precheck_blocking: "בדיקה מוקדמת, בעיה חוסמת:",
+        generation_precheck_warning: "בדיקה מוקדמת, אזהרה:",
+        generation_precheck_no_slots: "לא ניתן לבנות מקטעי כיסוי פעילים מדרישות הכיסוי.",
+        generation_precheck_no_template: "אין תבנית משמרת פעילה שמכסה את המקטע הנדרש הזה.",
+        generation_precheck_no_legacy_template: "אין תבנית פעילה שאינה מפוצלת עבור דרישת המשמרת הזו.",
+        generation_precheck_staff_shortage: "נדרשים יותר עובדים ממספר העובדים המשויכים לתפקיד.",
+        generation_precheck_female_shortage: "נדרשות יותר נשים ממספר העובדות הזמינות.",
+        generation_precheck_male_shortage: "נדרשים יותר גברים ממספר העובדים הזמינים.",
+        generation_precheck_no_candidate: "אין מועמד מתאים של עובד/תבנית לכיסוי המקטע הזה.",
+        generation_precheck_emergency_only: "המקטע הזה ניתן לכיסוי רק עם הקלה חריגה בכללי עייפות.",
+        generation_hard_constraints: "אילוצים קשיחים",
+        generation_soft_constraints: "אילוצים רכים",
+        generation_unfilled_count: "דרישות שלא כוסו",
 
         msg_failed_refresh_schedule_data: "רענון נתוני סידור העבודה נכשל.",
         msg_server_error_refresh_schedule_data: "שגיאת שרת בזמן רענון נתוני סידור העבודה.",
@@ -1296,7 +1471,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "תיעוד",
         footer_guide: "מדריך",
-        footer_version: "Schedule App v0.11.1_alpha",
+        footer_version: "Schedule App v0.11.3_alpha",
 
         employees_table_id: "מזהה",
         employees_table_name: "שם מלא",
@@ -1533,11 +1708,72 @@ const I18N_TRANSLATIONS = {
 
         settings_coverage_title: "דרישות כיסוי",
         settings_coverage_text: "הגדר כמה עובדים נדרשים בכל טווח זמן.",
+        settings_generation_title: "כללי יצירה",
+        settings_generation_text: "כוונון מגבלות עייפות ומשקלי איזון ליצירה אוטומטית.",
+        settings_max_work_days: "מקסימום ימי עבודה בשבוע",
+        settings_max_nights: "מקסימום לילות רצופים",
+        settings_emergency_nights: "מגבלת חירום ללילות",
+        settings_max_splits: "מקסימום ימי פיצול רצופים",
+        settings_emergency_splits: "מגבלת חירום לפיצולים",
+        settings_night_evening_penalty: "קנס לילה → ערב",
+        settings_shortage_weight: "משקל חוסר בכיסוי",
+        settings_gender_bonus_weight: "בונוס יעד מגדר",
+        settings_missing_min_weight: "משקל חוסר במינימום משמרות",
+        settings_target_distance_weight: "משקל סטייה מהיעד",
+        settings_night_weight: "משקל משמרות לילה",
+        settings_split_weight: "משקל משמרות מפוצלות",
+        settings_save_generation: "שמור הגדרות יצירה",
+        settings_msg_failed_load_generation: "טעינת הגדרות היצירה נכשלה.",
+        settings_msg_failed_save_generation: "שמירת הגדרות היצירה נכשלה.",
+        settings_msg_generation_saved: "הגדרות היצירה נשמרו.",
 
         settings_notes_title: "הערות",
         settings_note_1: "החלקים האלה ניהוליים ובדרך כלל מוגדרים בתדירות נמוכה יותר מאשר סידור העבודה השבועי.",
         settings_note_2: "תהליך העבודה השבועי הראשי עדיין מתחיל מדף סידור העבודה.",
         settings_note_3: "אם יהיה צורך בהמשך, ניתן להוסיף לעמוד הזה גם דרישות משמרת והגדרות ייצוא.",
+
+        guide_page_title: "מדריך משתמש",
+        guide_page_subtitle: "הסבר פשוט על הכנת עובדים, איסוף בקשות, יצירת סידור עבודה וייצוא שלו.",
+        guide_start_title: "למה האפליקציה מיועדת",
+        guide_start_text: "Schedule App עוזרת לבנות סידור עבודה שבועי. מזינים עובדים, תפקידים, שעות משמרת, צרכי כוח אדם ובקשות אישיות. לאחר מכן אפשר ליצור את הסידור אוטומטית או לתקן אותו ידנית.",
+        guide_setup_title: "לפני יצירת סידור עבודה",
+        guide_setup_text: "ממלאים את המידע הבסיסי פעם אחת, ואז מעדכנים אותו רק כשמשהו משתנה.",
+        guide_setup_step_1: "פתח את עובדים והוסף כל אדם שיכול להופיע בסידור העבודה.",
+        guide_setup_step_2: "פתח את הגדרות, לאחר מכן תפקידים, וצור את התפקידים שמשמשים במחלקה.",
+        guide_setup_step_3: "פתח את תבניות משמרת והוסף את זמני המשמרות האמיתיים, כמו בוקר, ערב, לילה או משמרות מפוצלות.",
+        guide_setup_step_4: "פתח את שיוך עובדים לתפקידים וחבר כל עובד לתפקידים שבהם הוא יכול לעבוד.",
+        guide_setup_step_5: "פתח את דרישות כיסוי ורשום כמה עובדים נדרשים בכל טווח זמן.",
+        guide_open_employees: "פתח עובדים",
+        guide_open_settings: "פתח הגדרות",
+        guide_requests_title: "איסוף בקשות שבועיות",
+        guide_requests_text: "לפני תכנון השבוע, פתח את בקשות וסמן ימי חופש, חופשות, משמרות מועדפות והגבלות. כך המערכת נמנעת משיבוץ אנשים כשהם לא זמינים.",
+        guide_open_requests: "פתח בקשות",
+        guide_schedule_title: "יצירת סידור העבודה השבועי",
+        guide_schedule_text: "פתח את סידור עבודה, בחר שבוע ותפקיד, ואז טען את הטבלה. השתמש ביצירה אוטומטית כדי לתת למערכת למלא משמרות. לאחר מכן בדוק התראות ובצע שינויים ידניים לפי הצורך.",
+        guide_schedule_step_1: "בחר את היום הראשון של השבוע.",
+        guide_schedule_step_2: "בחר את התפקיד שעבורו רוצים לבנות סידור.",
+        guide_schedule_step_3: "לחץ על טען כדי לראות את הסידור הנוכחי.",
+        guide_schedule_step_4: "לחץ על יצירה אוטומטית אם רוצים למלא משמרות חסרות.",
+        guide_schedule_step_5: "בדוק התראות ושורות כיסוי לפני סיום.",
+        guide_open_schedule: "פתח סידור עבודה",
+        guide_manual_title: "שינויים ידניים",
+        guide_manual_text: "אפשר להוסיף או למחוק משמרות ידנית. אפשר גם לסמן עובד כחולה, ביום חופש או כאי הגעה. השתמש באפשרויות האלה כשהמצב בפועל משתנה אחרי יצירת הסידור.",
+        guide_export_title: "שיתוף סידור העבודה",
+        guide_export_text: "כשהשבוע נראה נכון, השתמש בייצוא לאקסל בדף סידור עבודה. הקובץ מיועד להדפסה, שליחה או שמירה כרשומה שבועית.",
+        guide_help_title: "אם משהו נראה לא תקין",
+        guide_help_step_1: "בדוק שהעובד משויך לתפקיד שנבחר.",
+        guide_help_step_2: "בדוק שהעובד אינו חסום בגלל יום חופש, חופשה, מחלה או בקשה.",
+        guide_help_step_3: "בדוק שתבנית המשמרת פעילה ושזמן המשמרת נכון.",
+        guide_help_step_4: "בדוק את דרישות הכיסוי וודא שמספר העובדים הנדרש נכון.",
+        guide_contents_title: "בעמוד זה",
+        guide_contents_text: "השתמש בקישורים כדי לעבור לחלק הדרוש.",
+        guide_contents_start: "מטרה",
+        guide_contents_setup: "הכנה",
+        guide_contents_requests: "בקשות",
+        guide_contents_schedule: "סידור עבודה",
+        guide_contents_manual: "שינויים ידניים",
+        guide_contents_export: "ייצוא",
+        guide_contents_help: "עזרה",
 
         common_actions: "פעולות",
         common_back: "חזרה",
@@ -1545,6 +1781,8 @@ const I18N_TRANSLATIONS = {
         common_reset: "איפוס",
         common_edit: "עריכה",
         common_delete: "מחיקה",
+        common_cancel: "ביטול",
+        common_confirm: "אישור",
 
         coverage_page_title: "דרישות כיסוי",
         coverage_page_subtitle: "דרישות כוח אדם לפי טווחי זמן ותפקידים.",
@@ -1665,6 +1903,88 @@ function bindLanguageSwitcher() {
     });
 }
 
+function ensureConfirmModal() {
+    let modal = document.getElementById("app-confirm-modal");
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+    modal.id = "app-confirm-modal";
+    modal.className = "app-modal-overlay";
+    modal.setAttribute("aria-hidden", "true");
+    modal.innerHTML = `
+        <div class="app-modal" role="dialog" aria-modal="true" aria-labelledby="app-confirm-title">
+            <div class="app-modal-header">
+                <h2 id="app-confirm-title" class="app-modal-title"></h2>
+                <button class="app-modal-close" type="button" data-confirm-result="false" aria-label="Close">×</button>
+            </div>
+            <div class="app-modal-body" id="app-confirm-message"></div>
+            <div class="app-modal-actions">
+                <button class="btn btn-secondary" type="button" data-confirm-result="false"></button>
+                <button class="btn btn-danger" type="button" data-confirm-result="true"></button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function appConfirm(message, options = {}) {
+    const modal = ensureConfirmModal();
+    const title = modal.querySelector("#app-confirm-title");
+    const messageBox = modal.querySelector("#app-confirm-message");
+    const cancelButton = modal.querySelector('[data-confirm-result="false"].btn');
+    const confirmButton = modal.querySelector('[data-confirm-result="true"]');
+
+    title.textContent = options.title || translate("common_confirm");
+    messageBox.textContent = message || "";
+    cancelButton.textContent = options.cancelText || translate("common_cancel");
+    confirmButton.textContent = options.confirmText || translate("common_delete");
+
+    modal.classList.add("is-open");
+    modal.setAttribute("aria-hidden", "false");
+    confirmButton.focus();
+
+    return new Promise(resolve => {
+        const finish = result => {
+            modal.classList.remove("is-open");
+            modal.setAttribute("aria-hidden", "true");
+            modal.removeEventListener("click", onModalClick);
+            document.removeEventListener("keydown", onKeyDown);
+            resolve(result);
+        };
+
+        const onModalClick = event => {
+            const resultButton = event.target.closest("[data-confirm-result]");
+            if (resultButton) {
+                finish(resultButton.dataset.confirmResult === "true");
+                return;
+            }
+            if (event.target === modal) {
+                finish(false);
+            }
+        };
+
+        const onKeyDown = event => {
+            if (event.key === "Escape") {
+                finish(false);
+            }
+        };
+
+        modal.addEventListener("click", onModalClick);
+        document.addEventListener("keydown", onKeyDown);
+    });
+}
+
+function renderPageMessage(target = "message-box", text = "", type = "info", options = {}) {
+    const box = typeof target === "string" ? document.getElementById(target) : target;
+    if (!box) return;
+    const message = options.html ? String(text || "") : escapeHtml(text);
+    box.innerHTML = `<div class="page-message ${type || "info"}">${message}</div>`;
+}
+
+window.appConfirm = appConfirm;
+window.renderPageMessage = renderPageMessage;
+
 document.addEventListener("DOMContentLoaded", () => {
     bindLanguageSwitcher();
     setLanguage(getSavedLanguage());
@@ -1718,4 +2038,3 @@ function bindSidebarToggle() {
 window.addEventListener("resize", () => {
     applySidebarState(getSavedSidebarState());
 });
-

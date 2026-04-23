@@ -142,6 +142,16 @@ const SHIFT_LABELS = {
     night: "N"
 };
 
+function escapeHtml(value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 let allEmployees = [];
 let allPositions = [];
 let allAssignments = [];
@@ -183,7 +193,7 @@ async function loadPositions() {
         select.innerHTML = `
             <option value="">Select position</option>
             ${allPositions.map(position => `
-                <option value="${position.id}">${position.name}</option>
+                <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
             `).join("")}
         `;
     } catch (error) {
@@ -265,8 +275,8 @@ function renderScheduleTable(positionId) {
             <th class="table-light employee-name-cell">Employee</th>
             ${weekDates.map((date, index) => `
                 <th class="table-light text-center">
-                    <div class="day-title">${WEEKDAY_NAMES[index]}</div>
-                    <div class="day-date">${date}</div>
+                    <div class="day-title">${escapeHtml(WEEKDAY_NAMES[index])}</div>
+                    <div class="day-date">${escapeHtml(date)}</div>
                 </th>
             `).join("")}
         </tr>
@@ -286,9 +296,9 @@ function renderScheduleTable(positionId) {
     tbody.innerHTML = employeesForPosition.map(employee => `
         <tr>
             <td class="employee-name-cell">
-                <div class="fw-semibold">${employee.full_name}</div>
+                <div class="fw-semibold">${escapeHtml(employee.full_name)}</div>
                 <div class="small text-muted">
-                    Min/Max: ${employee.min_shifts_per_week}/${employee.max_shifts_per_week}
+                    Min/Max: ${Number(employee.min_shifts_per_week)}/${Number(employee.max_shifts_per_week)}
                 </div>
             </td>
             ${weekDates.map(date => renderShiftCell(employee.id, positionId, date)).join("")}
@@ -329,7 +339,7 @@ function renderShiftCell(employeeId, positionId, date) {
                                 class="form-check-label small"
                                 for="shift-${employeeId}-${positionId}-${date}-${shiftType}"
                             >
-                                ${label}
+                                ${escapeHtml(label)}
                             </label>
                         </div>
                     `;
@@ -458,7 +468,7 @@ function clearMessage() {
 function showMessage(text, type) {
     document.getElementById("message-box").innerHTML = `
         <div class="alert alert-${type}" role="alert">
-            ${text}
+            ${escapeHtml(text)}
         </div>
     `;
 }

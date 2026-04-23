@@ -872,3 +872,130 @@ body.sidebar-collapsed .sidebar {
 body.rtl .app-footer {
     flex-direction: row-reverse;
 }
+
+.app-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, 0.52);
+}
+
+.app-modal-overlay.is-open {
+    display: flex;
+}
+
+.app-modal {
+    width: min(440px, 100%);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+    overflow: hidden;
+}
+
+.app-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.app-modal-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.app-modal-close {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: #eef2f7;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.app-modal-body {
+    padding: 20px;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.app-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 20px 20px;
+}
+
+/* Alpha 0.11.3: shared mobile/RTL hardening for data-heavy pages. */
+.table-clean {
+    min-width: 720px;
+}
+
+.list-card,
+.panel,
+.schedule-shell {
+    max-width: 100%;
+}
+
+body.rtl input,
+body.rtl select,
+body.rtl textarea {
+    text-align: right;
+}
+
+body.rtl input[type="number"],
+body.rtl input[type="time"],
+body.rtl input[type="date"] {
+    direction: ltr;
+    text-align: right;
+}
+
+@media (max-width: 700px) {
+    .main-content {
+        padding: 18px 14px;
+    }
+
+    .topbar {
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .topbar-actions,
+    .toolbar-actions,
+    .form-actions,
+    .table-actions {
+        width: 100%;
+    }
+
+    .table-actions {
+        justify-content: stretch;
+    }
+
+    .table-actions .table-btn,
+    .table-actions .btn {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 560px) {
+    .page-title,
+    .hero-title {
+        font-size: 1.75rem;
+        line-height: 1.15;
+    }
+
+    .table-clean {
+        min-width: 640px;
+    }
+}

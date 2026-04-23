@@ -1,4 +1,5 @@
 let editingEmployeeId = null; // Track editing mode / Отслеживаем режим редактирования
+let currentEmployees = [];
 
 function employeeText(key, fallback = "") {
     if (typeof translate === "function") {
@@ -13,6 +14,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (employeeForm) {
         employeeForm.addEventListener("submit", handleEmployeeSubmit);
+    }
+    const tableBody = document.getElementById("employees-table-body");
+    if (tableBody) {
+        tableBody.addEventListener("click", handleEmployeesTableClick);
     }
 
     loadEmployees();
@@ -30,6 +35,7 @@ async function loadEmployees() {
         }
 
         const employees = await response.json();
+        currentEmployees = employees;
         renderEmployeesTable(employees);
     } catch (error) {
         console.error("Load employees error:", error);
@@ -159,7 +165,10 @@ function editEmployee(employee) {
 
 // Delete employee / Удаляем сотрудника
 async function deleteEmployee(employeeId) {
-    const isConfirmed = confirm(employeeText("msg_confirm_delete_employee", "Are you sure you want to delete this employee?"));
+    const isConfirmed = await appConfirm(
+        employeeText("msg_confirm_delete_employee", "Are you sure you want to delete this employee?"),
+        { confirmText: employeeText("common_delete", "Delete") }
+    );
 
     if (!isConfirmed) {
         return;
@@ -228,10 +237,10 @@ function renderEmployeesTable(employees) {
 
     tableBody.innerHTML = employees.map(employee => `
         <tr>
-            <td>${employee.id}</td>
-            <td>${employee.full_name}</td>
-            <td>${employee.sex === "male" ? employeeText("employees_sex_male", "Male") : employeeText("employees_sex_female", "Female")}</td>
-            <td>${employee.min_shifts_per_week} / ${employee.target_shifts_per_week} / ${employee.max_shifts_per_week}</td>
+            <td>${Number(employee.id)}</td>
+            <td>${escapeHtml(employee.full_name)}</td>
+            <td>${escapeHtml(employee.sex === "male" ? employeeText("employees_sex_male", "Male") : employeeText("employees_sex_female", "Female"))}</td>
+            <td>${Number(employee.min_shifts_per_week)} / ${Number(employee.target_shifts_per_week)} / ${Number(employee.max_shifts_per_week)}</td>
             <td>${employee.can_work_night ? employeeText("common_yes", "Yes") : employeeText("common_no", "No")}</td>
             <td>${employee.can_work_weekends ? employeeText("common_yes", "Yes") : employeeText("common_no", "No")}</td>
             <td>${employee.can_work_evenings_after_night ? employeeText("common_yes", "Yes") : employeeText("common_no", "No")}</td>
@@ -239,13 +248,15 @@ function renderEmployeesTable(employees) {
             <td>
                 <button
                     class="btn btn-sm btn-warning me-1"
-                    onclick='editEmployee(${JSON.stringify(employee)})'
+                    data-action="edit"
+                    data-employee-id="${Number(employee.id)}"
                 >
                     ${employeeText("employees_edit_button", "Edit")}
                 </button>
                 <button
                     class="btn btn-sm btn-danger"
-                    onclick="deleteEmployee(${employee.id})"
+                    data-action="delete"
+                    data-employee-id="${Number(employee.id)}"
                 >
                     ${employeeText("employees_delete_button", "Delete")}
                 </button>
@@ -254,18 +265,22 @@ function renderEmployeesTable(employees) {
     `).join("");
 }
 
+function handleEmployeesTableClick(event) {
+    const button = event.target.closest("[data-action]");
+    if (!button) return;
+    const employeeId = Number(button.dataset.employeeId);
+    const employee = currentEmployees.find(item => item.id === employeeId);
+
+    if (button.dataset.action === "edit" && employee) {
+        editEmployee(employee);
+    }
+    if (button.dataset.action === "delete") {
+        deleteEmployee(employeeId);
+    }
+}
+
 
 // Show message / Показываем сообщение
 function showMessage(text, type) {
-    const messageBox = document.getElementById("message-box");
-
-    if (!messageBox) {
-        return;
-    }
-
-    messageBox.innerHTML = `
-        <div class="alert alert-${type}" role="alert">
-            ${text}
-        </div>
-    `;
+    renderPageMessage("message-box", text, type || "info");
 }

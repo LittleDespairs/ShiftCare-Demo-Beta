@@ -11,7 +11,7 @@
         Reused across the redesigned pages.
         Используется на всех переделанных страницах.
     -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
 
     <style>
         /* =========================================================
@@ -466,7 +466,7 @@
                                 data-i18n="assignments_add_button">
                                 Assign position
                             </button>
-                            <button type="button" class="btn btn-secondary" onclick="resetAssignmentForm()">
+                            <button id="reset-assignment-form-btn" type="button" class="btn btn-secondary">
                                 Reset
                             </button>
                         </form>
@@ -543,11 +543,12 @@
         </main>
     </div>
 
-    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
 
     <script>
         let allEmployees = [];
         let allPositions = [];
+        let cachedAssignments = [];
         let editingAssignmentKey = null;
 
         function getSavedSidebarState() {
@@ -603,8 +604,7 @@
         }
 
         function showMessage(text, type = "info") {
-            const box = document.getElementById("message-box");
-            box.innerHTML = `<div class="page-message ${type}">${text}</div>`;
+            renderPageMessage("message-box", text, type);
         }
 
         function boolBadge(value) {
@@ -622,6 +622,8 @@
 
             document.getElementById("assignment-form").addEventListener("submit", handleAssignmentSubmit);
             document.getElementById("reload-btn").addEventListener("click", loadAssignmentsPageData);
+            document.getElementById("reset-assignment-form-btn").addEventListener("click", resetAssignmentForm);
+            document.getElementById("assignments-table-body").addEventListener("click", handleAssignmentsTableClick);
 
             await loadAssignmentsPageData();
         });
@@ -646,6 +648,7 @@
                 allEmployees = await employeesResponse.json();
                 allPositions = await positionsResponse.json();
                 const assignments = await assignmentsResponse.json();
+                cachedAssignments = assignments;
 
                 fillEmployeeSelect();
                 fillPositionSelect();
@@ -662,7 +665,7 @@
             select.innerHTML = `
                 <option value="">${t("assignments_select_employee", "Select employee")}</option>
                 ${allEmployees.map(employee => `
-                    <option value="${employee.id}">${employee.full_name}</option>
+                    <option value="${Number(employee.id)}">${escapeHtml(employee.full_name)}</option>
                 `).join("")}
             `;
         }
@@ -673,7 +676,7 @@
             select.innerHTML = `
                 <option value="">${t("assignments_select_position", "Select position")}</option>
                 ${allPositions.map(position => `
-                    <option value="${position.id}">${position.name}</option>
+                    <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
                 `).join("")}
             `;
         }
@@ -733,8 +736,9 @@
         }
 
         async function deleteAssignment(employeeId, positionId) {
-            const isConfirmed = confirm(
-                t("msg_confirm_delete_assignment", "Are you sure you want to remove this assignment?")
+            const isConfirmed = await appConfirm(
+                t("msg_confirm_delete_assignment", "Are you sure you want to remove this assignment?"),
+                { confirmText: t("assignments_delete_button", "Remove") }
             );
 
             if (!isConfirmed) {
@@ -798,24 +802,28 @@
             }
 
             tableBody.innerHTML = assignments.map(item => `
-                <tr>
-                    <td class="strong-cell">${item.employee_name}</td>
-                    <td class="strong-cell">${item.position_name}</td>
+                <tr data-assignment-key="${Number(item.employee_id)}:${Number(item.position_id)}">
+                    <td class="strong-cell">${escapeHtml(item.employee_name)}</td>
+                    <td class="strong-cell">${escapeHtml(item.position_name)}</td>
                     <td>${boolBadge(item.is_primary)}</td>
-                    <td>${item.priority_score}</td>
+                    <td>${Number(item.priority_score)}</td>
                     <td>${boolBadge(item.is_fallback_only)}</td>
                     <td>
                         <div class="table-actions">
                             <button
                                 class="table-btn edit"
-                                onclick='editAssignment(${JSON.stringify(item)})'
+                                data-action="edit"
+                                data-employee-id="${Number(item.employee_id)}"
+                                data-position-id="${Number(item.position_id)}"
                                 type="button"
                             >
                                 ${t("assignments_edit_button", "Edit")}
                             </button>
                             <button
                                 class="table-btn delete"
-                                onclick="deleteAssignment(${item.employee_id}, ${item.position_id})"
+                                data-action="delete"
+                                data-employee-id="${Number(item.employee_id)}"
+                                data-position-id="${Number(item.position_id)}"
                                 type="button"
                             >
                                 ${t("assignments_delete_button", "Remove")}
@@ -824,6 +832,23 @@
                     </td>
                 </tr>
             `).join("");
+        }
+
+        function handleAssignmentsTableClick(event) {
+            const button = event.target.closest("[data-action]");
+            if (!button) return;
+            const employeeId = Number(button.dataset.employeeId);
+            const positionId = Number(button.dataset.positionId);
+            const assignment = cachedAssignments.find(item => (
+                item.employee_id === employeeId && item.position_id === positionId
+            ));
+
+            if (button.dataset.action === "edit" && assignment) {
+                editAssignment(assignment);
+            }
+            if (button.dataset.action === "delete") {
+                deleteAssignment(employeeId, positionId);
+            }
         }
     </script>
 </body>

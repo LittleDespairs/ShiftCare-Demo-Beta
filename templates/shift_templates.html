@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shift Templates - Schedule App</title>
 
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
 
     <style>
         .templates-layout {
@@ -528,10 +528,11 @@
         </main>
     </div>
 
-    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
 
     <script>
         let editingTemplateId = null;
+        let cachedShiftTemplates = [];
 
         function getSavedSidebarState() {
             return localStorage.getItem("scheduleAppSidebar") || "expanded";
@@ -586,8 +587,7 @@
         }
 
         function showMessage(text, type = "info") {
-            const box = document.getElementById("message-box");
-            box.innerHTML = `<div class="page-message ${type}">${text}</div>`;
+            renderPageMessage("message-box", text, type);
         }
 
         function boolBadge(value) {
@@ -615,6 +615,7 @@
 
             form.addEventListener("submit", handleShiftTemplateSubmit);
             reloadButton.addEventListener("click", loadShiftTemplates);
+            document.getElementById("shift-templates-table-body").addEventListener("click", handleShiftTemplatesTableClick);
 
             loadShiftTemplates();
         });
@@ -717,8 +718,9 @@
         }
 
         async function deleteShiftTemplate(templateId) {
-            const isConfirmed = confirm(
-                t("msg_confirm_delete_template", "Are you sure you want to delete this shift template?")
+            const isConfirmed = await appConfirm(
+                t("msg_confirm_delete_template", "Are you sure you want to delete this shift template?"),
+                { confirmText: t("common_delete", "Delete") }
             );
 
             if (!isConfirmed) return;
@@ -766,6 +768,7 @@
                 }
 
                 const templates = await response.json();
+                cachedShiftTemplates = templates;
                 renderShiftTemplatesTable(templates);
             } catch (error) {
                 console.error(error);
@@ -786,12 +789,12 @@
             }
 
             tableBody.innerHTML = templates.map(template => `
-                <tr>
-                    <td>${template.id}</td>
-                    <td class="template-name-cell">${template.name}</td>
-                    <td>${categoryLabel(template.category)}</td>
-                    <td>${template.start_time}</td>
-                    <td>${template.end_time}</td>
+                <tr data-template-id="${Number(template.id)}">
+                    <td>${Number(template.id)}</td>
+                    <td class="template-name-cell">${escapeHtml(template.name)}</td>
+                    <td>${escapeHtml(categoryLabel(template.category))}</td>
+                    <td>${escapeHtml(template.start_time)}</td>
+                    <td>${escapeHtml(template.end_time)}</td>
                     <td>${boolBadge(template.is_overnight)}</td>
                     <td>${boolBadge(template.is_active)}</td>
                     <td>${boolBadge(template.is_split_only)}</td>
@@ -799,7 +802,8 @@
                         <div class="table-actions">
                             <button
                                 class="table-btn edit"
-                                onclick='editShiftTemplate(${JSON.stringify(template)})'
+                                data-action="edit"
+                                data-id="${Number(template.id)}"
                                 type="button"
                             >
                                 ${t("templates_edit_button", "Edit")}
@@ -807,7 +811,8 @@
 
                             <button
                                 class="table-btn delete"
-                                onclick="deleteShiftTemplate(${template.id})"
+                                data-action="delete"
+                                data-id="${Number(template.id)}"
                                 type="button"
                             >
                                 ${t("templates_delete_button", "Delete")}
@@ -816,6 +821,20 @@
                     </td>
                 </tr>
             `).join("");
+        }
+
+        function handleShiftTemplatesTableClick(event) {
+            const button = event.target.closest("[data-action]");
+            if (!button) return;
+            const templateId = Number(button.dataset.id);
+            const template = cachedShiftTemplates.find(item => item.id === templateId);
+
+            if (button.dataset.action === "edit" && template) {
+                editShiftTemplate(template);
+            }
+            if (button.dataset.action === "delete") {
+                deleteShiftTemplate(templateId);
+            }
         }
     </script>
 </body>

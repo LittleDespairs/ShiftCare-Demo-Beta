@@ -11,7 +11,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
 
     <style>
         /* =========================================================
@@ -72,6 +72,51 @@
             border-radius: 18px;
             padding: 18px;
             background: #f8fafc;
+        }
+
+        .generation-settings {
+            margin-top: 22px;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 20px;
+            background: #fff;
+            box-shadow: var(--shadow);
+        }
+
+        .generation-settings-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            margin-bottom: 18px;
+        }
+
+        .generation-settings-title {
+            margin: 0 0 6px;
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .generation-settings-text {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.5;
+            font-size: 0.92rem;
+        }
+
+        .generation-form-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .generation-actions {
+            margin-top: 16px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
         .settings-notes-title {
@@ -167,7 +212,8 @@
         }
 
         @media (max-width: 1100px) {
-            .settings-grid {
+            .settings-grid,
+            .generation-form-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -297,6 +343,116 @@
                 </a>
             </section>
 
+            <section class="generation-settings">
+                <div class="generation-settings-header">
+                    <div>
+                        <h3 class="generation-settings-title" data-i18n="settings_generation_title">Generation rules</h3>
+                        <p class="generation-settings-text" data-i18n="settings_generation_text">
+                            Tune fatigue limits and balancing weights used by auto-generation.
+                        </p>
+                    </div>
+                </div>
+
+                <div id="message-box"></div>
+
+                <form id="generation-settings-form">
+                    <div class="generation-form-grid">
+                        <div>
+                            <label class="form-label" for="max_work_days_per_week" data-i18n="settings_max_work_days">
+                                Max work days per week
+                            </label>
+                            <input id="max_work_days_per_week" class="input" type="number" min="1" max="7" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="max_consecutive_nights" data-i18n="settings_max_nights">
+                                Max consecutive nights
+                            </label>
+                            <input id="max_consecutive_nights" class="input" type="number" min="1" max="7" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="emergency_max_consecutive_nights" data-i18n="settings_emergency_nights">
+                                Emergency night limit
+                            </label>
+                            <input id="emergency_max_consecutive_nights" class="input" type="number" min="1" max="7" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="max_consecutive_split_days" data-i18n="settings_max_splits">
+                                Max consecutive split days
+                            </label>
+                            <input id="max_consecutive_split_days" class="input" type="number" min="1" max="7" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="emergency_max_consecutive_split_days" data-i18n="settings_emergency_splits">
+                                Emergency split limit
+                            </label>
+                            <input id="emergency_max_consecutive_split_days" class="input" type="number" min="1" max="7" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="after_night_evening_penalty" data-i18n="settings_night_evening_penalty">
+                                Night to evening penalty
+                            </label>
+                            <input id="after_night_evening_penalty" class="input" type="number" min="0" max="10000" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="coverage_shortage_gain_weight" data-i18n="settings_shortage_weight">
+                                Coverage shortage weight
+                            </label>
+                            <input id="coverage_shortage_gain_weight" class="input" type="number" min="1" max="1000" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="target_gender_bonus_weight" data-i18n="settings_gender_bonus_weight">
+                                Gender target bonus
+                            </label>
+                            <input id="target_gender_bonus_weight" class="input" type="number" min="0" max="2000" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="balance_missing_min_weight" data-i18n="settings_missing_min_weight">
+                                Missing minimum shift weight
+                            </label>
+                            <input id="balance_missing_min_weight" class="input" type="number" min="0" max="10000" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="balance_target_distance_weight" data-i18n="settings_target_distance_weight">
+                                Target distance weight
+                            </label>
+                            <input id="balance_target_distance_weight" class="input" type="number" min="0" max="10000" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="balance_night_weight" data-i18n="settings_night_weight">
+                                Night balance weight
+                            </label>
+                            <input id="balance_night_weight" class="input" type="number" min="0" max="10000" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="balance_split_weight" data-i18n="settings_split_weight">
+                                Split balance weight
+                            </label>
+                            <input id="balance_split_weight" class="input" type="number" min="0" max="10000" required>
+                        </div>
+                    </div>
+
+                    <div class="generation-actions">
+                        <button id="reload-generation-settings-btn" class="btn btn-secondary" type="button" data-i18n="common_reload">
+                            Reload
+                        </button>
+                        <button class="btn btn-primary" type="submit" data-i18n="settings_save_generation">
+                            Save generation settings
+                        </button>
+                    </div>
+                </form>
+            </section>
+
             <div class="settings-notes">
                 <h3 class="settings-notes-title" data-i18n="settings_notes_title">Notes</h3>
                 <ul>
@@ -319,14 +475,14 @@
                     Documentation
                 </a>
 
-                <a href="/docs/user-guide" class="footer-link" data-i18n="settings_guide_link">
+                <a href="/guide" class="footer-link" data-i18n="settings_guide_link">
                     User guide
                 </a>
             </div>
         </main>
     </div>
 
-    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
 
     <script>
         function getSavedSidebarState() {
@@ -374,9 +530,77 @@
             });
         }
 
+        const generationSettingFields = [
+            "max_work_days_per_week",
+            "max_consecutive_nights",
+            "emergency_max_consecutive_nights",
+            "max_consecutive_split_days",
+            "emergency_max_consecutive_split_days",
+            "after_night_evening_penalty",
+            "coverage_shortage_gain_weight",
+            "target_gender_bonus_weight",
+            "balance_missing_min_weight",
+            "balance_target_distance_weight",
+            "balance_night_weight",
+            "balance_split_weight"
+        ];
+
+        function showMessage(text, type = "info") {
+            renderPageMessage("message-box", text, type);
+        }
+
+        async function loadGenerationSettings() {
+            const response = await fetch("/api/app-settings");
+            if (!response.ok) {
+                showMessage(t("settings_msg_failed_load_generation", "Failed to load generation settings."), "danger");
+                return;
+            }
+
+            const settings = await response.json();
+            generationSettingFields.forEach((field) => {
+                const input = document.getElementById(field);
+                if (input && settings[field] !== undefined) {
+                    input.value = settings[field];
+                }
+            });
+        }
+
+        async function saveGenerationSettings(event) {
+            event.preventDefault();
+
+            const payload = {};
+            generationSettingFields.forEach((field) => {
+                payload[field] = Number(document.getElementById(field).value);
+            });
+
+            const response = await fetch("/api/app-settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                showMessage(error.detail || t("settings_msg_failed_save_generation", "Failed to save generation settings."), "danger");
+                return;
+            }
+
+            const result = await response.json();
+            generationSettingFields.forEach((field) => {
+                const input = document.getElementById(field);
+                if (input && result.settings[field] !== undefined) {
+                    input.value = result.settings[field];
+                }
+            });
+            showMessage(t("settings_msg_generation_saved", "Generation settings saved."), "success");
+        }
+
         document.addEventListener("DOMContentLoaded", () => {
             bindSidebarToggle();
             applySidebarState(getSavedSidebarState());
+            document.getElementById("generation-settings-form").addEventListener("submit", saveGenerationSettings);
+            document.getElementById("reload-generation-settings-btn").addEventListener("click", loadGenerationSettings);
+            loadGenerationSettings();
         });
     </script>
 </body>

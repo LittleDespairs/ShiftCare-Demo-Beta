@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coverage Requirements - Schedule App</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
     <style>
         .form-grid {
             display: grid;
@@ -241,7 +241,7 @@
                         <div>
                             <div class="form-actions">
                                 <button class="btn btn-primary" type="submit" data-i18n="coverage_save_rest_settings">Save settings</button>
-                                <button class="btn btn-secondary" type="button" onclick="loadAppSettings()" data-i18n="common_reload">Reload</button>
+                                <button id="reload-rest-settings-btn" class="btn btn-secondary" type="button" data-i18n="common_reload">Reload</button>
                             </div>
                         </div>
 
@@ -291,7 +291,7 @@
                         </label>
                         <div class="form-actions">
                             <button id="submit-button" class="btn btn-primary" type="submit" data-i18n="coverage_add_button">Add</button>
-                            <button class="btn btn-secondary" type="button" onclick="resetForm()" data-i18n="common_reset">Reset</button>
+                            <button id="reset-coverage-form-btn" class="btn btn-secondary" type="button" data-i18n="common_reset">Reset</button>
                         </div>
                     </div>
                     </form>
@@ -323,7 +323,7 @@
         </main>
     </div>
 
-    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
     <script>
         let editingRequirementId = null;
         let positions = [];
@@ -332,6 +332,9 @@
         document.addEventListener("DOMContentLoaded", async () => {
             document.getElementById("coverage-form").addEventListener("submit", handleSubmit);
             document.getElementById("rest-settings-form").addEventListener("submit", saveAppSettings);
+            document.getElementById("reload-rest-settings-btn").addEventListener("click", loadAppSettings);
+            document.getElementById("reset-coverage-form-btn").addEventListener("click", resetForm);
+            document.getElementById("coverage-table-body").addEventListener("click", handleCoverageTableClick);
             await loadAppSettings();
             await loadPositions();
             await loadCoverageRequirements();
@@ -350,8 +353,7 @@
         }
 
         function showMessage(text, type = "info") {
-            const box = document.getElementById("message-box");
-            box.innerHTML = `<div class="page-message ${type}">${text}</div>`;
+            renderPageMessage("message-box", text, type);
         }
 
         function boolText(value) {
@@ -413,7 +415,7 @@
             positions = await response.json();
             const select = document.getElementById("position_id");
             select.innerHTML = positions
-                .map(position => `<option value="${position.id}">${position.name}</option>`)
+                .map(position => `<option value="${Number(position.id)}">${escapeHtml(position.name)}</option>`)
                 .join("");
         }
 
@@ -492,7 +494,11 @@
         }
 
         async function deleteRequirement(requirementId) {
-            if (!confirm(t("coverage_msg_confirm_delete", "Delete coverage requirement?"))) return;
+            const isConfirmed = await appConfirm(
+                t("coverage_msg_confirm_delete", "Delete coverage requirement?"),
+                { confirmText: t("common_delete", "Delete") }
+            );
+            if (!isConfirmed) return;
 
             const response = await fetch(`/api/coverage-requirements/${requirementId}`, {
                 method: "DELETE"
@@ -534,22 +540,37 @@
             }
 
             body.innerHTML = requirements.map(requirement => `
-                <tr>
-                    <td>${requirement.id}</td>
-                    <td>${requirement.position_name || requirement.position_id}</td>
-                    <td>${requirement.start_time} - ${requirement.end_time}</td>
-                    <td>${requirement.required_total}</td>
-                    <td>${requirement.required_female_min}</td>
-                    <td>${requirement.required_male_min}</td>
-                    <td>${boolText(requirement.is_overnight)}</td>
+                <tr data-requirement-id="${Number(requirement.id)}">
+                    <td>${Number(requirement.id)}</td>
+                    <td>${escapeHtml(requirement.position_name || requirement.position_id)}</td>
+                    <td>${escapeHtml(requirement.start_time)} - ${escapeHtml(requirement.end_time)}</td>
+                    <td>${Number(requirement.required_total)}</td>
+                    <td>${Number(requirement.required_female_min)}</td>
+                    <td>${Number(requirement.required_male_min)}</td>
+                    <td>${escapeHtml(boolText(requirement.is_overnight))}</td>
                     <td>
                         <div class="table-actions">
-                            <button class="table-btn edit" type="button" onclick='editRequirement(${JSON.stringify(requirement)})'>${t("common_edit", "Edit")}</button>
-                            <button class="table-btn delete" type="button" onclick="deleteRequirement(${requirement.id})">${t("common_delete", "Delete")}</button>
+                            <button class="table-btn edit" type="button" data-action="edit" data-id="${Number(requirement.id)}">${t("common_edit", "Edit")}</button>
+                            <button class="table-btn delete" type="button" data-action="delete" data-id="${Number(requirement.id)}">${t("common_delete", "Delete")}</button>
                         </div>
                     </td>
                 </tr>
             `).join("");
+        }
+
+        function handleCoverageTableClick(event) {
+            const button = event.target.closest("[data-action]");
+            if (!button) return;
+            const row = button.closest("tr");
+            const requirementId = Number(button.dataset.id || row?.dataset.requirementId);
+            const requirement = cachedCoverageRequirements.find(item => item.id === requirementId);
+
+            if (button.dataset.action === "edit" && requirement) {
+                editRequirement(requirement);
+            }
+            if (button.dataset.action === "delete") {
+                deleteRequirement(requirementId);
+            }
         }
     </script>
 </body>

@@ -11,7 +11,7 @@
         This file is reused across the whole app.
         Этот файл используется во всём приложении.
     -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=0.11.3_alpha">
 
     <style>
         /* =========================================================
@@ -619,7 +619,7 @@
     </div>
 
     <!-- Shared i18n / Общий i18n -->
-    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/i18n.js?v=0.11.3_alpha"></script>
 
     <script>
         /* =========================================================
@@ -685,10 +685,7 @@
            чтобы он соответствовал новому стилю.
         */
         window.showMessage = function (text, type) {
-            const messageBox = document.getElementById("message-box");
-            if (!messageBox) return;
-
-            messageBox.innerHTML = `<div class="page-message ${type || "info"}">${text}</div>`;
+            renderPageMessage("message-box", text, type || "info");
         };
 
         /* =========================================================
@@ -735,10 +732,10 @@
 
             tableBody.innerHTML = employees.map(employee => `
                 <tr>
-                    <td>${employee.id}</td>
-                    <td class="employee-name-cell">${employee.full_name}</td>
-                    <td>${employeeSexLabel(employee.sex)}</td>
-                    <td>${employee.min_shifts_per_week} / ${employee.target_shifts_per_week} / ${employee.max_shifts_per_week}</td>
+                    <td>${Number(employee.id)}</td>
+                    <td class="employee-name-cell">${escapeHtml(employee.full_name)}</td>
+                    <td>${escapeHtml(employeeSexLabel(employee.sex))}</td>
+                    <td>${Number(employee.min_shifts_per_week)} / ${Number(employee.target_shifts_per_week)} / ${Number(employee.max_shifts_per_week)}</td>
                     <td>${boolBadge(employee.can_work_night)}</td>
                     <td>${boolBadge(employee.can_work_weekends)}</td>
                     <td>${boolBadge(employee.can_work_evenings_after_night)}</td>
@@ -747,7 +744,8 @@
                         <div class="table-actions">
                             <button
                                 class="table-btn edit"
-                                onclick='editEmployee(${JSON.stringify(employee)})'
+                                data-action="edit"
+                                data-employee-id="${Number(employee.id)}"
                                 type="button"
                             >
                                 ${typeof translate === "function" ? translate("employees_edit_button") : "Edit"}
@@ -755,7 +753,8 @@
 
                             <button
                                 class="table-btn delete"
-                                onclick="deleteEmployee(${employee.id})"
+                                data-action="delete"
+                                data-employee-id="${Number(employee.id)}"
                                 type="button"
                             >
                                 ${typeof translate === "function" ? translate("employees_delete_button") : "Delete"}
@@ -815,7 +814,7 @@
         We keep using your current JS file.
         Мы продолжаем использовать твой текущий JS-файл.
     -->
-    <script src="/static/js/employees.js"></script>
+    <script src="/static/js/employees.js?v=0.11.3_alpha"></script>
 </body>
 
 </html>

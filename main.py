@@ -30,9 +30,9 @@ tags_metadata = [
 ]
 
 app = FastAPI(
-    title="Schedule App - Nursing Staff Scheduling 0.11.2_alpha",
+    title="Schedule App - Nursing Staff Scheduling 0.11.3_alpha",
     description="Web application for nursing staff scheduling",
-    version="0.11.2_alpha",
+    version="0.11.3_alpha",
     openapi_tags=tags_metadata,
 )
 
@@ -221,6 +221,29 @@ class AppSettingsUpdate(BaseModel):
         le=24 * 60,
     )
     schedule_coverage_display_mode: Literal["category", "interval"] | None = None
+    max_work_days_per_week: int | None = Field(default=None, ge=1, le=7)
+    max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
+    emergency_max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
+    max_consecutive_split_days: int | None = Field(default=None, ge=1, le=7)
+    emergency_max_consecutive_split_days: int | None = Field(default=None, ge=1, le=7)
+    after_night_evening_penalty: int | None = Field(default=None, ge=0, le=10000)
+    consecutive_night_penalty: int | None = Field(default=None, ge=0, le=10000)
+    consecutive_split_penalty: int | None = Field(default=None, ge=0, le=10000)
+    coverage_shortage_gain_weight: int | None = Field(default=None, ge=1, le=1000)
+    coverage_overage_penalty_weight: int | None = Field(default=None, ge=0, le=1000)
+    target_gender_bonus_weight: int | None = Field(default=None, ge=0, le=2000)
+    wrong_gender_penalty_weight: int | None = Field(default=None, ge=0, le=2000)
+    balance_missing_min_weight: int | None = Field(default=None, ge=0, le=10000)
+    balance_target_distance_weight: int | None = Field(default=None, ge=0, le=10000)
+    balance_over_target_weight: int | None = Field(default=None, ge=0, le=10000)
+    balance_over_max_weight: int | None = Field(default=None, ge=0, le=50000)
+    balance_worked_day_weight: int | None = Field(default=None, ge=0, le=10000)
+    balance_night_weight: int | None = Field(default=None, ge=0, le=10000)
+    balance_split_weight: int | None = Field(default=None, ge=0, le=10000)
+    balance_consecutive_night_weight: int | None = Field(default=None, ge=0, le=10000)
+    balance_consecutive_split_weight: int | None = Field(default=None, ge=0, le=10000)
+    balance_excess_night_weight: int | None = Field(default=None, ge=0, le=50000)
+    balance_excess_split_weight: int | None = Field(default=None, ge=0, le=50000)
 
 
 @dataclass(frozen=True)
@@ -301,6 +324,29 @@ def get_app_settings(connection) -> dict:
             if raw_settings.get("schedule_coverage_display_mode") in {"category", "interval"}
             else "interval"
         ),
+        "max_work_days_per_week": read_int("max_work_days_per_week", MAX_WORK_DAYS_PER_WEEK),
+        "max_consecutive_nights": read_int("max_consecutive_nights", MAX_CONSECUTIVE_NIGHTS),
+        "emergency_max_consecutive_nights": read_int("emergency_max_consecutive_nights", EMERGENCY_MAX_CONSECUTIVE_NIGHTS),
+        "max_consecutive_split_days": read_int("max_consecutive_split_days", MAX_CONSECUTIVE_SPLIT_DAYS),
+        "emergency_max_consecutive_split_days": read_int("emergency_max_consecutive_split_days", EMERGENCY_MAX_CONSECUTIVE_SPLIT_DAYS),
+        "after_night_evening_penalty": read_int("after_night_evening_penalty", AFTER_NIGHT_EVENING_PENALTY),
+        "consecutive_night_penalty": read_int("consecutive_night_penalty", 500),
+        "consecutive_split_penalty": read_int("consecutive_split_penalty", 450),
+        "coverage_shortage_gain_weight": read_int("coverage_shortage_gain_weight", 100),
+        "coverage_overage_penalty_weight": read_int("coverage_overage_penalty_weight", 25),
+        "target_gender_bonus_weight": read_int("target_gender_bonus_weight", 250),
+        "wrong_gender_penalty_weight": read_int("wrong_gender_penalty_weight", 120),
+        "balance_missing_min_weight": read_int("balance_missing_min_weight", 300),
+        "balance_target_distance_weight": read_int("balance_target_distance_weight", 70),
+        "balance_over_target_weight": read_int("balance_over_target_weight", 80),
+        "balance_over_max_weight": read_int("balance_over_max_weight", 10000),
+        "balance_worked_day_weight": read_int("balance_worked_day_weight", 15),
+        "balance_night_weight": read_int("balance_night_weight", 60),
+        "balance_split_weight": read_int("balance_split_weight", 55),
+        "balance_consecutive_night_weight": read_int("balance_consecutive_night_weight", 120),
+        "balance_consecutive_split_weight": read_int("balance_consecutive_split_weight", 100),
+        "balance_excess_night_weight": read_int("balance_excess_night_weight", 2000),
+        "balance_excess_split_weight": read_int("balance_excess_split_weight", 1800),
     }
 
 
@@ -532,23 +578,24 @@ def count_consecutive_days_after(connection, employee_id: int, date_string: str,
 
 
 def get_fatigue_penalty(connection, employee_id: int, date_string: str, template: dict) -> int:
+    app_settings = get_app_settings(connection)
     penalty = 0
 
     if had_previous_night(connection, employee_id, date_string):
         if template["category"] == "evening":
-            penalty += AFTER_NIGHT_EVENING_PENALTY
+            penalty += app_settings["after_night_evening_penalty"]
         elif template["category"] == "night":
-            penalty += AFTER_NIGHT_EVENING_PENALTY // 2
+            penalty += app_settings["after_night_evening_penalty"] // 2
 
     if would_have_night_day(connection, employee_id, date_string, template):
         previous_nights = count_consecutive_days_before(connection, employee_id, date_string, employee_has_night_on_date)
         next_nights = count_consecutive_days_after(connection, employee_id, date_string, employee_has_night_on_date)
-        penalty += (previous_nights + next_nights) * 500
+        penalty += (previous_nights + next_nights) * app_settings["consecutive_night_penalty"]
 
     if would_have_split_day(connection, employee_id, date_string, template):
         previous_splits = count_consecutive_days_before(connection, employee_id, date_string, employee_has_split_day)
         next_splits = count_consecutive_days_after(connection, employee_id, date_string, employee_has_split_day)
-        penalty += (previous_splits + next_splits) * 450
+        penalty += (previous_splits + next_splits) * app_settings["consecutive_split_penalty"]
 
     return penalty
 
@@ -653,7 +700,7 @@ def can_employee_take_template(
     worked_dates.update(entry["date"] for entry in staged_week_entries)
     projected_worked_dates = set(worked_dates)
     projected_worked_dates.add(date_string)
-    if len(projected_worked_dates) > MAX_WORK_DAYS_PER_WEEK:
+    if len(projected_worked_dates) > app_settings["max_work_days_per_week"]:
         return False
 
     cursor = connection.cursor()
@@ -689,6 +736,8 @@ def can_employee_take_template(
         if not employee["can_work_mornings_and_evenings"]:
             return False
         if template["category"] not in allowed_pair or not existing_categories.issubset(allowed_pair):
+            return False
+        if not template["is_split_only"] or not all(bool(entry["is_split_only"]) for entry in existing_entries):
             return False
         if get_week_preference(connection, employee["id"], date_string) == "no_morning_evening_combo":
             return False
@@ -731,7 +780,11 @@ def can_employee_take_template(
         previous_nights = count_consecutive_days_before(connection, employee["id"], date_string, employee_has_night_on_date)
         next_nights = count_consecutive_days_after(connection, employee["id"], date_string, employee_has_night_on_date)
         projected_nights = previous_nights + 1 + next_nights
-        allowed_nights = MAX_CONSECUTIVE_NIGHTS if fatigue_relaxation == 0 else EMERGENCY_MAX_CONSECUTIVE_NIGHTS
+        allowed_nights = (
+            app_settings["max_consecutive_nights"]
+            if fatigue_relaxation == 0
+            else app_settings["emergency_max_consecutive_nights"]
+        )
         if projected_nights > allowed_nights:
             return False
 
@@ -741,7 +794,11 @@ def can_employee_take_template(
         previous_splits = count_consecutive_days_before(connection, employee["id"], date_string, employee_has_split_day)
         next_splits = count_consecutive_days_after(connection, employee["id"], date_string, employee_has_split_day)
         projected_splits = previous_splits + 1 + next_splits
-        allowed_splits = MAX_CONSECUTIVE_SPLIT_DAYS if fatigue_relaxation == 0 else EMERGENCY_MAX_CONSECUTIVE_SPLIT_DAYS
+        allowed_splits = (
+            app_settings["max_consecutive_split_days"]
+            if fatigue_relaxation == 0
+            else app_settings["emergency_max_consecutive_split_days"]
+        )
         if projected_splits > allowed_splits:
             return False
 
@@ -778,7 +835,7 @@ def explain_employee_template_rejection(
     worked_dates.update(entry["date"] for entry in staged_week_entries)
     projected_worked_dates = set(worked_dates)
     projected_worked_dates.add(date_string)
-    if len(projected_worked_dates) > MAX_WORK_DAYS_PER_WEEK:
+    if len(projected_worked_dates) > app_settings["max_work_days_per_week"]:
         return "mandatory weekly day off would be violated"
 
     cursor = connection.cursor()
@@ -815,6 +872,8 @@ def explain_employee_template_rejection(
             return "employee cannot work morning and evening on the same day"
         if template["category"] not in allowed_pair or not existing_categories.issubset(allowed_pair):
             return "employee already has another shift type that cannot be paired"
+        if not template["is_split_only"] or not all(bool(entry["is_split_only"]) for entry in existing_entries):
+            return "morning-evening combo requires split-only templates"
         if get_week_preference(connection, employee["id"], date_string) == "no_morning_evening_combo":
             return "weekly preference blocks morning-evening combo"
         if len(existing_entries) >= 2:
@@ -856,7 +915,11 @@ def explain_employee_template_rejection(
         previous_nights = count_consecutive_days_before(connection, employee["id"], date_string, employee_has_night_on_date)
         next_nights = count_consecutive_days_after(connection, employee["id"], date_string, employee_has_night_on_date)
         projected_nights = previous_nights + 1 + next_nights
-        allowed_nights = MAX_CONSECUTIVE_NIGHTS if fatigue_relaxation == 0 else EMERGENCY_MAX_CONSECUTIVE_NIGHTS
+        allowed_nights = (
+            app_settings["max_consecutive_nights"]
+            if fatigue_relaxation == 0
+            else app_settings["emergency_max_consecutive_nights"]
+        )
         if projected_nights > allowed_nights:
             return "too many consecutive night shifts"
 
@@ -866,7 +929,11 @@ def explain_employee_template_rejection(
         previous_splits = count_consecutive_days_before(connection, employee["id"], date_string, employee_has_split_day)
         next_splits = count_consecutive_days_after(connection, employee["id"], date_string, employee_has_split_day)
         projected_splits = previous_splits + 1 + next_splits
-        allowed_splits = MAX_CONSECUTIVE_SPLIT_DAYS if fatigue_relaxation == 0 else EMERGENCY_MAX_CONSECUTIVE_SPLIT_DAYS
+        allowed_splits = (
+            app_settings["max_consecutive_split_days"]
+            if fatigue_relaxation == 0
+            else app_settings["emergency_max_consecutive_split_days"]
+        )
         if projected_splits > allowed_splits:
             return "too many consecutive split shifts"
 
@@ -974,6 +1041,11 @@ def schedule_page(request: Request):
 @app.get("/settings", tags=["Pages"])
 def settings_page(request: Request):
     return templates.TemplateResponse(request=request, name="settings.html", context={})
+
+
+@app.get("/guide", tags=["Pages"])
+def guide_page(request: Request):
+    return templates.TemplateResponse(request=request, name="guide.html", context={})
 
 
 # =========================
@@ -2062,6 +2134,7 @@ def create_entry_preview(employee: dict, position_id: int, date_string: str, tem
         "start_time": template["start_time"],
         "end_time": template["end_time"],
         "is_overnight": template["is_overnight"],
+        "is_split_only": template["is_split_only"],
         "employee_name": employee["full_name"],
         "employee_sex": employee["sex"],
     }
@@ -2134,6 +2207,7 @@ def choose_best_interval_candidate(
     fatigue_relaxation: int = 0,
     target_slot: dict | None = None,
 ):
+    app_settings = get_app_settings(connection)
     baseline_shortage = coverage_shortage(current_entries, slots)
     baseline_overage = coverage_overage(current_entries, slots)
     target_needs_female = False
@@ -2171,14 +2245,17 @@ def choose_best_interval_candidate(
                 projected_entries = [*current_entries, *previews]
                 shortage_gain = baseline_shortage - coverage_shortage(projected_entries, slots)
                 overage_cost = coverage_overage(projected_entries, slots) - baseline_overage
-                score = shortage_gain * 100 - overage_cost * 25
+                score = (
+                    shortage_gain * app_settings["coverage_shortage_gain_weight"]
+                    - overage_cost * app_settings["coverage_overage_penalty_weight"]
+                )
                 if target_slot is not None:
                     if target_needs_female and employee["sex"] == "female":
-                        score += 250
+                        score += app_settings["target_gender_bonus_weight"]
                     if target_needs_male and employee["sex"] == "male":
-                        score += 250
+                        score += app_settings["target_gender_bonus_weight"]
                     if (target_needs_female and employee["sex"] != "female") or (target_needs_male and employee["sex"] != "male"):
-                        score -= 120
+                        score -= app_settings["wrong_gender_penalty_weight"]
                 if score <= 0:
                     continue
 
@@ -2269,6 +2346,16 @@ def count_candidate_options_for_slot(
 
 def format_slot_time(slot: dict) -> str:
     return f"{slot['start'] // 60:02d}:{slot['start'] % 60:02d}-{slot['end'] // 60 % 24:02d}:{slot['end'] % 60:02d}"
+
+
+def slot_to_report(slot: dict) -> dict:
+    return {
+        "start": f"{slot['start'] // 60:02d}:{slot['start'] % 60:02d}",
+        "end": f"{slot['end'] // 60 % 24:02d}:{slot['end'] % 60:02d}",
+        "required_total": slot["required_total"],
+        "required_female_min": slot["required_female_min"],
+        "required_male_min": slot["required_male_min"],
+    }
 
 
 def summarize_reasons(reason_counts: dict[str, int], limit: int = 4) -> str:
@@ -2373,6 +2460,92 @@ def build_interval_underfilled_message(
         f"men {male}/{slot['required_male_min']}. "
         f"Reasons: {reasons}"
     )
+
+
+def build_interval_underfilled_report(
+    connection,
+    employees: list[dict],
+    templates: list[dict],
+    position_id: int,
+    week_start_date: str,
+    date_string: str,
+    slot: dict,
+    total: int,
+    female: int,
+    male: int,
+) -> dict:
+    require_female = female < slot["required_female_min"]
+    require_male = male < slot["required_male_min"]
+    reasons = explain_unfilled_interval_slot(
+        connection,
+        employees,
+        templates,
+        position_id,
+        date_string,
+        week_start_date,
+        slot,
+        require_female=require_female,
+        require_male=require_male,
+    )
+    return {
+        "kind": "interval",
+        "date": date_string,
+        "slot": slot_to_report(slot),
+        "actual": {
+            "total": total,
+            "female": female,
+            "male": male,
+        },
+        "missing": {
+            "total": max(0, slot["required_total"] - total),
+            "female": max(0, slot["required_female_min"] - female),
+            "male": max(0, slot["required_male_min"] - male),
+        },
+        "reasons": reasons,
+    }
+
+
+def build_legacy_underfilled_report(
+    connection,
+    employees: list[dict],
+    templates: list[dict],
+    position_id: int,
+    week_start_date: str,
+    date_string: str,
+    requirement: dict,
+    total: int,
+    female: int,
+    male: int,
+) -> dict:
+    require_female = female < requirement["required_female_min"]
+    require_male = male < requirement["required_male_min"]
+    reasons = explain_unfilled_legacy_category(
+        connection,
+        employees,
+        templates,
+        position_id,
+        date_string,
+        week_start_date,
+        requirement["shift_category"],
+        require_female=require_female,
+        require_male=require_male,
+    )
+    return {
+        "kind": "legacy_category",
+        "date": date_string,
+        "shift_category": requirement["shift_category"],
+        "actual": {
+            "total": total,
+            "female": female,
+            "male": male,
+        },
+        "missing": {
+            "total": max(0, requirement["required_total"] - total),
+            "female": max(0, requirement["required_female_min"] - female),
+            "male": max(0, requirement["required_male_min"] - male),
+        },
+        "reasons": reasons,
+    }
 
 
 def explain_unfilled_legacy_category(
@@ -2490,6 +2663,165 @@ def build_week_shortage_queue(
     return queue
 
 
+def build_generation_feasibility_report(
+    connection,
+    employees: list[dict],
+    templates: list[dict],
+    coverage_requirements: list[dict],
+    legacy_requirements: list[dict],
+    position_id: int,
+    week_start_date: str,
+    week_dates: list[str],
+) -> dict:
+    issues: list[dict] = []
+    employee_count = len(employees)
+    female_count = sum(1 for employee in employees if employee["sex"] == "female")
+    male_count = sum(1 for employee in employees if employee["sex"] == "male")
+
+    if coverage_requirements:
+        slots = build_atomic_slots(coverage_requirements, templates)
+        if not slots:
+            issues.append({
+                "severity": "blocking",
+                "kind": "coverage",
+                "message": "No active coverage slots can be built from coverage requirements.",
+            })
+
+        for slot in slots:
+            covering_templates = [template for template in templates if template_covers_slot(template, slot)]
+            if not covering_templates:
+                issues.append({
+                    "severity": "blocking",
+                    "kind": "template",
+                    "slot": slot_to_report(slot),
+                    "message": "No active shift template covers this required interval.",
+                })
+            if slot["required_total"] > employee_count:
+                issues.append({
+                    "severity": "blocking",
+                    "kind": "staff",
+                    "slot": slot_to_report(slot),
+                    "message": "Required staff is greater than employees assigned to the position.",
+                })
+            if slot["required_female_min"] > female_count:
+                issues.append({
+                    "severity": "blocking",
+                    "kind": "female_staff",
+                    "slot": slot_to_report(slot),
+                    "message": "Required female staff is greater than available female employees.",
+                })
+            if slot["required_male_min"] > male_count:
+                issues.append({
+                    "severity": "blocking",
+                    "kind": "male_staff",
+                    "slot": slot_to_report(slot),
+                    "message": "Required male staff is greater than available male employees.",
+                })
+
+        for date_string in week_dates:
+            for slot in slots:
+                strict_candidates = count_candidate_options_for_slot(
+                    connection,
+                    employees,
+                    templates,
+                    position_id,
+                    date_string,
+                    week_start_date,
+                    slot,
+                    fatigue_relaxation=0,
+                )
+                emergency_candidates = strict_candidates or count_candidate_options_for_slot(
+                    connection,
+                    employees,
+                    templates,
+                    position_id,
+                    date_string,
+                    week_start_date,
+                    slot,
+                    fatigue_relaxation=1,
+                )
+                if emergency_candidates == 0:
+                    issues.append({
+                        "severity": "blocking",
+                        "kind": "candidate",
+                        "date": date_string,
+                        "slot": slot_to_report(slot),
+                        "message": "No eligible employee/template candidate can cover this interval.",
+                    })
+                elif strict_candidates == 0:
+                    issues.append({
+                        "severity": "warning",
+                        "kind": "emergency_relaxation",
+                        "date": date_string,
+                        "slot": slot_to_report(slot),
+                        "message": "This interval is only coverable with emergency fatigue relaxation.",
+                    })
+    else:
+        for requirement in legacy_requirements:
+            category_templates = [
+                template
+                for template in templates
+                if template["category"] == requirement["shift_category"] and not template["is_split_only"]
+            ]
+            if not category_templates:
+                issues.append({
+                    "severity": "blocking",
+                    "kind": "template",
+                    "shift_category": requirement["shift_category"],
+                    "message": "No active non-split template exists for this legacy shift requirement.",
+                })
+            if requirement["required_total"] > employee_count:
+                issues.append({
+                    "severity": "blocking",
+                    "kind": "staff",
+                    "shift_category": requirement["shift_category"],
+                    "message": "Required staff is greater than employees assigned to the position.",
+                })
+            if requirement["required_female_min"] > female_count:
+                issues.append({
+                    "severity": "blocking",
+                    "kind": "female_staff",
+                    "shift_category": requirement["shift_category"],
+                    "message": "Required female staff is greater than available female employees.",
+                })
+            if requirement["required_male_min"] > male_count:
+                issues.append({
+                    "severity": "blocking",
+                    "kind": "male_staff",
+                    "shift_category": requirement["shift_category"],
+                    "message": "Required male staff is greater than available male employees.",
+                })
+
+    for issue in issues:
+        issue["constraint_type"] = "hard" if issue["severity"] == "blocking" else "soft"
+
+    hard_constraints = [issue for issue in issues if issue["constraint_type"] == "hard"]
+    soft_constraints = [issue for issue in issues if issue["constraint_type"] == "soft"]
+
+    return {
+        "status": "blocking" if hard_constraints else "ok",
+        "issues": issues,
+        "hard_constraints": hard_constraints,
+        "soft_constraints": soft_constraints,
+    }
+
+
+def format_feasibility_issue(issue: dict) -> str:
+    parts = []
+    if issue.get("date"):
+        parts.append(str(issue["date"]))
+    if issue.get("slot"):
+        slot = issue["slot"]
+        parts.append(f"{slot['start']}-{slot['end']}")
+    if issue.get("shift_category"):
+        parts.append(str(issue["shift_category"]))
+
+    prefix = " ".join(parts)
+    if prefix:
+        return f"Pre-check {issue['severity']}: {prefix}: {issue['message']}"
+    return f"Pre-check {issue['severity']}: {issue['message']}"
+
+
 def fill_week_by_interval_coverage(
     connection,
     cursor,
@@ -2501,6 +2833,7 @@ def fill_week_by_interval_coverage(
     week_dates: list[str],
     created_entries: list[dict],
     errors: list[str],
+    unfilled_reports: list[dict],
 ):
     slots = build_atomic_slots(requirements, templates)
     if not slots:
@@ -2559,6 +2892,18 @@ def fill_week_by_interval_coverage(
         for slot in slots:
             total, female, male = count_slot_coverage(final_entries, slot)
             if total < slot["required_total"] or female < slot["required_female_min"] or male < slot["required_male_min"]:
+                unfilled_reports.append(build_interval_underfilled_report(
+                    connection,
+                    employees,
+                    templates,
+                    position_id,
+                    week_start_date,
+                    date_string,
+                    slot,
+                    total,
+                    female,
+                    male,
+                ))
                 errors.append(build_interval_underfilled_message(
                     connection,
                     employees,
@@ -2584,6 +2929,7 @@ def fill_day_by_interval_coverage(
     date_string: str,
     created_entries: list[dict],
     errors: list[str],
+    unfilled_reports: list[dict],
 ):
     slots = build_atomic_slots(requirements, templates)
     if not slots:
@@ -2624,6 +2970,18 @@ def fill_day_by_interval_coverage(
         for slot in slots:
             total, female, male = count_slot_coverage(final_entries, slot)
             if total < slot["required_total"] or female < slot["required_female_min"] or male < slot["required_male_min"]:
+                unfilled_reports.append(build_interval_underfilled_report(
+                    connection,
+                    employees,
+                    templates,
+                    position_id,
+                    week_start_date,
+                    date_string,
+                    slot,
+                    total,
+                    female,
+                    male,
+                ))
                 errors.append(build_interval_underfilled_message(
                     connection,
                     employees,
@@ -2649,6 +3007,7 @@ def fill_day_by_legacy_categories(
     date_string: str,
     created_entries: list[dict],
     errors: list[str],
+    unfilled_reports: list[dict],
 ):
     for requirement in requirements:
         category = requirement["shift_category"]
@@ -2693,22 +3052,24 @@ def fill_day_by_legacy_categories(
                         errors.append(f"{date_string} {category}: emergency fatigue relaxation was used to cover a slot")
                     break
             if not candidates:
-                reasons = explain_unfilled_legacy_category(
+                report = build_legacy_underfilled_report(
                     connection,
                     employees,
                     templates,
                     position_id,
-                    date_string,
                     week_start_date,
-                    category,
-                    require_female=require_female,
-                    require_male=require_male,
+                    date_string,
+                    requirement,
+                    len(entries),
+                    female_count,
+                    male_count,
                 )
+                unfilled_reports.append(report)
                 errors.append(
                     f"{date_string} {category} underfilled: staff {len(entries)}/{requirement['required_total']}, "
                     f"women {female_count}/{requirement['required_female_min']}, "
                     f"men {male_count}/{requirement['required_male_min']}. "
-                    f"Reasons: {reasons}"
+                    f"Reasons: {report['reasons']}"
                 )
                 break
             candidates.sort()
@@ -2731,23 +3092,24 @@ def max_consecutive_in_week(connection, employee_id: int, week_dates: list[str],
 
 
 def append_fatigue_summary_warnings(connection, employees: list[dict], week_dates: list[str], week_start_date: str, errors: list[str]) -> None:
+    app_settings = get_app_settings(connection)
     for employee in employees:
         worked_days = len(get_employee_week_worked_dates(connection, employee["id"], week_start_date))
-        if worked_days > MAX_WORK_DAYS_PER_WEEK:
+        if worked_days > app_settings["max_work_days_per_week"]:
             errors.append(
                 f"{employee['full_name']} has {worked_days} worked days in the week; mandatory weekly day off is violated"
             )
 
         max_nights = max_consecutive_in_week(connection, employee["id"], week_dates, employee_has_night_on_date)
-        if max_nights > MAX_CONSECUTIVE_NIGHTS:
+        if max_nights > app_settings["max_consecutive_nights"]:
             errors.append(
-                f"{employee['full_name']} has {max_nights} consecutive night days; normal limit is {MAX_CONSECUTIVE_NIGHTS}"
+                f"{employee['full_name']} has {max_nights} consecutive night days; normal limit is {app_settings['max_consecutive_nights']}"
             )
 
         max_splits = max_consecutive_in_week(connection, employee["id"], week_dates, employee_has_split_day)
-        if max_splits > MAX_CONSECUTIVE_SPLIT_DAYS:
+        if max_splits > app_settings["max_consecutive_split_days"]:
             errors.append(
-                f"{employee['full_name']} has {max_splits} consecutive split days; normal limit is {MAX_CONSECUTIVE_SPLIT_DAYS}"
+                f"{employee['full_name']} has {max_splits} consecutive split days; normal limit is {app_settings['max_consecutive_split_days']}"
             )
 
 
@@ -2808,7 +3170,7 @@ def max_consecutive_projected(entries: list[dict], week_dates: list[str], predic
     return best
 
 
-def projected_employee_score(employee: dict, entries: list[dict], week_dates: list[str]) -> int:
+def projected_employee_score(employee: dict, entries: list[dict], week_dates: list[str], app_settings: dict) -> int:
     week_count = len(entries)
     worked_dates = {entry["date"] for entry in entries}
     night_count = sum(1 for entry in entries if entry_category(entry) == "night")
@@ -2829,18 +3191,18 @@ def projected_employee_score(employee: dict, entries: list[dict], week_dates: li
     )
 
     score = 0
-    score += max(0, employee["min_shifts_per_week"] - week_count) * 300
-    score += abs(employee["target_shifts_per_week"] - week_count) * 70
-    score += max(0, week_count - employee["target_shifts_per_week"]) * 80
-    score += max(0, week_count - employee["max_shifts_per_week"]) * 10000
-    score += len(worked_dates) * 15
-    score += max(0, len(worked_dates) - MAX_WORK_DAYS_PER_WEEK) * 10000
-    score += night_count * 60
-    score += split_day_count * 55
-    score += max_nights * 120
-    score += max_splits * 100
-    score += max(0, max_nights - MAX_CONSECUTIVE_NIGHTS) * 2000
-    score += max(0, max_splits - MAX_CONSECUTIVE_SPLIT_DAYS) * 1800
+    score += max(0, employee["min_shifts_per_week"] - week_count) * app_settings["balance_missing_min_weight"]
+    score += abs(employee["target_shifts_per_week"] - week_count) * app_settings["balance_target_distance_weight"]
+    score += max(0, week_count - employee["target_shifts_per_week"]) * app_settings["balance_over_target_weight"]
+    score += max(0, week_count - employee["max_shifts_per_week"]) * app_settings["balance_over_max_weight"]
+    score += len(worked_dates) * app_settings["balance_worked_day_weight"]
+    score += max(0, len(worked_dates) - app_settings["max_work_days_per_week"]) * app_settings["balance_over_max_weight"]
+    score += night_count * app_settings["balance_night_weight"]
+    score += split_day_count * app_settings["balance_split_weight"]
+    score += max_nights * app_settings["balance_consecutive_night_weight"]
+    score += max_splits * app_settings["balance_consecutive_split_weight"]
+    score += max(0, max_nights - app_settings["max_consecutive_nights"]) * app_settings["balance_excess_night_weight"]
+    score += max(0, max_splits - app_settings["max_consecutive_split_days"]) * app_settings["balance_excess_split_weight"]
     return score
 
 
@@ -2928,6 +3290,7 @@ def post_optimize_generated_schedule(
     created_entries: list[dict],
     errors: list[str],
 ) -> int:
+    app_settings = get_app_settings(connection)
     employee_by_id = {employee["id"]: employee for employee in employees}
     groups = build_generated_assignment_groups(connection, created_entries, position_id)
     moved_count = 0
@@ -2950,8 +3313,8 @@ def post_optimize_generated_schedule(
             week_start_date,
             exclude_entry_ids=entry_ids,
         )
-        original_score_before = projected_employee_score(original_employee, original_entries_before, week_dates)
-        original_score_after = projected_employee_score(original_employee, original_entries_after, week_dates)
+        original_score_before = projected_employee_score(original_employee, original_entries_before, week_dates, app_settings)
+        original_score_after = projected_employee_score(original_employee, original_entries_after, week_dates, app_settings)
 
         best_employee = None
         best_improvement = 0
@@ -2978,8 +3341,18 @@ def post_optimize_generated_schedule(
                 week_start_date,
                 staged_entries=previews,
             )
-            before_score = original_score_before + projected_employee_score(candidate, candidate_entries_before, week_dates)
-            after_score = original_score_after + projected_employee_score(candidate, candidate_entries_after, week_dates)
+            before_score = original_score_before + projected_employee_score(
+                candidate,
+                candidate_entries_before,
+                week_dates,
+                app_settings,
+            )
+            after_score = original_score_after + projected_employee_score(
+                candidate,
+                candidate_entries_after,
+                week_dates,
+                app_settings,
+            )
             improvement = before_score - after_score
 
             if improvement > best_improvement:
@@ -3028,6 +3401,20 @@ def auto_generate_schedule(request_data: AutoGenerateScheduleRequest):
 
         created_entries: list[dict] = []
         errors: list[str] = []
+        unfilled_reports: list[dict] = []
+        feasibility_report = build_generation_feasibility_report(
+            connection,
+            employees,
+            templates_list,
+            coverage_requirements,
+            legacy_requirements,
+            request_data.position_id,
+            request_data.week_start_date,
+            week_dates,
+        )
+        for issue in feasibility_report["issues"]:
+            errors.append(format_feasibility_issue(issue))
+
         if coverage_requirements:
             fill_week_by_interval_coverage(
                 connection,
@@ -3040,6 +3427,7 @@ def auto_generate_schedule(request_data: AutoGenerateScheduleRequest):
                 week_dates,
                 created_entries,
                 errors,
+                unfilled_reports,
             )
         else:
             for date_string in week_dates:
@@ -3054,6 +3442,7 @@ def auto_generate_schedule(request_data: AutoGenerateScheduleRequest):
                     date_string,
                     created_entries,
                     errors,
+                    unfilled_reports,
                 )
 
         optimization_moved_count = post_optimize_generated_schedule(
@@ -3083,6 +3472,8 @@ def auto_generate_schedule(request_data: AutoGenerateScheduleRequest):
             "created_entries": created_entries,
             "day_off_count": day_off_count,
             "optimization_moved_count": optimization_moved_count,
+            "feasibility_report": feasibility_report,
+            "unfilled_reports": unfilled_reports,
             "errors": errors,
         }
     finally:
