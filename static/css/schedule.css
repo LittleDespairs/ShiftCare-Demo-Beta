@@ -1,0 +1,816 @@
+/* =========================================================
+           PAGE-SPECIFIC STYLES / СТИЛИ ТОЛЬКО ДЛЯ СТРАНИЦЫ РАСПИСАНИЯ
+           ========================================================= */
+
+        /* Toolbar container / Контейнер верхней панели управления */
+        .schedule-toolbar {
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 14px;
+            align-items: end;
+        }
+
+        /* Responsive layout blocks / Адаптивные блоки панели */
+        .toolbar-field {
+            grid-column: span 3;
+        }
+
+        .toolbar-actions {
+            grid-column: span 6;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        body.rtl .toolbar-actions {
+            justify-content: flex-start;
+        }
+
+        .schedule-display-control {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 14px;
+        }
+
+        body.rtl .schedule-display-control {
+            justify-content: flex-start;
+        }
+
+        .schedule-display-field {
+            width: min(320px, 100%);
+        }
+
+        /* Large schedule area / Большая область таблицы расписания */
+        .schedule-shell {
+            --schedule-date-header-height: 72px;
+            --schedule-header-offset: 0px;
+            position: relative;
+            overflow: visible;
+            border: 1px solid #b8c3d4;
+            border-radius: 16px;
+            background: #d9e1ec;
+            box-shadow:
+                0 22px 60px rgba(15, 23, 42, 0.14),
+                0 0 0 1px rgba(255, 255, 255, 0.7) inset;
+            min-height: 320px;
+        }
+
+        .schedule-panel {
+            border-color: #c7d2e1;
+            background: #edf2f8;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+            overflow: visible;
+        }
+
+        .schedule-panel .panel-body {
+            background: #eef3f8;
+        }
+
+        .schedule-loading-overlay {
+            position: absolute;
+            inset: var(--schedule-header-offset) 0 0 0;
+            z-index: 20;
+            display: none;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 28px;
+            background: rgba(248, 250, 252, 0.86);
+            backdrop-filter: blur(4px);
+        }
+
+        .schedule-shell.is-generating .schedule-loading-overlay {
+            display: flex;
+        }
+
+        .generation-card {
+            width: min(440px, 100%);
+            border: 1px solid #bfdbfe;
+            border-radius: 18px;
+            background: #ffffff;
+            box-shadow: 0 22px 60px rgba(15, 23, 42, 0.16);
+            padding: 24px;
+            text-align: center;
+        }
+
+        .generation-spinner {
+            width: 62px;
+            height: 62px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            border: 5px solid #dbeafe;
+            border-top-color: var(--primary);
+            animation: generation-spin 0.9s linear infinite;
+        }
+
+        .generation-title {
+            margin: 0;
+            color: var(--text);
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+
+        .generation-text {
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .generation-progress {
+            position: relative;
+            overflow: hidden;
+            height: 8px;
+            margin-top: 18px;
+            border-radius: 999px;
+            background: #e2e8f0;
+        }
+
+        .generation-progress::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 42%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #60a5fa, var(--primary), #22c55e);
+            animation: generation-progress 1.4s ease-in-out infinite;
+        }
+
+        @keyframes generation-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes generation-progress {
+            0% {
+                left: -45%;
+            }
+
+            50% {
+                left: 35%;
+            }
+
+            100% {
+                left: 105%;
+            }
+        }
+
+        /* Main schedule table / Основная таблица расписания */
+        .schedule-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            min-width: 1080px;
+        }
+
+        .schedule-table th,
+        .schedule-table td {
+            border-bottom: 1px solid #d3dce8;
+            border-inline-end: 1px solid #d3dce8;
+            vertical-align: top;
+            padding: 0;
+            background: #fdfefe;
+        }
+
+        .schedule-table th:last-child,
+        .schedule-table td:last-child {
+            border-inline-end: none;
+        }
+
+        .schedule-table thead th {
+            position: sticky;
+            background: #eaf0f7;
+        }
+
+        .schedule-table thead .date-header-row th {
+            top: 0;
+            z-index: 8;
+        }
+
+        .schedule-table thead .coverage-header-row th {
+            top: var(--schedule-date-header-height);
+            z-index: 9;
+        }
+
+        /* Sticky first column / Липкая первая колонка с именем сотрудника */
+        .employee-column {
+            min-width: 205px;
+            width: 205px;
+            position: sticky;
+            left: 0;
+            z-index: 3;
+            background: #f7fafc;
+        }
+
+        body.rtl .employee-column {
+            left: auto;
+            right: 0;
+        }
+
+        .schedule-table thead .employee-column {
+            z-index: 12;
+            background: #eaf0f7;
+        }
+
+        /* Header cells / Ячейки заголовка по дням */
+        .day-header {
+            min-width: 150px;
+            min-height: var(--schedule-date-header-height);
+            box-sizing: border-box;
+            background: #eaf0f7;
+            padding: 10px 10px;
+        }
+
+        .day-header-title {
+            font-size: 0.9rem;
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .day-header-date {
+            margin-top: 2px;
+            font-size: 0.76rem;
+            color: var(--muted);
+        }
+
+        /* Employee cell / Ячейка с именем сотрудника */
+        .employee-cell {
+            padding: 10px 12px;
+            min-height: 126px;
+            background: #f7fafc;
+        }
+
+        .employee-name {
+            font-size: 0.9rem;
+            font-weight: 800;
+            line-height: 1.25;
+            margin-bottom: 6px;
+        }
+
+        .employee-meta {
+            font-size: 0.76rem;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        /* Schedule day cell / Ячейка одного дня */
+        .schedule-day-cell {
+            position: relative;
+            min-width: 150px;
+            background: #fdfefe;
+        }
+
+        .schedule-day-inner {
+            position: relative;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 126px;
+        }
+
+        .schedule-day-cell.has-day-status .schedule-day-inner {
+            min-height: 126px;
+        }
+
+        .cell-status-cover {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #fecaca;
+            border-radius: 10px;
+            background: rgba(254, 242, 242, 0.96);
+            color: #991b1b;
+            font-size: 0.9rem;
+            font-weight: 800;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(153, 27, 27, 0.12);
+        }
+
+        .cell-status-cover.day-off {
+            border-color: #c4b5fd;
+            background: rgba(245, 243, 255, 0.97);
+            color: #5b21b6;
+            box-shadow: 0 10px 30px rgba(91, 33, 182, 0.12);
+        }
+
+        .status-remove-btn {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            z-index: 6;
+            border: none;
+            border-radius: 999px;
+            width: 26px;
+            height: 26px;
+            background: #fee2e2;
+            color: #991b1b;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        body.rtl .status-remove-btn {
+            right: auto;
+            left: 6px;
+        }
+
+        /* Add box / Блок добавления смен */
+        .add-box {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px;
+            background: #f8fafc;
+        }
+
+        .box-label {
+            display: block;
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .small-control {
+            width: 100%;
+            border: 1px solid var(--border);
+            background: #fff;
+            border-radius: 12px;
+            padding: 10px 12px;
+            color: var(--text);
+            font-size: 0.88rem;
+        }
+
+        .small-control:focus {
+            outline: none;
+            border-color: #93c5fd;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+        }
+
+        .cell-actions {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            align-items: stretch;
+        }
+
+        .cell-btn {
+            flex: 1 1 0;
+            border: none;
+            border-radius: 10px;
+            min-height: 32px;
+            padding: 7px 10px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.78rem;
+            transition: transform var(--transition), background var(--transition);
+        }
+
+        .cell-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .cell-btn.primary {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .cell-btn.secondary {
+            background: #eef2f7;
+            color: var(--text);
+        }
+
+        /* Shift cards list / Список карточек смен */
+        .entries-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .empty-text {
+            font-size: 0.76rem;
+            color: var(--muted);
+        }
+
+        /* Common shift card / Общая карточка смены */
+        .entry-card {
+            position: relative;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px;
+            background: #fff;
+        }
+
+        .entry-card.has-no-show {
+            overflow: hidden;
+            opacity: 0.9;
+        }
+
+        .entry-card.has-no-show::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: rgba(15, 23, 42, 0.72);
+        }
+
+        .entry-card.has-no-show .entry-title,
+        .entry-card.has-no-show .entry-meta,
+        .entry-card.has-no-show .entry-delete {
+            position: relative;
+            z-index: 2;
+            filter: grayscale(0.3);
+        }
+
+        .entry-no-show-label {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 32px;
+            color: #fff;
+            font-size: 0.8rem;
+            font-weight: 900;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .entry-status-remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            z-index: 4;
+            border: none;
+            border-radius: 999px;
+            width: 24px;
+            height: 24px;
+            background: #fee2e2;
+            color: #991b1b;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        body.rtl .entry-status-remove-btn {
+            right: auto;
+            left: 5px;
+        }
+
+        /* Morning shift / Утренняя смена */
+        .entry-card.morning {
+            background: #e0f2fe;
+            border-color: #7dd3fc;
+        }
+
+        /* Evening shift / Вечерняя смена */
+        .entry-card.evening {
+            background: #fff3e0;
+            border-color: #fed7aa;
+        }
+
+        /* Night shift / Ночная смена */
+        .entry-card.night {
+            background: #1e3a8a;
+            border-color: #1d4ed8;
+            color: #eff6ff;
+        }
+
+        .entry-card.night .entry-meta {
+            color: #bfdbfe;
+        }
+
+        /* Special status card / Карточка особого статуса */
+        .entry-card.status {
+            background: #f8fafc;
+            border-style: dashed;
+        }
+
+        .entry-title {
+            font-size: 0.78rem;
+            font-weight: 800;
+            line-height: 1.3;
+            margin-bottom: 4px;
+        }
+
+        .entry-meta {
+            font-size: 0.7rem;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+
+        .entry-delete {
+            margin-top: 6px;
+            border: none;
+            border-radius: 10px;
+            background: #fee2e2;
+            color: #b91c1c;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 6px 8px;
+            cursor: pointer;
+        }
+
+        .shift-picker-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(15, 23, 42, 0.48);
+            backdrop-filter: blur(3px);
+        }
+
+        .shift-picker-overlay.is-open {
+            display: flex;
+        }
+
+        .shift-picker-modal {
+            width: min(520px, 100%);
+            max-height: min(680px, calc(100vh - 48px));
+            overflow: auto;
+            border-radius: 16px;
+            background: #fff;
+            box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+            border: 1px solid var(--border);
+        }
+
+        .shift-picker-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--border);
+            background: #f8fafc;
+        }
+
+        .shift-picker-title {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .shift-picker-context {
+            margin-top: 4px;
+            font-size: 0.82rem;
+            color: var(--muted);
+        }
+
+        .shift-picker-close {
+            border: none;
+            border-radius: 999px;
+            width: 34px;
+            height: 34px;
+            background: #e2e8f0;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 1.1rem;
+            line-height: 1;
+        }
+
+        .shift-picker-body {
+            display: grid;
+            gap: 16px;
+            padding: 18px 20px 20px;
+        }
+
+        .shift-picker-group {
+            display: grid;
+            gap: 8px;
+        }
+
+        .shift-picker-group-title {
+            font-size: 0.78rem;
+            font-weight: 800;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        .shift-picker-option {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #fff;
+            padding: 10px 12px;
+            text-align: start;
+            cursor: pointer;
+            transition: background var(--transition), border-color var(--transition), transform var(--transition);
+        }
+
+        .shift-picker-option:hover {
+            transform: translateY(-1px);
+            border-color: #93c5fd;
+            background: #f8fafc;
+        }
+
+        .shift-picker-option-title {
+            font-size: 0.9rem;
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .shift-picker-option-meta {
+            margin-top: 3px;
+            font-size: 0.78rem;
+            color: var(--muted);
+        }
+
+        .entry-delete:hover {
+            background: #fecaca;
+        }
+
+        /* Coverage row / Строка покрытия */
+        .coverage-header-cell {
+            padding: 10px;
+            background: #f8fafc;
+        }
+
+        .coverage-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .coverage-pill {
+            border-radius: 12px;
+            padding: 9px 10px;
+            border: 1px solid transparent;
+            font-size: 0.76rem;
+            line-height: 1.3;
+        }
+
+        .coverage-pill.success {
+            background: #dcfce7;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .coverage-pill.warning {
+            background: #fef3c7;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+
+        .coverage-pill.danger {
+            background: #fee2e2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .coverage-pill.neutral {
+            background: #e2e8f0;
+            border-color: #cbd5e1;
+            color: #334155;
+        }
+
+        .coverage-title {
+            font-weight: 800;
+            margin-bottom: 2px;
+        }
+
+        .coverage-line {
+            opacity: 0.95;
+        }
+
+        /* Message box spacing / Отступ для блока сообщений */
+        #message-box {
+            margin-bottom: 16px;
+        }
+
+        /* Simple alert replacement / Более аккуратные сообщения */
+        .page-message {
+            border-radius: 14px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .page-message.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .page-message.warning {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+
+        .page-message.danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .page-message.info {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        /* Sidebar button placement / Положение кнопки сворачивания меню */
+        .sidebar-toggle {
+            width: 42px;
+            height: 42px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background var(--transition), transform var(--transition);
+            margin-top: 12px;
+        }
+
+        .sidebar-toggle:hover {
+            background: #f8fafc;
+            transform: translateY(-1px);
+        }
+
+        /* Expanded sidebar top row / Верхний ряд в полном меню */
+        .sidebar-top-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        /* Collapsed sidebar state / Состояние свёрнутого меню */
+        body.sidebar-collapsed {
+            --sidebar-width: 88px;
+        }
+
+        body.sidebar-collapsed .brand-text,
+        body.sidebar-collapsed .sidebar-section-title {
+            display: none;
+        }
+
+        body.sidebar-collapsed .sidebar-top-row {
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        body.sidebar-collapsed .nav-label {
+            display: none;
+        }
+
+        body.sidebar-collapsed .nav-item {
+            justify-content: center;
+            padding-inline: 10px;
+        }
+
+        body.sidebar-collapsed .nav-icon {
+            width: auto;
+        }
+
+        /* Responsive / Адаптивность */
+        @media (max-width: 1200px) {
+            .toolbar-field {
+                grid-column: span 4;
+            }
+
+            .toolbar-actions {
+                grid-column: span 12;
+                justify-content: flex-start;
+            }
+        }
+
+        @media (max-width: 920px) {
+            .toolbar-field {
+                grid-column: span 12;
+            }
+
+            .toolbar-actions {
+                grid-column: span 12;
+            }
+
+            .schedule-display-control {
+                justify-content: stretch;
+            }
+
+            .schedule-display-field {
+                width: 100%;
+            }
+
+            body.mobile-sidebar-hidden .sidebar {
+                display: none;
+            }
+        }
+

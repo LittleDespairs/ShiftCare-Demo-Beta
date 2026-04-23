@@ -31,4 +31,4 @@ All release-blocking alpha finalization items are complete for `0.11.3_alpha`.
 
 Notes:
 - The generator now includes a post-generation balance optimization pass, structured feasibility reports, hard/soft constraint reporting, configurable scoring weights, generated day-off statuses, and fixed regression tests.
-- The schedule screen remains a large template, but repeated inline behavior has been extracted into shared helpers and the remaining split is tracked as post-alpha maintainability work rather than a release blocker.
+- The schedule screen template has been split into separate page assets: `templates/schedule.html`, `static/css/schedule.css`, and `static/js/schedule.js`.
