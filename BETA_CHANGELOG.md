@@ -2,6 +2,36 @@
 
 This file tracks the beta builds in the `0.12.x_beta` line.
 
+## 0.12.5_beta - 2026-04-23
+
+### Release Focus
+
+Improve generator decisions under staffing pressure, refine schedule coverage behavior, and align the visible app version across the interface.
+
+### What Changed
+
+- Added support for `morning + night` as a separate allowed same-day combination without folding it into split-shift logic.
+- Improved projected balancing for night assignments so night-capable employees receive a more even weekly distribution.
+- Changed interval candidate selection so missing total headcount is prioritized before gender-specific balancing when a slot is understaffed.
+- Added extra anti-repetition balancing so the generator is less likely to keep assigning the same shift category to one employee without a strong reason.
+- Fixed coverage counters so `sick` day status removes an employee from displayed coverage totals the same way `no_show` already did.
+- Extended the coverage-by-category mode so the men counter is always shown.
+- Added the same footer used on the dashboard and guide to the rest of the main application pages.
+- Updated runtime version references, asset cache-busting strings, and build references to `0.12.5_beta`.
+
+### User Impact
+
+- Understaffed slots now bias toward getting enough people on shift before fine-tuning gender composition.
+- Employees should see fewer repetitive same-type assignments in ordinary weeks.
+- Coverage numbers now react correctly when a person is marked sick.
+- The app now presents one consistent footer and one consistent visible version across the interface.
+
+### Technical Impact
+
+- Candidate ordering for interval and legacy generation uses stronger projected balancing signals.
+- Regression coverage was expanded around shortage prioritization and same-category distribution.
+- Version metadata is aligned again between backend, frontend, templates, and packaging files.
+
 ## 0.12.1_beta - 2026-04-23
 
 ### Release Focus

@@ -11,7 +11,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v=0.12.1_beta">
+<link rel="stylesheet" href="/static/css/style.css?v=0.12.5_beta">
 
     <style>
         /* =========================================================
@@ -568,21 +568,20 @@
                     </li>
                 </ul>
             </div>
-            <div class="settings-footer-links">
-                <span data-i18n="settings_help_label">Need help?</span>
+            <footer class="app-footer">
+                <div class="footer-left" data-i18n="footer_version">
+                    Schedule App v0.12.5_beta
+                </div>
 
-                <a href="/docs" class="footer-link" data-i18n="settings_docs_link">
-                    Documentation
-                </a>
-
-                <a href="/guide" class="footer-link" data-i18n="settings_guide_link">
-                    User guide
-                </a>
-            </div>
+                <div class="footer-right">
+                    <a href="/docs" data-i18n="footer_docs">Documentation</a>
+                    <a href="/guide" data-i18n="footer_guide">Guide</a>
+                </div>
+            </footer>
         </main>
     </div>
 
-<script src="/static/js/i18n.js?v=0.12.1_beta"></script>
+<script src="/static/js/i18n.js?v=0.12.5_beta"></script>
 
     <script>
         function getSavedSidebarState() {

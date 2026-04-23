@@ -47,6 +47,7 @@
             bindShiftPicker();
             bindStatusPicker();
             bindSidebarToggle();
+            bindScheduleFloatingHeader();
 
             // Apply remembered sidebar state / Применяем сохранённое состояние sidebar
             applySidebarState(getSavedSidebarState());
@@ -70,6 +71,7 @@
                 renderGenerationSummary(lastGenerationSummary);
             }
             updateScheduleActionAvailability();
+            syncScheduleFloatingHeader();
         });
 
         /* =========================================================
@@ -352,6 +354,58 @@
             lastGenerationSummary = null;
         }
 
+        function bindScheduleFloatingHeader() {
+            const shell = document.querySelector(".schedule-shell");
+            if (shell) {
+                shell.addEventListener("scroll", syncScheduleFloatingHeader, { passive: true });
+            }
+            window.addEventListener("scroll", syncScheduleFloatingHeader, { passive: true });
+            window.addEventListener("resize", syncScheduleFloatingHeader);
+        }
+
+        function syncScheduleFloatingHeader() {
+            const floatingHeader = document.getElementById("schedule-floating-header");
+            const floatingThead = document.getElementById("schedule-floating-thead");
+            const shell = document.querySelector(".schedule-shell");
+            const table = shell ? shell.querySelector(".schedule-table") : null;
+            const sourceThead = document.getElementById("schedule-thead");
+            if (!floatingHeader || !floatingThead || !shell || !table || !sourceThead || !sourceThead.innerHTML.trim()) {
+                if (floatingHeader) {
+                    floatingHeader.hidden = true;
+                    floatingHeader.classList.remove("is-visible");
+                }
+                return;
+            }
+
+            if (floatingThead.innerHTML !== sourceThead.innerHTML) {
+                floatingThead.innerHTML = sourceThead.innerHTML;
+            }
+
+            const shellRect = shell.getBoundingClientRect();
+            const headerHeight = sourceThead.offsetHeight || 0;
+            const shouldShow = shellRect.top < 0 && shellRect.bottom - headerHeight > 0;
+
+            if (!shouldShow) {
+                floatingHeader.hidden = true;
+                floatingHeader.classList.remove("is-visible");
+                return;
+            }
+
+            const floatingScroller = document.getElementById("schedule-floating-header-scroller");
+            const floatingTable = floatingHeader.querySelector(".schedule-floating-table");
+            if (!floatingScroller || !floatingTable) {
+                return;
+            }
+
+            floatingHeader.hidden = false;
+            floatingHeader.classList.add("is-visible");
+            floatingHeader.style.left = `${Math.max(shellRect.left, 0)}px`;
+            floatingHeader.style.width = `${Math.min(shellRect.width, window.innerWidth)}px`;
+            floatingTable.style.width = `${table.offsetWidth}px`;
+            floatingTable.style.transform = `translateX(${-shell.scrollLeft}px)`;
+            floatingScroller.style.height = `${headerHeight}px`;
+        }
+
         function formatGenerationIssueText(issue) {
             if (!issue) return "";
             const parts = [];
@@ -599,6 +653,7 @@
                 </tr>
             `;
             updateScheduleActionAvailability();
+            syncScheduleFloatingHeader();
         }
 
         function updateScheduleActionAvailability() {
@@ -1096,6 +1151,19 @@
                 .sort((a, b) => parseTimeToMinutes(a.start_time) - parseTimeToMinutes(b.start_time));
         }
 
+        function entryCountsTowardCoverage(entry) {
+            if (!entry || entry.no_show) {
+                return false;
+            }
+
+            const dayStatus = getDayStatus(entry.employee_id, entry.date);
+            if (dayStatus && ["sick", "day_off"].includes(dayStatus.status_type)) {
+                return false;
+            }
+
+            return true;
+        }
+
         function getCoverageStats(positionId, date, shiftCategory) {
             // Count total and female employees for one shift category
             // Считаем общее число и число женщин по категории смены
@@ -1103,7 +1171,7 @@
                 entry.position_id === positionId &&
                 entry.date === date &&
                 entry.shift_category === shiftCategory &&
-                !entry.no_show
+                entryCountsTowardCoverage(entry)
             ));
 
             const femaleCount = matchingEntries.filter(entry => {
@@ -1130,7 +1198,7 @@
             );
 
             const matchingEntries = allScheduleEntries.filter(entry => {
-                if (entry.position_id !== positionId || entry.date !== date || entry.no_show) {
+                if (entry.position_id !== positionId || entry.date !== date || !entryCountsTowardCoverage(entry)) {
                     return false;
                 }
 
@@ -1321,9 +1389,9 @@
                 const femaleLine = requirement && requirement.required_female_min > 0
                     ? `${t("coverage_women", "Women")}: ${stats.female} / ${requirement.required_female_min}`
                     : "";
-                const maleLine = requirement && requirement.required_male_min > 0
+                const maleLine = requirement
                     ? `${t("coverage_men", "Men")}: ${stats.male} / ${requirement.required_male_min}`
-                    : "";
+                    : `${t("coverage_men", "Men")}: ${stats.male} / -`;
 
                 return `
                             <div class="coverage-pill ${coverageClass}">
@@ -1590,6 +1658,7 @@
 
             bindScheduleActions();
             updateScheduleActionAvailability();
+            syncScheduleFloatingHeader();
         }
 
         /* =========================================================

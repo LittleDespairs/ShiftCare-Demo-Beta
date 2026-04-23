@@ -280,6 +280,76 @@ class GenerationReportTests(unittest.TestCase):
         self.assertEqual(report["slot"]["start"], "06:00")
         self.assertEqual(report["slot"]["end"], "14:00")
 
+    def test_week_shortage_queue_prioritizes_total_shortage_over_gender_shortage(self):
+        employees = [
+            {
+                "id": 1,
+                "full_name": "Employee A",
+                "sex": "male",
+                "min_shifts_per_week": 0,
+                "target_shifts_per_week": 3,
+                "max_shifts_per_week": 5,
+                "can_work_night": True,
+                "can_work_weekends": True,
+                "can_work_evenings_after_night": True,
+                "can_work_mornings_and_evenings": True,
+                "is_primary": True,
+                "priority_score": 50,
+                "is_fallback_only": False,
+            }
+        ]
+        templates = [
+            {
+                "id": 1,
+                "name": "Morning",
+                "category": "morning",
+                "start_time": "06:00",
+                "end_time": "10:00",
+                "is_overnight": False,
+                "is_active": True,
+                "is_split_only": False,
+            },
+            {
+                "id": 2,
+                "name": "Evening",
+                "category": "evening",
+                "start_time": "10:00",
+                "end_time": "14:00",
+                "is_overnight": False,
+                "is_active": True,
+                "is_split_only": False,
+            },
+        ]
+        slots = [
+            {
+                "start": 6 * 60,
+                "end": 10 * 60,
+                "required_total": 2,
+                "required_female_min": 0,
+                "required_male_min": 0,
+            },
+            {
+                "start": 10 * 60,
+                "end": 14 * 60,
+                "required_total": 1,
+                "required_female_min": 1,
+                "required_male_min": 0,
+            },
+        ]
+
+        queue = main.build_week_shortage_queue(
+            self.connection,
+            employees,
+            templates,
+            1,
+            WEEK_START_DATE,
+            [WEEK_DATES[0]],
+            slots,
+        )
+
+        self.assertEqual(queue[0]["slot"]["start"], 6 * 60)
+        self.assertEqual(queue[0]["missing_total"], 2)
+
     def test_auto_generation_rejects_non_split_morning_evening_combo(self):
         cursor = self.connection.cursor()
         cursor.execute("DELETE FROM schedule_entries")
@@ -371,6 +441,98 @@ class GenerationReportTests(unittest.TestCase):
                 WEEK_START_DATE,
             ),
             "morning-evening combo requires split-only templates",
+        )
+
+    def test_allows_morning_and_night_on_same_day_as_separate_combo(self):
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM schedule_entries")
+        cursor.execute("DELETE FROM employee_day_statuses")
+        cursor.execute("DELETE FROM shift_templates")
+        cursor.execute("DELETE FROM employee_positions")
+        cursor.execute("DELETE FROM positions")
+        cursor.execute("DELETE FROM employees")
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (1, 'Employee A', 'female', 0, 4, 6, 1, 1, 1, 0)
+            """
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.execute(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (1, 1, 1, 100, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+            VALUES
+                (1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0),
+                (2, 'Night', 'night', '23:00', '07:00', 1, 1, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
+            VALUES (1, 1, ?, 1)
+            """,
+            (WEEK_DATES[0],),
+        )
+
+        template = {
+            "id": 2,
+            "name": "Night",
+            "category": "night",
+            "start_time": "23:00",
+            "end_time": "07:00",
+            "is_overnight": True,
+            "is_active": True,
+            "is_split_only": False,
+        }
+        employee = {
+            "id": 1,
+            "full_name": "Employee A",
+            "sex": "female",
+            "min_shifts_per_week": 0,
+            "target_shifts_per_week": 4,
+            "max_shifts_per_week": 6,
+            "can_work_night": True,
+            "can_work_weekends": True,
+            "can_work_evenings_after_night": True,
+            "can_work_mornings_and_evenings": False,
+        }
+
+        self.assertTrue(
+            main.can_employee_take_template(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[0],
+                template,
+                WEEK_START_DATE,
+            )
+        )
+        self.assertIsNone(
+            main.explain_employee_template_rejection(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[0],
+                template,
+                WEEK_START_DATE,
+            )
         )
 
     def test_weekend_restriction_blocks_weekend_assignment(self):

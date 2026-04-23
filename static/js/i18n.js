@@ -20,7 +20,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Preferences",
         nav_settings: "Settings",
 
-        sidebar_footer_title: "Version 0.12.1_beta",
+        sidebar_footer_title: "Version 0.12.5_beta",
         sidebar_footer_text: "Interface redesign in progress. The current goal is a simpler and clearer workflow.",
 
         page_title: "Dashboard",
@@ -66,7 +66,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Documentation",
         footer_guide: "User Guide",
-        footer_version: "Schedule App v0.12.1_beta",
+        footer_version: "Schedule App v0.12.5_beta",
 
         quick_actions_title: "Quick actions",
         quick_action_schedule_title: "Open current week",
@@ -540,7 +540,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.12.1_beta",
+        footer_version: "Schedule App v0.12.5_beta",
 
         msg_enter_template_name: "Please enter template name.",
         msg_select_shift_category: "Please select shift category.",
@@ -734,7 +734,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Пожелания",
         nav_settings: "Настройки",
 
-        sidebar_footer_title: "Версия 0.12.1_beta",
+        sidebar_footer_title: "Версия 0.12.5_beta",
         sidebar_footer_text: "Сейчас идёт редизайн интерфейса. Главная цель — сделать рабочий процесс проще и понятнее.",
 
         page_title: "Главная",
@@ -780,7 +780,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.12.1_beta",
+        footer_version: "Schedule App v0.12.5_beta",
 
         quick_actions_title: "Быстрые действия",
         quick_action_schedule_title: "Открыть текущую неделю",
@@ -1444,7 +1444,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "העדפות",
         nav_settings: "הגדרות",
 
-        sidebar_footer_title: "גרסה 0.12.1_beta",
+        sidebar_footer_title: "גרסה 0.12.5_beta",
         sidebar_footer_text: "כעת מתבצע עיצוב מחדש של הממשק. המטרה היא להפוך את תהליך העבודה לפשוט וברור יותר.",
 
         page_title: "דף הבית",
@@ -1754,7 +1754,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "תיעוד",
         footer_guide: "מדריך",
-        footer_version: "Schedule App v0.12.1_beta",
+        footer_version: "Schedule App v0.12.5_beta",
 
         employees_table_id: "מזהה",
         employees_table_name: "שם מלא",

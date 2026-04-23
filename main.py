@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 from database import get_connection, init_db
 from excel_export import build_schedule_export_workbook
 
-APP_VERSION = "0.12.1_beta"
+APP_VERSION = "0.12.5_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
 
 tags_metadata = [
@@ -603,6 +603,55 @@ def would_have_split_day(connection, employee_id: int, date_string: str, templat
     return "morning" in categories and "evening" in categories
 
 
+def explain_same_day_pairing_rejection(
+    connection,
+    employee: dict,
+    date_string: str,
+    template: dict,
+    existing_entries: list[dict],
+    app_settings: dict,
+) -> str | None:
+    if not existing_entries:
+        return None
+
+    if len(existing_entries) >= 2:
+        return "employee already has two shifts that day"
+
+    existing_categories = {entry_category(entry) for entry in existing_entries}
+    projected_categories = set(existing_categories)
+    projected_categories.add(template["category"])
+
+    if projected_categories == {"morning", "evening"}:
+        if not employee["can_work_mornings_and_evenings"]:
+            return "employee cannot work morning and evening on the same day"
+        if not template["is_split_only"] or not all(bool(entry["is_split_only"]) for entry in existing_entries):
+            return "morning-evening combo requires split-only templates"
+        if get_week_preference(connection, employee["id"], date_string) == "no_morning_evening_combo":
+            return "weekly preference blocks morning-evening combo"
+
+        morning_evening_break = get_break_minutes_between_same_day_categories(
+            connection,
+            employee["id"],
+            date_string,
+            template,
+            "morning",
+            "evening",
+            entries=existing_entries,
+        )
+        if (
+            morning_evening_break is not None
+            and morning_evening_break < app_settings["min_rest_minutes_between_morning_and_evening"]
+        ):
+            return "morning-evening rest gap is too short"
+
+        return None
+
+    if projected_categories == {"morning", "night"}:
+        return None
+
+    return "employee already has another shift type that cannot be paired"
+
+
 def count_consecutive_days_before(connection, employee_id: int, date_string: str, predicate) -> int:
     current_date = parse_date_string(date_string) - timedelta(days=1)
     count = 0
@@ -776,40 +825,14 @@ def can_employee_take_template(
             if entry["employee_id"] == employee["id"] and entry["date"] == date_string
         ],
     ]
-    existing_categories = {entry_category(entry) for entry in existing_entries}
 
     for entry in existing_entries:
         existing_interval = build_interval(entry["start_time"], entry["end_time"], bool(entry["is_overnight"]))
         if new_interval.overlaps(existing_interval):
             return False
 
-    if existing_entries:
-        allowed_pair = {"morning", "evening"}
-        if not employee["can_work_mornings_and_evenings"]:
-            return False
-        if template["category"] not in allowed_pair or not existing_categories.issubset(allowed_pair):
-            return False
-        if not template["is_split_only"] or not all(bool(entry["is_split_only"]) for entry in existing_entries):
-            return False
-        if get_week_preference(connection, employee["id"], date_string) == "no_morning_evening_combo":
-            return False
-        if len(existing_entries) >= 2:
-            return False
-
-        morning_evening_break = get_break_minutes_between_same_day_categories(
-            connection,
-            employee["id"],
-            date_string,
-            template,
-            "morning",
-            "evening",
-            entries=existing_entries,
-        )
-        if (
-            morning_evening_break is not None
-            and morning_evening_break < app_settings["min_rest_minutes_between_morning_and_evening"]
-        ):
-            return False
+    if explain_same_day_pairing_rejection(connection, employee, date_string, template, existing_entries, app_settings):
+        return False
 
     if had_previous_night(connection, employee["id"], date_string):
         if template["category"] == "morning":
@@ -840,6 +863,7 @@ def can_employee_take_template(
         if projected_nights > allowed_nights:
             return False
 
+    existing_categories = {entry_category(entry) for entry in existing_entries}
     projected_categories = set(existing_categories)
     projected_categories.add(template["category"])
     if "morning" in projected_categories and "evening" in projected_categories:
@@ -911,40 +935,21 @@ def explain_employee_template_rejection(
             if entry["employee_id"] == employee["id"] and entry["date"] == date_string
         ],
     ]
-    existing_categories = {entry_category(entry) for entry in existing_entries}
-
     for entry in existing_entries:
         existing_interval = build_interval(entry["start_time"], entry["end_time"], bool(entry["is_overnight"]))
         if new_interval.overlaps(existing_interval):
             return "employee already has an overlapping shift"
 
-    if existing_entries:
-        allowed_pair = {"morning", "evening"}
-        if not employee["can_work_mornings_and_evenings"]:
-            return "employee cannot work morning and evening on the same day"
-        if template["category"] not in allowed_pair or not existing_categories.issubset(allowed_pair):
-            return "employee already has another shift type that cannot be paired"
-        if not template["is_split_only"] or not all(bool(entry["is_split_only"]) for entry in existing_entries):
-            return "morning-evening combo requires split-only templates"
-        if get_week_preference(connection, employee["id"], date_string) == "no_morning_evening_combo":
-            return "weekly preference blocks morning-evening combo"
-        if len(existing_entries) >= 2:
-            return "employee already has two shifts that day"
-
-        morning_evening_break = get_break_minutes_between_same_day_categories(
-            connection,
-            employee["id"],
-            date_string,
-            template,
-            "morning",
-            "evening",
-            entries=existing_entries,
-        )
-        if (
-            morning_evening_break is not None
-            and morning_evening_break < app_settings["min_rest_minutes_between_morning_and_evening"]
-        ):
-            return "morning-evening rest gap is too short"
+    pairing_rejection = explain_same_day_pairing_rejection(
+        connection,
+        employee,
+        date_string,
+        template,
+        existing_entries,
+        app_settings,
+    )
+    if pairing_rejection:
+        return pairing_rejection
 
     if had_previous_night(connection, employee["id"], date_string):
         if template["category"] == "morning":
@@ -975,6 +980,7 @@ def explain_employee_template_rejection(
         if projected_nights > allowed_nights:
             return "too many consecutive night shifts"
 
+    existing_categories = {entry_category(entry) for entry in existing_entries}
     projected_categories = set(existing_categories)
     projected_categories.add(template["category"])
     if "morning" in projected_categories and "evening" in projected_categories:
@@ -2338,6 +2344,15 @@ def coverage_overage(entries: list[dict], slots: list[dict]) -> int:
     return overage
 
 
+def slot_shortage_score(entries: list[dict], slot: dict) -> int:
+    total, female, male = count_slot_coverage(entries, slot)
+    return (
+        max(0, slot["required_total"] - total) * 10
+        + max(0, slot["required_female_min"] - female) * 4
+        + max(0, slot["required_male_min"] - male) * 4
+    )
+
+
 def template_covers_slot(template: dict, slot: dict) -> bool:
     interval = build_interval(template["start_time"], template["end_time"], template["is_overnight"])
     return interval.contains(slot["start"], slot["end"])
@@ -2483,6 +2498,7 @@ def choose_best_interval_candidate(
     app_settings = get_app_settings(connection)
     baseline_shortage = coverage_shortage(current_entries, slots)
     baseline_overage = coverage_overage(current_entries, slots)
+    baseline_target_shortage = slot_shortage_score(current_entries, target_slot) if target_slot is not None else 0
     target_needs_female = False
     target_needs_male = False
     target_needs_total = False
@@ -2518,6 +2534,11 @@ def choose_best_interval_candidate(
                 projected_entries = [*current_entries, *previews]
                 shortage_gain = baseline_shortage - coverage_shortage(projected_entries, slots)
                 overage_cost = coverage_overage(projected_entries, slots) - baseline_overage
+                target_shortage_gain = (
+                    baseline_target_shortage - slot_shortage_score(projected_entries, target_slot)
+                    if target_slot is not None
+                    else 0
+                )
                 score = (
                     shortage_gain * app_settings["coverage_shortage_gain_weight"]
                     - overage_cost * app_settings["coverage_overage_penalty_weight"]
@@ -2529,25 +2550,49 @@ def choose_best_interval_candidate(
                         score += app_settings["target_gender_bonus_weight"]
                     if (target_needs_female and employee["sex"] != "female") or (target_needs_male and employee["sex"] != "male"):
                         score -= app_settings["wrong_gender_penalty_weight"]
-                if score <= 0:
+                if target_slot is not None:
+                    if target_shortage_gain <= 0:
+                        continue
+                elif score <= 0:
                     continue
 
                 fatigue_penalty = sum(
                     get_fatigue_penalty(connection, employee["id"], date_string, assignment_template)
                     for assignment_template in assignment_templates
                 )
-                night_balance = (
-                    get_employee_week_category_count(connection, employee["id"], week_start_date, "night")
-                    if any(assignment_template["category"] == "night" for assignment_template in assignment_templates)
-                    else 0
+                projected_same_category_count, projected_same_category_streak = get_projected_category_metrics(
+                    connection,
+                    employee,
+                    week_start_date,
+                    previews,
+                    [assignment_template["category"] for assignment_template in assignment_templates],
                 )
-                split_balance = (
-                    get_employee_week_split_day_count(connection, employee["id"], week_start_date)
-                    if any(assignment_template["is_split_only"] for assignment_template in assignment_templates)
-                    else 0
+                projected_night_count, projected_split_count = get_projected_assignment_counts(
+                    connection,
+                    employee,
+                    week_start_date,
+                    previews,
+                )
+                projected_balance = get_projected_assignment_score(
+                    connection,
+                    employee,
+                    week_start_date,
+                    previews,
+                    app_settings,
                 )
                 candidates.append((
-                    (-score, fatigue_penalty, night_balance, split_balance, candidate_priority(connection, employee, date_string, week_start_date)),
+                    (
+                        -target_shortage_gain if target_slot is not None else -score,
+                        -score,
+                        overage_cost,
+                        fatigue_penalty,
+                        projected_same_category_count,
+                        projected_same_category_streak,
+                        projected_night_count,
+                        projected_split_count,
+                        projected_balance,
+                        candidate_priority(connection, employee, date_string, week_start_date),
+                    ),
                     employee,
                     assignment_templates,
                     score,
@@ -2927,9 +2972,9 @@ def build_week_shortage_queue(
             -int(item["is_night_slot"]),
             item["scarcity"],
             -item["date_index"],
+            -item["missing_total"],
             -item["missing_female"],
             -item["missing_male"],
-            -item["missing_total"],
             item["slot"]["start"],
         )
     )
@@ -3282,6 +3327,7 @@ def fill_day_by_legacy_categories(
     errors: list[str],
     unfilled_reports: list[dict],
 ):
+    app_settings = get_app_settings(connection)
     for requirement in requirements:
         category = requirement["shift_category"]
         category_templates = [template for template in templates if template["category"] == category and not template["is_split_only"]]
@@ -3319,7 +3365,38 @@ def fill_day_by_legacy_categories(
                             fatigue_relaxation=fatigue_relaxation,
                         ):
                             fatigue_penalty = get_fatigue_penalty(connection, employee["id"], date_string, template)
-                            candidates.append((fatigue_penalty, candidate_priority(connection, employee, date_string, week_start_date), employee, template))
+                            preview = create_entry_preview(employee, position_id, date_string, template)
+                            projected_same_category_count, projected_same_category_streak = get_projected_category_metrics(
+                                connection,
+                                employee,
+                                week_start_date,
+                                [preview],
+                                [template["category"]],
+                            )
+                            projected_night_count, projected_split_count = get_projected_assignment_counts(
+                                connection,
+                                employee,
+                                week_start_date,
+                                [preview],
+                            )
+                            projected_balance = get_projected_assignment_score(
+                                connection,
+                                employee,
+                                week_start_date,
+                                [preview],
+                                app_settings,
+                            )
+                            candidates.append((
+                                fatigue_penalty,
+                                projected_same_category_count,
+                                projected_same_category_streak,
+                                projected_night_count,
+                                projected_split_count,
+                                projected_balance,
+                                candidate_priority(connection, employee, date_string, week_start_date),
+                                employee,
+                                template,
+                            ))
                 if candidates:
                     if fatigue_relaxation == 1:
                         errors.append(f"{date_string} {category}: emergency fatigue relaxation was used to cover a slot")
@@ -3346,7 +3423,7 @@ def fill_day_by_legacy_categories(
                 )
                 break
             candidates.sort()
-            _, _, employee, template = candidates[0]
+            _, _, _, _, _, _, _, employee, template = candidates[0]
             insert_generated_entry(cursor, employee, position_id, date_string, template, created_entries)
 
 
@@ -3477,6 +3554,69 @@ def projected_employee_score(employee: dict, entries: list[dict], week_dates: li
     score += max(0, max_nights - app_settings["max_consecutive_nights"]) * app_settings["balance_excess_night_weight"]
     score += max(0, max_splits - app_settings["max_consecutive_split_days"]) * app_settings["balance_excess_split_weight"]
     return score
+
+
+def get_projected_assignment_score(
+    connection,
+    employee: dict,
+    week_start_date: str,
+    staged_entries: list[dict],
+    app_settings: dict,
+) -> int:
+    week_dates = build_week_dates(week_start_date)
+    projected_entries = get_employee_week_entries(
+        connection,
+        employee["id"],
+        week_start_date,
+        staged_entries=staged_entries,
+    )
+    return projected_employee_score(employee, projected_entries, week_dates, app_settings)
+
+
+def get_projected_assignment_counts(
+    connection,
+    employee: dict,
+    week_start_date: str,
+    staged_entries: list[dict],
+) -> tuple[int, int]:
+    week_dates = build_week_dates(week_start_date)
+    projected_entries = get_employee_week_entries(
+        connection,
+        employee["id"],
+        week_start_date,
+        staged_entries=staged_entries,
+    )
+    projected_night_count = sum(1 for entry in projected_entries if entry_category(entry) == "night")
+    projected_split_count = sum(
+        1
+        for date_string in week_dates
+        if {"morning", "evening"}.issubset({entry_category(entry) for entry in projected_entries if entry["date"] == date_string})
+    )
+    return projected_night_count, projected_split_count
+
+
+def get_projected_category_metrics(
+    connection,
+    employee: dict,
+    week_start_date: str,
+    staged_entries: list[dict],
+    categories: list[str],
+) -> tuple[int, int]:
+    week_dates = build_week_dates(week_start_date)
+    projected_entries = get_employee_week_entries(
+        connection,
+        employee["id"],
+        week_start_date,
+        staged_entries=staged_entries,
+    )
+    target_categories = set(categories)
+    projected_category_count = sum(1 for entry in projected_entries if entry_category(entry) in target_categories)
+    projected_category_streak = max_consecutive_projected(
+        projected_entries,
+        week_dates,
+        lambda day_entries: any(entry_category(entry) in target_categories for entry in day_entries),
+    )
+    return projected_category_count, projected_category_streak
 
 
 def row_to_template_for_assignment(row: dict) -> dict:

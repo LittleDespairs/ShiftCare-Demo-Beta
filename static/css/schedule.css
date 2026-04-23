@@ -45,12 +45,38 @@
             margin-bottom: 14px;
         }
 
+        .schedule-floating-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 60;
+            display: none;
+            pointer-events: none;
+        }
+
+        .schedule-floating-header.is-visible {
+            display: block;
+        }
+
+        .schedule-floating-header-scroller {
+            overflow: hidden;
+            border: 1px solid #b8c3d4;
+            border-radius: 16px 16px 0 0;
+            background: #d9e1ec;
+            box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+        }
+
+        .schedule-floating-table {
+            min-width: 1080px;
+        }
+
         /* Large schedule area / Большая область таблицы расписания */
         .schedule-shell {
             --schedule-date-header-height: 72px;
             --schedule-header-offset: 0px;
             position: relative;
-            overflow: auto;
+            overflow-x: auto;
+            overflow-y: visible;
             border: 1px solid #b8c3d4;
             border-radius: 16px;
             background: #d9e1ec;
@@ -186,18 +212,7 @@
         }
 
         .schedule-table thead th {
-            position: sticky;
             background: #eaf0f7;
-        }
-
-        .schedule-table thead .date-header-row th {
-            top: 0;
-            z-index: 8;
-        }
-
-        .schedule-table thead .coverage-header-row th {
-            top: var(--schedule-date-header-height);
-            z-index: 9;
         }
 
         /* Sticky first column / Липкая первая колонка с именем сотрудника */
@@ -216,7 +231,7 @@
         }
 
         .schedule-table thead .employee-column {
-            z-index: 12;
+            z-index: 16;
             background: #eaf0f7;
         }
 

@@ -37,13 +37,13 @@ Desktop launcher path:
 Current spec:
 
 ```text
-ScheduleApp_0.12.1_beta.spec
+ScheduleApp_0.12.5_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.12.1_beta.spec
+.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.12.5_beta.spec
 ```
 
 ## Before Committing

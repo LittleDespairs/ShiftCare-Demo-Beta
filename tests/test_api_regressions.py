@@ -517,6 +517,127 @@ class ApiRegressionTests(unittest.TestCase):
             "2026-04-26",
         })
 
+    def test_auto_generate_spreads_night_shifts_evenly_between_night_staff(self):
+        night_template_id = self._create_shift_template(
+            name="Night",
+            category="night",
+            start_time="23:00",
+            end_time="07:00",
+            is_overnight=True,
+        )
+        self.assertIsInstance(night_template_id, int)
+
+        position_id = self._create_position(name="Night Ward")
+        employee_ids = [
+            self._create_employee(full_name="Vaheed", sex="male", target_shifts_per_week=3, max_shifts_per_week=7),
+            self._create_employee(full_name="Employee B", sex="female", target_shifts_per_week=3, max_shifts_per_week=7),
+            self._create_employee(full_name="Employee C", sex="male", target_shifts_per_week=3, max_shifts_per_week=7),
+        ]
+
+        for employee_id in employee_ids:
+            response = self.client.post(
+                "/api/employee-positions",
+                json={
+                    "employee_id": employee_id,
+                    "position_id": position_id,
+                    "is_primary": True,
+                    "priority_score": 100,
+                    "is_fallback_only": False,
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+
+        self._save_shift_requirement(
+            position_id=position_id,
+            shift_category="night",
+            required_total=1,
+            required_female_min=0,
+            required_male_min=0,
+        )
+
+        generate_response = self.client.post(
+            "/api/schedule/auto-generate",
+            json={"position_id": position_id, "week_start_date": "2026-04-20"},
+        )
+        self.assertEqual(generate_response.status_code, 200)
+        self.assertEqual(generate_response.json()["unfilled_reports"], [])
+
+        schedule_entries = self.client.get(
+            "/api/schedule",
+            params={"position_id": position_id, "week_start_date": "2026-04-20"},
+        ).json()
+
+        self.assertEqual(len(schedule_entries), 7)
+        self.assertTrue(all(entry["shift_category"] == "night" for entry in schedule_entries))
+
+        counts: dict[str, int] = {}
+        for entry in schedule_entries:
+            counts[entry["employee_name"]] = counts.get(entry["employee_name"], 0) + 1
+
+        self.assertEqual(set(counts.keys()), {"Vaheed", "Employee B", "Employee C"})
+        self.assertLessEqual(max(counts.values()) - min(counts.values()), 1)
+
+    def test_auto_generate_avoids_locking_same_shift_type_to_one_employee(self):
+        self._create_shift_template(name="Morning", category="morning", start_time="06:00", end_time="14:00")
+        self._create_shift_template(name="Evening", category="evening", start_time="14:00", end_time="20:00")
+
+        position_id = self._create_position(name="Mixed Ward")
+        employee_ids = [
+            self._create_employee(full_name="Employee A", target_shifts_per_week=4, max_shifts_per_week=7),
+            self._create_employee(full_name="Employee B", target_shifts_per_week=4, max_shifts_per_week=7),
+        ]
+
+        for employee_id in employee_ids:
+            response = self.client.post(
+                "/api/employee-positions",
+                json={
+                    "employee_id": employee_id,
+                    "position_id": position_id,
+                    "is_primary": True,
+                    "priority_score": 100,
+                    "is_fallback_only": False,
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+
+        self._save_shift_requirement(
+            position_id=position_id,
+            shift_category="morning",
+            required_total=1,
+            required_female_min=0,
+            required_male_min=0,
+        )
+        self._save_shift_requirement(
+            position_id=position_id,
+            shift_category="evening",
+            required_total=1,
+            required_female_min=0,
+            required_male_min=0,
+        )
+
+        generate_response = self.client.post(
+            "/api/schedule/auto-generate",
+            json={"position_id": position_id, "week_start_date": "2026-04-20"},
+        )
+        self.assertEqual(generate_response.status_code, 200)
+        self.assertEqual(len(generate_response.json()["unfilled_reports"]), 2)
+
+        schedule_entries = self.client.get(
+            "/api/schedule",
+            params={"position_id": position_id, "week_start_date": "2026-04-20"},
+        ).json()
+
+        self.assertEqual(len(schedule_entries), 12)
+
+        counts: dict[str, dict[str, int]] = {}
+        for entry in schedule_entries:
+            counts.setdefault(entry["employee_name"], {"morning": 0, "evening": 0, "night": 0})
+            counts[entry["employee_name"]][entry["shift_category"]] += 1
+
+        for employee_name in ("Employee A", "Employee B"):
+            self.assertGreater(counts[employee_name]["morning"], 0)
+            self.assertGreater(counts[employee_name]["evening"], 0)
+
     def test_export_excel_for_empty_week_has_headers_and_zero_total(self):
         employee_id = self._create_employee(full_name="Employee A")
         position_id = self._create_position()
