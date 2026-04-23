@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shift Templates - Schedule App</title>
 
-<link rel="stylesheet" href="/static/css/style.css?v=0.12.5_beta">
+<link rel="stylesheet" href="/static/css/style.css?v=0.12.6_beta">
 
     <style>
         .templates-layout {
@@ -401,6 +401,13 @@
 
                         <form id="shift-template-form" class="form-grid">
                             <div>
+                                <label class="form-label" for="position_id" data-i18n="schedule_position">Position</label>
+                                <select id="position_id" class="select" required>
+                                    <option value="" data-i18n="schedule_select_position">Select position</option>
+                                </select>
+                            </div>
+
+                            <div>
                                 <label class="form-label" for="name" data-i18n="templates_name">Template name</label>
                                 <input type="text" id="name" class="input"
                                     data-i18n-placeholder="templates_name_placeholder"
@@ -486,6 +493,7 @@
                                     <thead>
                                         <tr>
                                             <th data-i18n="templates_table_id">ID</th>
+                                            <th data-i18n="schedule_position">Position</th>
                                             <th data-i18n="templates_table_name">Name</th>
                                             <th data-i18n="templates_table_category">Category</th>
                                             <th data-i18n="templates_table_start">Start</th>
@@ -498,7 +506,7 @@
                                     </thead>
                                     <tbody id="shift-templates-table-body">
                                         <tr>
-                                            <td colspan="9" data-i18n="templates_empty_list">No shift templates yet</td>
+                                            <td colspan="10" data-i18n="templates_empty_list">No shift templates yet</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -528,11 +536,12 @@
         </main>
     </div>
 
-<script src="/static/js/i18n.js?v=0.12.5_beta"></script>
+<script src="/static/js/i18n.js?v=0.12.6_beta"></script>
 
     <script>
         let editingTemplateId = null;
         let cachedShiftTemplates = [];
+        let cachedPositions = [];
 
         function getSavedSidebarState() {
             return localStorage.getItem("scheduleAppSidebar") || "expanded";
@@ -625,13 +634,19 @@
             reloadButton.addEventListener("click", loadShiftTemplates);
             document.getElementById("shift-templates-table-body").addEventListener("click", handleShiftTemplatesTableClick);
 
-            loadShiftTemplates();
+            loadInitialData();
         });
 
         document.addEventListener("app-language-changed", () => {
             updateSubmitButtonText();
+            renderPositionOptions();
             loadShiftTemplates();
         });
+
+        async function loadInitialData() {
+            await loadPositions();
+            await loadShiftTemplates();
+        }
 
         function updateSubmitButtonText() {
             const button = document.getElementById("template-submit-button");
@@ -648,6 +663,7 @@
             event.preventDefault();
 
             const payload = {
+                position_id: Number(document.getElementById("position_id").value),
                 name: document.getElementById("name").value.trim(),
                 category: document.getElementById("category").value,
                 start_time: document.getElementById("start_time").value,
@@ -659,6 +675,11 @@
 
             if (!payload.name) {
                 showMessage(t("msg_enter_template_name", "Please enter template name."), "warning");
+                return;
+            }
+
+            if (!payload.position_id) {
+                showMessage(t("schedule_select_position", "Select position"), "warning");
                 return;
             }
 
@@ -714,6 +735,7 @@
         }
 
         function editShiftTemplate(template) {
+            document.getElementById("position_id").value = template.position_id ?? "";
             document.getElementById("name").value = template.name;
             document.getElementById("category").value = template.category;
             document.getElementById("start_time").value = template.start_time;
@@ -737,6 +759,7 @@
                     const impact = await impactResponse.json();
                     confirmMessage += formatDeleteImpactList([
                         { label: t("confirm_impact_template", "Template"), value: impact.template_name },
+                        { label: t("schedule_position", "Position"), value: impact.position_name || "?" },
                         { label: t("templates_category", "Shift category"), value: categoryLabel(impact.category) },
                         { label: t("confirm_impact_schedule_entries", "Schedule entries"), value: impact.schedule_entries }
                     ]);
@@ -790,8 +813,40 @@
             document.getElementById("shift-template-form").reset();
             document.getElementById("is_active").checked = true;
             document.getElementById("is_split_only").checked = false;
+            document.getElementById("position_id").value = "";
             editingTemplateId = null;
             updateSubmitButtonText();
+        }
+
+        function renderPositionOptions() {
+            const select = document.getElementById("position_id");
+            if (!select) return;
+
+            const currentValue = select.value;
+            select.innerHTML = `
+                <option value="">${escapeHtml(t("schedule_select_position", "Select position"))}</option>
+                ${cachedPositions.map(position => `
+                    <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
+                `).join("")}
+            `;
+            if (currentValue) {
+                select.value = currentValue;
+            }
+        }
+
+        async function loadPositions() {
+            try {
+                const response = await fetch("/api/positions");
+                if (!response.ok) {
+                    showMessage(t("msg_failed_load_positions", "Failed to load positions."), "danger");
+                    return;
+                }
+                cachedPositions = await response.json();
+                renderPositionOptions();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_failed_load_positions", "Failed to load positions."), "danger");
+            }
         }
 
         async function loadShiftTemplates() {
@@ -818,7 +873,7 @@
             if (templates.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="9">
+                        <td colspan="10">
                             ${typeof renderEmptyState === "function"
                                 ? renderEmptyState({
                                     title: t("templates_empty_state_title", "No shift templates yet"),
@@ -834,6 +889,7 @@
             tableBody.innerHTML = templates.map(template => `
                 <tr data-template-id="${Number(template.id)}">
                     <td>${Number(template.id)}</td>
+                    <td>${escapeHtml(template.position_name || "-")}</td>
                     <td class="template-name-cell">${escapeHtml(template.name)}</td>
                     <td>${escapeHtml(categoryLabel(template.category))}</td>
                     <td>${escapeHtml(template.start_time)}</td>
@@ -882,7 +938,7 @@
     </script>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    Schedule App v0.12.5_beta
+                    Schedule App v0.12.6_beta
                 </div>
 
                 <div class="footer-right">
@@ -893,3 +949,4 @@
 </body>
 
 </html>
+

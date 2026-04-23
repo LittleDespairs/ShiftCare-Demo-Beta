@@ -65,7 +65,11 @@ class ApiRegressionTests(unittest.TestCase):
         return payload
 
     def _template_payload(self, **overrides):
+        position_id = overrides.pop("position_id", None)
+        if position_id is None:
+            position_id = self._create_position(name="Template Position")
         payload = {
+            "position_id": position_id,
             "name": "Morning",
             "category": "morning",
             "start_time": "06:00",
@@ -196,11 +200,13 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(coverage_response.status_code, 422)
 
     def test_shift_template_crud_and_active_filter(self):
-        template_id = self._create_shift_template()
+        position_id = self._create_position(name="Ward A")
+        template_id = self._create_shift_template(position_id=position_id)
 
         update_response = self.client.put(
             f"/api/shift-templates/{template_id}",
             json=self._template_payload(
+                position_id=position_id,
                 name="Morning Inactive",
                 is_active=False,
             ),
@@ -262,7 +268,7 @@ class ApiRegressionTests(unittest.TestCase):
     def test_schedule_entry_status_and_clear_week_flow(self):
         employee_id = self._create_employee()
         position_id = self._create_position()
-        template_id = self._create_shift_template()
+        template_id = self._create_shift_template(position_id=position_id)
 
         assignment_response = self.client.post(
             "/api/employee-positions",
@@ -324,7 +330,7 @@ class ApiRegressionTests(unittest.TestCase):
     def test_manual_schedule_edits_keep_day_off_status_in_sync(self):
         employee_id = self._create_employee()
         position_id = self._create_position()
-        template_id = self._create_shift_template()
+        template_id = self._create_shift_template(position_id=position_id)
 
         response = self.client.post(
             "/api/employee-positions",
@@ -375,7 +381,7 @@ class ApiRegressionTests(unittest.TestCase):
     def test_manual_edits_after_auto_generation_restore_day_off_for_removed_shift(self):
         employee_id = self._create_employee(full_name="Employee A")
         position_id = self._create_position()
-        template_id = self._create_shift_template()
+        template_id = self._create_shift_template(position_id=position_id)
 
         response = self.client.post(
             "/api/employee-positions",
@@ -417,6 +423,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(initial_response.status_code, 200)
         initial_settings = initial_response.json()
         self.assertEqual(initial_settings["schedule_coverage_display_mode"], "interval")
+        self.assertFalse(initial_settings["allow_multiple_positions_per_day"])
         self.assertEqual(initial_settings["coverage_shortage_gain_weight"], 100)
         self.assertEqual(initial_settings["balance_target_distance_weight"], 70)
 
@@ -424,6 +431,7 @@ class ApiRegressionTests(unittest.TestCase):
             "/api/app-settings",
             json={
                 "schedule_coverage_display_mode": "category",
+                "allow_multiple_positions_per_day": True,
                 "coverage_shortage_gain_weight": 180,
                 "balance_target_distance_weight": 95,
                 "after_night_evening_penalty": 1600,
@@ -433,22 +441,124 @@ class ApiRegressionTests(unittest.TestCase):
 
         stored_settings = update_response.json()["settings"]
         self.assertEqual(stored_settings["schedule_coverage_display_mode"], "category")
+        self.assertTrue(stored_settings["allow_multiple_positions_per_day"])
         self.assertEqual(stored_settings["coverage_shortage_gain_weight"], 180)
         self.assertEqual(stored_settings["balance_target_distance_weight"], 95)
         self.assertEqual(stored_settings["after_night_evening_penalty"], 1600)
 
         direct_read = main.get_app_settings(self.connection)
         self.assertEqual(direct_read["schedule_coverage_display_mode"], "category")
+        self.assertTrue(direct_read["allow_multiple_positions_per_day"])
         self.assertEqual(direct_read["coverage_shortage_gain_weight"], 180)
         self.assertEqual(direct_read["balance_target_distance_weight"], 95)
         self.assertEqual(direct_read["after_night_evening_penalty"], 1600)
 
-    def test_auto_generate_end_to_end_for_two_positions_fills_full_week(self):
-        template_id = self._create_shift_template()
-        self.assertIsInstance(template_id, int)
-
+    def test_schedule_rejects_template_from_another_position(self):
+        employee_id = self._create_employee()
         ward_a_id = self._create_position(name="Ward A")
         ward_b_id = self._create_position(name="Ward B")
+        template_id = self._create_shift_template(position_id=ward_a_id, name="Ward A Morning")
+
+        response = self.client.post(
+            "/api/employee-positions",
+            json={
+                "employee_id": employee_id,
+                "position_id": ward_b_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        create_response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": ward_b_id,
+                "date": "2026-04-20",
+                "shift_template_id": template_id,
+            },
+        )
+        self.assertEqual(create_response.status_code, 404)
+        self.assertEqual(create_response.json()["detail"], "Shift template not found for this position")
+
+    def test_multi_position_same_day_setting_controls_cross_position_shifts(self):
+        reset_response = self.client.put(
+            "/api/app-settings",
+            json={"allow_multiple_positions_per_day": False},
+        )
+        self.assertEqual(reset_response.status_code, 200)
+
+        employee_id = self._create_employee(full_name="Employee A", max_shifts_per_week=7)
+        ward_a_id = self._create_position(name="Ward A")
+        ward_b_id = self._create_position(name="Ward B")
+        morning_id = self._create_shift_template(position_id=ward_a_id, name="Ward A Morning")
+        evening_id = self._create_shift_template(
+            position_id=ward_b_id,
+            name="Ward B Evening",
+            category="evening",
+            start_time="14:00",
+            end_time="20:00",
+        )
+
+        for position_id in (ward_a_id, ward_b_id):
+            response = self.client.post(
+                "/api/employee-positions",
+                json={
+                    "employee_id": employee_id,
+                    "position_id": position_id,
+                    "is_primary": True,
+                    "priority_score": 100,
+                    "is_fallback_only": False,
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+
+        first_shift = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": ward_a_id,
+                "date": "2026-04-20",
+                "shift_template_id": morning_id,
+            },
+        )
+        self.assertEqual(first_shift.status_code, 200)
+
+        blocked_second_shift = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": ward_b_id,
+                "date": "2026-04-20",
+                "shift_template_id": evening_id,
+            },
+        )
+        self.assertEqual(blocked_second_shift.status_code, 400)
+
+        update_response = self.client.put(
+            "/api/app-settings",
+            json={"allow_multiple_positions_per_day": True},
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+        allowed_second_shift = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": ward_b_id,
+                "date": "2026-04-20",
+                "shift_template_id": evening_id,
+            },
+        )
+        self.assertEqual(allowed_second_shift.status_code, 200)
+
+    def test_auto_generate_end_to_end_for_two_positions_fills_full_week(self):
+        ward_a_id = self._create_position(name="Ward A")
+        ward_b_id = self._create_position(name="Ward B")
+        self.assertIsInstance(self._create_shift_template(position_id=ward_a_id), int)
+        self.assertIsInstance(self._create_shift_template(position_id=ward_b_id), int)
 
         employee_ids = [
             self._create_employee(full_name="Employee A"),
@@ -517,8 +627,55 @@ class ApiRegressionTests(unittest.TestCase):
             "2026-04-26",
         })
 
+    def test_auto_generate_all_positions_returns_successes_and_failures(self):
+        ward_a_id = self._create_position(name="Ward A")
+        ward_b_id = self._create_position(name="Ward B")
+        ward_c_id = self._create_position(name="Ward C")
+
+        self._create_shift_template(position_id=ward_a_id, name="Ward A Morning")
+        self._create_shift_template(position_id=ward_b_id, name="Ward B Morning")
+
+        employee_a = self._create_employee(full_name="Employee A")
+        employee_b = self._create_employee(full_name="Employee B")
+
+        for employee_id, position_id in ((employee_a, ward_a_id), (employee_b, ward_b_id), (employee_a, ward_c_id)):
+            response = self.client.post(
+                "/api/employee-positions",
+                json={
+                    "employee_id": employee_id,
+                    "position_id": position_id,
+                    "is_primary": True,
+                    "priority_score": 100,
+                    "is_fallback_only": False,
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+
+        self._save_shift_requirement(position_id=ward_a_id)
+        self._save_shift_requirement(position_id=ward_b_id)
+        self._save_shift_requirement(position_id=ward_c_id)
+
+        response = self.client.post(
+            "/api/schedule/auto-generate-all",
+            json={"week_start_date": "2026-04-20"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["generated_positions"], 2)
+        self.assertEqual(payload["failed_positions"], 1)
+        self.assertEqual(len(payload["results"]), 2)
+        self.assertEqual(len(payload["failures"]), 1)
+        self.assertEqual(payload["failures"][0]["position_id"], ward_c_id)
+        self.assertEqual(payload["failures"][0]["detail"], "No active shift templates found")
+
+        schedule_entries = self.client.get("/api/schedule").json()
+        self.assertEqual({entry["position_id"] for entry in schedule_entries}, {ward_a_id, ward_b_id})
+
     def test_auto_generate_spreads_night_shifts_evenly_between_night_staff(self):
+        position_id = self._create_position(name="Night Ward")
         night_template_id = self._create_shift_template(
+            position_id=position_id,
             name="Night",
             category="night",
             start_time="23:00",
@@ -526,8 +683,6 @@ class ApiRegressionTests(unittest.TestCase):
             is_overnight=True,
         )
         self.assertIsInstance(night_template_id, int)
-
-        position_id = self._create_position(name="Night Ward")
         employee_ids = [
             self._create_employee(full_name="Vaheed", sex="male", target_shifts_per_week=3, max_shifts_per_week=7),
             self._create_employee(full_name="Employee B", sex="female", target_shifts_per_week=3, max_shifts_per_week=7),
@@ -578,10 +733,9 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertLessEqual(max(counts.values()) - min(counts.values()), 1)
 
     def test_auto_generate_avoids_locking_same_shift_type_to_one_employee(self):
-        self._create_shift_template(name="Morning", category="morning", start_time="06:00", end_time="14:00")
-        self._create_shift_template(name="Evening", category="evening", start_time="14:00", end_time="20:00")
-
         position_id = self._create_position(name="Mixed Ward")
+        self._create_shift_template(position_id=position_id, name="Morning", category="morning", start_time="06:00", end_time="14:00")
+        self._create_shift_template(position_id=position_id, name="Evening", category="evening", start_time="14:00", end_time="20:00")
         employee_ids = [
             self._create_employee(full_name="Employee A", target_shifts_per_week=4, max_shifts_per_week=7),
             self._create_employee(full_name="Employee B", target_shifts_per_week=4, max_shifts_per_week=7),
@@ -668,8 +822,9 @@ class ApiRegressionTests(unittest.TestCase):
     def test_export_excel_includes_shift_no_show_and_day_off_labels(self):
         employee_id = self._create_employee(full_name="Employee A")
         position_id = self._create_position()
-        morning_id = self._create_shift_template(name="Morning")
+        morning_id = self._create_shift_template(position_id=position_id, name="Morning")
         evening_id = self._create_shift_template(
+            position_id=position_id,
             name="Evening",
             category="evening",
             start_time="14:00",
@@ -747,7 +902,7 @@ class ApiRegressionTests(unittest.TestCase):
     def test_delete_impact_endpoints_report_related_records(self):
         employee_id = self._create_employee(full_name="Employee A")
         position_id = self._create_position()
-        template_id = self._create_shift_template(name="Morning")
+        template_id = self._create_shift_template(position_id=position_id, name="Morning")
 
         response = self.client.post(
             "/api/employee-positions",
@@ -866,12 +1021,13 @@ class ApiRegressionTests(unittest.TestCase):
         template_impact = self.client.get(f"/api/shift-templates/{template_id}/delete-impact")
         self.assertEqual(template_impact.status_code, 200)
         self.assertEqual(template_impact.json()["template_name"], "Morning")
+        self.assertEqual(template_impact.json()["position_name"], "Nurse")
         self.assertEqual(template_impact.json()["schedule_entries"], 1)
 
     def test_clear_week_preview_reports_entries_and_day_off_statuses(self):
         employee_id = self._create_employee(full_name="Employee A")
         position_id = self._create_position(name="Ward A")
-        template_id = self._create_shift_template()
+        template_id = self._create_shift_template(position_id=position_id)
 
         response = self.client.post(
             "/api/employee-positions",
@@ -958,7 +1114,7 @@ class ApiRegressionTests(unittest.TestCase):
     def test_delete_employee_cascades_related_records_and_returns_backup_name(self):
         employee_id = self._create_employee(full_name="Employee A")
         position_id = self._create_position()
-        template_id = self._create_shift_template()
+        template_id = self._create_shift_template(position_id=position_id)
 
         response = self.client.post(
             "/api/employee-positions",
@@ -1018,7 +1174,7 @@ class ApiRegressionTests(unittest.TestCase):
     def test_delete_position_cascades_related_records_and_returns_backup_name(self):
         employee_id = self._create_employee(full_name="Employee A")
         position_id = self._create_position(name="Ward A")
-        template_id = self._create_shift_template()
+        template_id = self._create_shift_template(position_id=position_id)
 
         self.client.post(
             "/api/employee-positions",
@@ -1072,9 +1228,9 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/schedule").json(), [])
 
     def test_delete_shift_template_in_use_is_blocked_and_plain_delete_returns_backup_name(self):
-        template_id = self._create_shift_template(name="Morning")
-        employee_id = self._create_employee()
         position_id = self._create_position()
+        template_id = self._create_shift_template(position_id=position_id, name="Morning")
+        employee_id = self._create_employee()
         self.client.post(
             "/api/employee-positions",
             json={

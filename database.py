@@ -167,15 +167,51 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS shift_templates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
+        position_id INTEGER,
         category TEXT NOT NULL CHECK (category IN ('morning', 'evening', 'night')),
+        name TEXT NOT NULL,
         start_time TEXT NOT NULL,
         end_time TEXT NOT NULL,
         is_overnight INTEGER NOT NULL DEFAULT 0,
         is_active INTEGER NOT NULL DEFAULT 1,
-        is_split_only INTEGER NOT NULL DEFAULT 0
+        is_split_only INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+        UNIQUE(position_id, name)
     )
     """)
+
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shift_templates'")
+    shift_templates_sql = cursor.fetchone()["sql"]
+    if "position_id" not in shift_templates_sql or "UNIQUE(position_id, name)" not in shift_templates_sql:
+        cursor.execute("ALTER TABLE shift_templates RENAME TO shift_templates_old")
+        cursor.execute("""
+        CREATE TABLE shift_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER,
+            category TEXT NOT NULL CHECK (category IN ('morning', 'evening', 'night')),
+            name TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            is_overnight INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            is_split_only INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+            UNIQUE(position_id, name)
+        )
+        """)
+        cursor.execute("""
+        INSERT INTO shift_templates (id, position_id, category, name, start_time, end_time, is_overnight, is_active, is_split_only)
+        SELECT id, NULL, category, name, start_time, end_time, is_overnight, is_active, is_split_only
+        FROM shift_templates_old
+        """)
+        cursor.execute("DROP TABLE shift_templates_old")
+
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_shift_templates_position_active
+        ON shift_templates (position_id, is_active, category, start_time, end_time)
+        """
+    )
 
     # ==========================================
     # Schedule entries / Записи расписания
@@ -198,6 +234,29 @@ def init_db():
     schedule_entry_columns = {row["name"] for row in cursor.fetchall()}
     if "no_show" not in schedule_entry_columns:
         cursor.execute("ALTER TABLE schedule_entries ADD COLUMN no_show INTEGER NOT NULL DEFAULT 0")
+
+    schedule_entry_fk_targets = {row["table"] for row in cursor.execute("PRAGMA foreign_key_list(schedule_entries)")}
+    if "shift_templates_old" in schedule_entry_fk_targets:
+        cursor.execute("ALTER TABLE schedule_entries RENAME TO schedule_entries_old")
+        cursor.execute("""
+            CREATE TABLE schedule_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_id INTEGER NOT NULL,
+                position_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                shift_template_id INTEGER NOT NULL,
+                no_show INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+                FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+                FOREIGN KEY (shift_template_id) REFERENCES shift_templates(id) ON DELETE RESTRICT
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO schedule_entries (id, employee_id, position_id, date, shift_template_id, no_show)
+            SELECT id, employee_id, position_id, date, shift_template_id, no_show
+            FROM schedule_entries_old
+        """)
+        cursor.execute("DROP TABLE schedule_entries_old")
 
     # Optional helpful index / Полезный индекс
     cursor.execute("""
@@ -370,6 +429,7 @@ def init_db():
             ('emergency_max_consecutive_nights', '3'),
             ('max_consecutive_split_days', '2'),
             ('emergency_max_consecutive_split_days', '3'),
+            ('allow_multiple_positions_per_day', '0'),
             ('after_night_evening_penalty', '1200'),
             ('consecutive_night_penalty', '500'),
             ('consecutive_split_penalty', '450'),

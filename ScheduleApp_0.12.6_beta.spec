@@ -21,7 +21,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='ScheduleApp_0.12.5_beta',
+    name='ScheduleApp_0.12.6_beta',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -40,6 +40,7 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='ScheduleApp_0.12.5_beta',
+    name='ScheduleApp_0.12.6_beta',
 )
+
 

@@ -2,6 +2,32 @@
 
 This file tracks the beta builds in the `0.12.x_beta` line.
 
+## 0.12.6_beta - 2026-04-24
+
+### Release Focus
+
+Compact the schedule cell layout, make cross-position shifts easier to scan, and cut vertical bloat in the planning grid.
+
+### What Changed
+
+- Moved other-position shifts into the same in-cell card flow instead of rendering them as a separate block below.
+- Restyled all shift cards to a shared compact shape with clearer category colors and a narrow accent strip.
+- Reduced card typography and spacing so busy schedule rows stay denser and easier to scan.
+- Moved the shift delete action out of the card content flow into a side control to save vertical space.
+- Updated runtime version references, asset cache-busting strings, and build references to `0.12.6_beta`.
+
+### User Impact
+
+- Employees with multiple same-day position assignments are now visible without stretching the table rows as much.
+- Shift types are easier to distinguish at a glance because the card colors no longer look nearly identical.
+- Dense weeks should remain more manageable on screen because each schedule cell uses less height.
+
+### Technical Impact
+
+- Schedule cell rendering now merges current-position and foreign-position entries into one card list.
+- Shift card styling is aligned across ordinary, muted, and actionable states with less layout overhead.
+- Version metadata is aligned again between backend, frontend, templates, and packaging files.
+
 ## 0.12.5_beta - 2026-04-23
 
 ### Release Focus

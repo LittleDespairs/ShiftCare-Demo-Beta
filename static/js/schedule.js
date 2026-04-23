@@ -587,6 +587,7 @@
                 loadSchedulePageData({ showLoadedMessage: false });
             });
             document.getElementById("auto-generate-btn").addEventListener("click", autoGenerateSchedule);
+            document.getElementById("auto-generate-all-btn").addEventListener("click", autoGenerateAllSchedules);
             document.getElementById("clear-week-btn").addEventListener("click", clearWeekSchedule);
             document.getElementById("export-excel-btn").addEventListener("click", exportScheduleExcel);
             document.getElementById("clear-message-btn").addEventListener("click", clearMessage);
@@ -661,18 +662,22 @@
             const positionId = Number(document.getElementById("position_select").value);
             const hasPositions = allPositions.length > 0;
             const hasContext = Boolean(weekStart && positionId);
+            const hasWeek = Boolean(weekStart);
             const loadButton = document.getElementById("load-btn");
             const generateButton = document.getElementById("auto-generate-btn");
+            const generateAllButton = document.getElementById("auto-generate-all-btn");
             const clearButton = document.getElementById("clear-week-btn");
             const exportButton = document.getElementById("export-excel-btn");
 
             loadButton.disabled = !hasPositions || !hasContext;
             generateButton.disabled = !scheduleDataLoaded || !hasContext;
+            generateAllButton.disabled = !hasPositions || !hasWeek;
             clearButton.disabled = !scheduleDataLoaded || !hasContext;
             exportButton.disabled = !scheduleDataLoaded || !hasContext;
 
             loadButton.title = hasPositions ? "" : t("schedule_no_positions_text", "Create at least one position before loading or generating a weekly schedule.");
             generateButton.title = scheduleDataLoaded ? "" : t("schedule_action_generation_hint", "Generation is available after the selected week is loaded.");
+            generateAllButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
             clearButton.title = scheduleDataLoaded ? "" : t("schedule_action_clear_hint", "Clear week becomes available after the selected week is loaded.");
             exportButton.title = scheduleDataLoaded ? "" : t("schedule_action_export_hint", "Export becomes available after the selected week is loaded.");
         }
@@ -973,6 +978,80 @@
             }
         }
 
+        async function autoGenerateAllSchedules() {
+            const weekStart = document.getElementById("week_start").value;
+            const positionId = Number(document.getElementById("position_select").value);
+            const button = document.getElementById("auto-generate-all-btn");
+
+            if (!weekStart) {
+                showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
+                return;
+            }
+
+            button.disabled = true;
+            setScheduleGenerating(true);
+
+            try {
+                const response = await fetch("/api/schedule/auto-generate-all", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        week_start_date: weekStart
+                    })
+                });
+
+                let result = null;
+                let rawText = "";
+
+                try {
+                    rawText = await response.text();
+                    result = rawText ? JSON.parse(rawText) : null;
+                } catch (error) {
+                    result = null;
+                }
+
+                if (!response.ok) {
+                    const formattedError =
+                        (result && result.detail)
+                            ? formatApiError(result.detail)
+                            : (rawText ? escapeHtml(rawText) : t("msg_auto_generate_failed", "Auto-generation failed."));
+
+                    showMessage(formattedError, "danger");
+                    return;
+                }
+
+                clearGenerationSummary();
+
+                if (positionId) {
+                    await loadSchedulePageData({
+                        showLoadedMessage: false,
+                        preserveGenerationSummary: false
+                    });
+                }
+
+                const failureText = (result.failures || []).length > 0
+                    ? `<br>${escapeHtml(t("schedule_generate_all_failures_prefix", "Failed positions"))}: ${escapeHtml(
+                        result.failures.map(item => `${item.position_name}: ${item.detail}`).join("; ")
+                    )}`
+                    : "";
+
+                showMessage(
+                    `${escapeHtml(t("schedule_generate_all_done", "Auto-generation for all positions finished."))}<br>` +
+                    `${escapeHtml(t("schedule_generate_all_success_summary", "Generated positions"))}: ${Number(result.generated_positions)} · ` +
+                    `${escapeHtml(t("schedule_generate_all_created_summary", "Created shifts"))}: ${Number(result.total_created_count)}${failureText}`,
+                    (result.failed_positions || 0) > 0 ? "warning" : "success"
+                );
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_auto_generate", "Server error while auto-generating schedule."), "danger");
+            } finally {
+                button.disabled = false;
+                setScheduleGenerating(false);
+            }
+        }
+
         function setScheduleGenerating(isGenerating) {
             const shell = document.querySelector(".schedule-shell");
             const overlay = document.getElementById("schedule-loading-overlay");
@@ -980,6 +1059,7 @@
             const buttons = [
                 document.getElementById("load-btn"),
                 document.getElementById("auto-generate-btn"),
+                document.getElementById("auto-generate-all-btn"),
                 document.getElementById("clear-week-btn"),
                 document.getElementById("export-excel-btn"),
                 document.getElementById("schedule_coverage_display_mode")
@@ -1417,7 +1497,75 @@
             return statusType === "day_off" ? "day-off" : "sick";
         }
 
-        function renderReadOnlyCellBody(dayEntries) {
+        function getPositionName(positionId) {
+            const position = allPositions.find(item => item.id === positionId);
+            return position ? position.name : String(positionId);
+        }
+
+        function renderEntryCard(entry, options = {}) {
+            const extraClasses = options.muted ? " is-muted-foreign" : "";
+            const positionMeta = options.showPosition
+                ? ` · ${escapeHtml(getPositionName(entry.position_id))}`
+                : "";
+            return `
+                <div class="${getCardClassByShiftCategory(entry.shift_category)} ${entry.no_show ? "has-no-show" : ""}${extraClasses}">
+                    <div class="entry-title">${escapeHtml(entry.shift_template_name)}</div>
+                    <div class="entry-meta">
+                        ${escapeHtml(getShiftCategoryLabel(entry.shift_category))} · ${escapeHtml(entry.start_time)} - ${escapeHtml(entry.end_time)}${positionMeta}
+                    </div>
+                    ${entry.no_show ? `
+                        <div class="entry-no-show-label">${t("status_no_show", "No-show")}</div>
+                        ${options.showActions ? `
+                            <button
+                                class="entry-status-remove-btn clear-no-show-btn"
+                                data-entry-id="${entry.id}"
+                                type="button"
+                                title="${t("schedule_remove_status", "Remove status")}"
+                            >
+                                ×
+                            </button>
+                        ` : ""}
+                    ` : ""}
+                    ${options.showActions ? `
+                        <button
+                            class="entry-delete delete-shift-btn"
+                            data-entry-id="${entry.id}"
+                            type="button"
+                            title="${t("schedule_delete_shift_btn", "Delete")}"
+                            aria-label="${t("schedule_delete_shift_btn", "Delete")}"
+                        >
+                            ×
+                        </button>
+                    ` : ""}
+                </div>
+            `;
+        }
+
+        function getForeignPositionEntries(employeeId, positionId, date) {
+            return allScheduleEntries.filter(entry => (
+                entry.employee_id === employeeId &&
+                entry.position_id !== positionId &&
+                entry.date === date
+            ));
+        }
+
+        function renderCellEntries(dayEntries, employeeId, positionId, date, showActions) {
+            const foreignEntries = getForeignPositionEntries(employeeId, positionId, date);
+            if (dayEntries.length === 0 && foreignEntries.length === 0) {
+                return `<div class="empty-text">${t("schedule_no_shifts_assigned", "No shifts assigned")}</div>`;
+            }
+
+            return [
+                ...dayEntries.map(entry => renderEntryCard(entry, { showActions })),
+                ...foreignEntries.map(entry => renderEntryCard(entry, {
+                    muted: true,
+                    showPosition: true,
+                    showActions: false
+                }))
+            ].join("");
+        }
+
+        function renderReadOnlyCellBody(dayEntries, employeeId, positionId, date) {
             return `
                 <div class="add-box" aria-hidden="true">
                     <div class="cell-actions">
@@ -1431,16 +1579,7 @@
                 </div>
 
                 <div class="entries-list" aria-hidden="true">
-                    ${dayEntries.length === 0 ? `
-                        <div class="empty-text">${t("schedule_no_shifts_assigned", "No shifts assigned")}</div>
-                    ` : dayEntries.map(entry => `
-                        <div class="${getCardClassByShiftCategory(entry.shift_category)} ${entry.no_show ? "has-no-show" : ""}">
-                            <div class="entry-title">${escapeHtml(entry.shift_template_name)}</div>
-                            <div class="entry-meta">
-                                ${escapeHtml(getShiftCategoryLabel(entry.shift_category))} · ${escapeHtml(entry.start_time)} - ${escapeHtml(entry.end_time)}
-                            </div>
-                        </div>
-                    `).join("")}
+                    ${renderCellEntries(dayEntries, employeeId, positionId, date, false)}
                 </div>
             `;
         }
@@ -1478,7 +1617,7 @@
                 return `
                     <td class="schedule-day-cell has-day-status">
                         <div class="schedule-day-inner">
-                            ${renderReadOnlyCellBody(dayEntries)}
+                            ${renderReadOnlyCellBody(dayEntries, employeeId, positionId, date)}
                         </div>
                         ${renderDayStatusCover(employeeId, date, dayStatus.status_type)}
                     </td>
@@ -1511,34 +1650,7 @@
                         </div>
 
                         <div class="entries-list">
-                            ${dayEntries.length === 0 ? `
-                                <div class="empty-text">${t("schedule_no_shifts_assigned", "No shifts assigned")}</div>
-                            ` : dayEntries.map(entry => `
-                                <div class="${getCardClassByShiftCategory(entry.shift_category)} ${entry.no_show ? "has-no-show" : ""}">
-                                    <div class="entry-title">${escapeHtml(entry.shift_template_name)}</div>
-                                    <div class="entry-meta">
-                                        ${escapeHtml(getShiftCategoryLabel(entry.shift_category))} · ${escapeHtml(entry.start_time)} - ${escapeHtml(entry.end_time)}
-                                    </div>
-                                    ${entry.no_show ? `
-                                        <div class="entry-no-show-label">${t("status_no_show", "No-show")}</div>
-                                        <button
-                                            class="entry-status-remove-btn clear-no-show-btn"
-                                            data-entry-id="${entry.id}"
-                                            type="button"
-                                            title="${t("schedule_remove_status", "Remove status")}"
-                                        >
-                                            ×
-                                        </button>
-                                    ` : ""}
-                                    <button
-                                        class="entry-delete delete-shift-btn"
-                                        data-entry-id="${entry.id}"
-                                        type="button"
-                                    >
-                                        ${t("schedule_delete_shift_btn", "Delete")}
-                                    </button>
-                                </div>
-                            `).join("")}
+                            ${renderCellEntries(dayEntries, employeeId, positionId, date, true)}
                         </div>
                     </div>
                 </td>
@@ -1788,8 +1900,11 @@
         }
 
         function renderShiftPickerOptions() {
+            const targetPositionId = pendingShiftTarget?.positionId ?? null;
             return SHIFT_CATEGORIES.map(([category]) => {
-                const templates = allShiftTemplates.filter(item => item.category === category);
+                const templates = allShiftTemplates.filter(item =>
+                    item.category === category && item.position_id === targetPositionId
+                );
                 if (templates.length === 0) return "";
 
                 return `

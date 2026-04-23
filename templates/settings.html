@@ -11,7 +11,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v=0.12.5_beta">
+<link rel="stylesheet" href="/static/css/style.css?v=0.12.6_beta">
 
     <style>
         /* =========================================================
@@ -408,7 +408,7 @@
                     <div>
                         <h3 class="generation-settings-title" data-i18n="settings_generation_title">Generation rules</h3>
                         <p class="generation-settings-text" data-i18n="settings_generation_text">
-                            Tune fatigue limits and balancing weights used by auto-generation.
+                            Configure emergency limits and cross-position shift behavior for auto-generation.
                         </p>
                     </div>
                 </div>
@@ -418,31 +418,10 @@
                 <form id="generation-settings-form">
                     <div class="generation-form-grid">
                         <div>
-                            <label class="form-label" for="max_work_days_per_week" data-i18n="settings_max_work_days">
-                                Max work days per week
-                            </label>
-                            <input id="max_work_days_per_week" class="input" type="number" min="1" max="7" required>
-                        </div>
-
-                        <div>
-                            <label class="form-label" for="max_consecutive_nights" data-i18n="settings_max_nights">
-                                Max consecutive nights
-                            </label>
-                            <input id="max_consecutive_nights" class="input" type="number" min="1" max="7" required>
-                        </div>
-
-                        <div>
                             <label class="form-label" for="emergency_max_consecutive_nights" data-i18n="settings_emergency_nights">
                                 Emergency night limit
                             </label>
                             <input id="emergency_max_consecutive_nights" class="input" type="number" min="1" max="7" required>
-                        </div>
-
-                        <div>
-                            <label class="form-label" for="max_consecutive_split_days" data-i18n="settings_max_splits">
-                                Max consecutive split days
-                            </label>
-                            <input id="max_consecutive_split_days" class="input" type="number" min="1" max="7" required>
                         </div>
 
                         <div>
@@ -452,53 +431,11 @@
                             <input id="emergency_max_consecutive_split_days" class="input" type="number" min="1" max="7" required>
                         </div>
 
-                        <div>
-                            <label class="form-label" for="after_night_evening_penalty" data-i18n="settings_night_evening_penalty">
-                                Night to evening penalty
+                        <div style="display:flex; align-items:flex-end;">
+                            <label class="check-row" for="allow_multiple_positions_per_day" style="margin:0;">
+                                <input id="allow_multiple_positions_per_day" type="checkbox">
+                                <span data-i18n="settings_allow_multiple_positions_per_day">Allow multiple positions in one day</span>
                             </label>
-                            <input id="after_night_evening_penalty" class="input" type="number" min="0" max="10000" required>
-                        </div>
-
-                        <div>
-                            <label class="form-label" for="coverage_shortage_gain_weight" data-i18n="settings_shortage_weight">
-                                Coverage shortage weight
-                            </label>
-                            <input id="coverage_shortage_gain_weight" class="input" type="number" min="1" max="1000" required>
-                        </div>
-
-                        <div>
-                            <label class="form-label" for="target_gender_bonus_weight" data-i18n="settings_gender_bonus_weight">
-                                Gender target bonus
-                            </label>
-                            <input id="target_gender_bonus_weight" class="input" type="number" min="0" max="2000" required>
-                        </div>
-
-                        <div>
-                            <label class="form-label" for="balance_missing_min_weight" data-i18n="settings_missing_min_weight">
-                                Missing minimum shift weight
-                            </label>
-                            <input id="balance_missing_min_weight" class="input" type="number" min="0" max="10000" required>
-                        </div>
-
-                        <div>
-                            <label class="form-label" for="balance_target_distance_weight" data-i18n="settings_target_distance_weight">
-                                Target distance weight
-                            </label>
-                            <input id="balance_target_distance_weight" class="input" type="number" min="0" max="10000" required>
-                        </div>
-
-                        <div>
-                            <label class="form-label" for="balance_night_weight" data-i18n="settings_night_weight">
-                                Night balance weight
-                            </label>
-                            <input id="balance_night_weight" class="input" type="number" min="0" max="10000" required>
-                        </div>
-
-                        <div>
-                            <label class="form-label" for="balance_split_weight" data-i18n="settings_split_weight">
-                                Split balance weight
-                            </label>
-                            <input id="balance_split_weight" class="input" type="number" min="0" max="10000" required>
                         </div>
                     </div>
 
@@ -570,7 +507,7 @@
             </div>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    Schedule App v0.12.5_beta
+                    Schedule App v0.12.6_beta
                 </div>
 
                 <div class="footer-right">
@@ -581,7 +518,7 @@
         </main>
     </div>
 
-<script src="/static/js/i18n.js?v=0.12.5_beta"></script>
+<script src="/static/js/i18n.js?v=0.12.6_beta"></script>
 
     <script>
         function getSavedSidebarState() {
@@ -630,18 +567,9 @@
         }
 
         const generationSettingFields = [
-            "max_work_days_per_week",
-            "max_consecutive_nights",
-            "emergency_max_consecutive_nights",
-            "max_consecutive_split_days",
-            "emergency_max_consecutive_split_days",
-            "after_night_evening_penalty",
-            "coverage_shortage_gain_weight",
-            "target_gender_bonus_weight",
-            "balance_missing_min_weight",
-            "balance_target_distance_weight",
-            "balance_night_weight",
-            "balance_split_weight"
+            { id: "emergency_max_consecutive_nights", type: "number" },
+            { id: "emergency_max_consecutive_split_days", type: "number" },
+            { id: "allow_multiple_positions_per_day", type: "checkbox" }
         ];
         let databaseBackups = [];
 
@@ -783,9 +711,13 @@
 
             const settings = await response.json();
             generationSettingFields.forEach((field) => {
-                const input = document.getElementById(field);
-                if (input && settings[field] !== undefined) {
-                    input.value = settings[field];
+                const input = document.getElementById(field.id);
+                if (input && settings[field.id] !== undefined) {
+                    if (field.type === "checkbox") {
+                        input.checked = Boolean(settings[field.id]);
+                    } else {
+                        input.value = settings[field.id];
+                    }
                 }
             });
         }
@@ -795,7 +727,10 @@
 
             const payload = {};
             generationSettingFields.forEach((field) => {
-                payload[field] = Number(document.getElementById(field).value);
+                const input = document.getElementById(field.id);
+                payload[field.id] = field.type === "checkbox"
+                    ? input.checked
+                    : Number(input.value);
             });
 
             const response = await fetch("/api/app-settings", {
@@ -812,9 +747,13 @@
 
             const result = await response.json();
             generationSettingFields.forEach((field) => {
-                const input = document.getElementById(field);
-                if (input && result.settings[field] !== undefined) {
-                    input.value = result.settings[field];
+                const input = document.getElementById(field.id);
+                if (input && result.settings[field.id] !== undefined) {
+                    if (field.type === "checkbox") {
+                        input.checked = Boolean(result.settings[field.id]);
+                    } else {
+                        input.value = result.settings[field.id];
+                    }
                 }
             });
             showMessage(t("settings_msg_generation_saved", "Generation settings saved."), "success");
@@ -834,3 +773,4 @@
 </body>
 
 </html>
+

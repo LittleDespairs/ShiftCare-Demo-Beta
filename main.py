@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 from database import get_connection, init_db
 from excel_export import build_schedule_export_workbook
 
-APP_VERSION = "0.12.5_beta"
+APP_VERSION = "0.12.6_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
 
 tags_metadata = [
@@ -115,6 +115,7 @@ class EmployeePositionCreate(BaseModel):
 
 
 class ShiftTemplateCreate(BaseModel):
+    position_id: int
     name: str = Field(min_length=2, max_length=100)
     category: Literal["morning", "evening", "night"]
     start_time: str
@@ -231,6 +232,15 @@ class AutoGenerateScheduleRequest(BaseModel):
         return self
 
 
+class AutoGenerateAllScheduleRequest(BaseModel):
+    week_start_date: str
+
+    @model_validator(mode="after")
+    def validate_week_start_date(self):
+        parse_date_string(self.week_start_date)
+        return self
+
+
 class ClearWeekScheduleRequest(BaseModel):
     position_id: int
     week_start_date: str
@@ -261,6 +271,7 @@ class AppSettingsUpdate(BaseModel):
         le=24 * 60,
     )
     schedule_coverage_display_mode: Literal["category", "interval"] | None = None
+    allow_multiple_positions_per_day: bool | None = None
     max_work_days_per_week: int | None = Field(default=None, ge=1, le=7)
     max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
     emergency_max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
@@ -350,6 +361,14 @@ def get_app_settings(connection) -> dict:
         except (TypeError, ValueError):
             return default
 
+    def read_bool(key: str, default: bool) -> bool:
+        raw_value = raw_settings.get(key)
+        if raw_value is None:
+            return default
+        if isinstance(raw_value, bool):
+            return raw_value
+        return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+
     return {
         "min_rest_minutes_between_morning_and_evening": read_int(
             "min_rest_minutes_between_morning_and_evening",
@@ -364,6 +383,7 @@ def get_app_settings(connection) -> dict:
             if raw_settings.get("schedule_coverage_display_mode") in {"category", "interval"}
             else "interval"
         ),
+        "allow_multiple_positions_per_day": read_bool("allow_multiple_positions_per_day", False),
         "max_work_days_per_week": read_int("max_work_days_per_week", MAX_WORK_DAYS_PER_WEEK),
         "max_consecutive_nights": read_int("max_consecutive_nights", MAX_CONSECUTIVE_NIGHTS),
         "emergency_max_consecutive_nights": read_int("emergency_max_consecutive_nights", EMERGENCY_MAX_CONSECUTIVE_NIGHTS),
@@ -437,6 +457,8 @@ def row_to_position_dict(row: sqlite3.Row) -> dict:
 def row_to_shift_template_dict(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
+        "position_id": row["position_id"] if "position_id" in row.keys() else None,
+        "position_name": row["position_name"] if "position_name" in row.keys() else None,
         "name": row["name"],
         "category": row["category"],
         "start_time": row["start_time"],
@@ -826,6 +848,12 @@ def can_employee_take_template(
         ],
     ]
 
+    if not app_settings["allow_multiple_positions_per_day"] and any(
+        entry["position_id"] != position_id
+        for entry in existing_entries
+    ):
+        return False
+
     for entry in existing_entries:
         existing_interval = build_interval(entry["start_time"], entry["end_time"], bool(entry["is_overnight"]))
         if new_interval.overlaps(existing_interval):
@@ -935,6 +963,11 @@ def explain_employee_template_rejection(
             if entry["employee_id"] == employee["id"] and entry["date"] == date_string
         ],
     ]
+    if not app_settings["allow_multiple_positions_per_day"] and any(
+        entry["position_id"] != position_id
+        for entry in existing_entries
+    ):
+        return "employee already has a shift on another position this day"
     for entry in existing_entries:
         existing_interval = build_interval(entry["start_time"], entry["end_time"], bool(entry["is_overnight"]))
         if new_interval.overlaps(existing_interval):
@@ -1003,7 +1036,12 @@ def validate_schedule_entry_basic(connection, entry: ScheduleEntryCreate):
     cursor = connection.cursor()
     employee_row = fetch_one_or_404(cursor, "SELECT * FROM employees WHERE id = ?", (entry.employee_id,), "Employee not found")
     fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (entry.position_id,), "Position not found")
-    template_row = fetch_one_or_404(cursor, "SELECT * FROM shift_templates WHERE id = ?", (entry.shift_template_id,), "Shift template not found")
+    template_row = fetch_one_or_404(
+        cursor,
+        "SELECT * FROM shift_templates WHERE id = ? AND position_id = ?",
+        (entry.shift_template_id, entry.position_id),
+        "Shift template not found for this position",
+    )
     employee = row_to_employee_dict(employee_row)
     template = row_to_shift_template_dict(template_row)
     week_start = get_week_start_for_date(entry.date)
@@ -1017,7 +1055,26 @@ def validate_manual_schedule_entry_basics(connection, entry: ScheduleEntryCreate
     cursor = connection.cursor()
     fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (entry.employee_id,), "Employee not found")
     fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (entry.position_id,), "Position not found")
-    fetch_one_or_404(cursor, "SELECT id FROM shift_templates WHERE id = ?", (entry.shift_template_id,), "Shift template not found")
+    template_row = fetch_one_or_404(
+        cursor,
+        "SELECT * FROM shift_templates WHERE id = ? AND position_id = ?",
+        (entry.shift_template_id, entry.position_id),
+        "Shift template not found for this position",
+    )
+    app_settings = get_app_settings(connection)
+    if not app_settings["allow_multiple_positions_per_day"]:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM schedule_entries
+            WHERE employee_id = ? AND date = ? AND position_id != ? AND no_show = 0
+            LIMIT 1
+            """,
+            (entry.employee_id, entry.date, entry.position_id),
+        )
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Employee already has a shift on another position this day")
+    return row_to_shift_template_dict(template_row)
 
 
 # =========================
@@ -1455,14 +1512,25 @@ def get_employee_position_delete_impact(employee_id: int, position_id: int):
 
 
 @app.get("/api/shift-templates", tags=["Shift Templates"])
-def get_shift_templates(active_only: bool = False):
+def get_shift_templates(active_only: bool = False, position_id: int | None = None):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        base_query = """
+            SELECT st.*, p.name AS position_name
+            FROM shift_templates st
+            LEFT JOIN positions p ON p.id = st.position_id
+        """
+        conditions = []
+        params: list[int] = []
         if active_only:
-            cursor.execute("SELECT * FROM shift_templates WHERE is_active = 1 ORDER BY category, start_time, end_time")
-        else:
-            cursor.execute("SELECT * FROM shift_templates ORDER BY category, start_time, end_time")
+            conditions.append("st.is_active = 1")
+        if position_id is not None:
+            conditions.append("st.position_id = ?")
+            params.append(position_id)
+        where_sql = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = f"{base_query}{where_sql} ORDER BY COALESCE(st.position_id, 0), st.category, st.start_time, st.end_time"
+        cursor.execute(query, params)
         return [row_to_shift_template_dict(row) for row in cursor.fetchall()]
     finally:
         connection.close()
@@ -1475,13 +1543,15 @@ def add_shift_template(template: ShiftTemplateCreate):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (template.position_id,), "Position not found")
         try:
             cursor.execute(
                 """
-                INSERT INTO shift_templates (name, category, start_time, end_time, is_overnight, is_active, is_split_only)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO shift_templates (position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    template.position_id,
                     template.name,
                     template.category,
                     template.start_time,
@@ -1492,7 +1562,7 @@ def add_shift_template(template: ShiftTemplateCreate):
                 ),
             )
         except sqlite3.IntegrityError:
-            raise HTTPException(status_code=400, detail="Shift template already exists")
+            raise HTTPException(status_code=400, detail="Shift template already exists for this position")
         connection.commit()
         return {"message": "Shift template added successfully", "shift_template": {"id": cursor.lastrowid, **template.model_dump()}}
     finally:
@@ -1507,14 +1577,16 @@ def update_shift_template(template_id: int, template: ShiftTemplateCreate):
     try:
         cursor = connection.cursor()
         fetch_one_or_404(cursor, "SELECT id FROM shift_templates WHERE id = ?", (template_id,), "Shift template not found")
+        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (template.position_id,), "Position not found")
         try:
             cursor.execute(
                 """
                 UPDATE shift_templates
-                SET name = ?, category = ?, start_time = ?, end_time = ?, is_overnight = ?, is_active = ?, is_split_only = ?
+                SET position_id = ?, name = ?, category = ?, start_time = ?, end_time = ?, is_overnight = ?, is_active = ?, is_split_only = ?
                 WHERE id = ?
                 """,
                 (
+                    template.position_id,
                     template.name,
                     template.category,
                     template.start_time,
@@ -1526,7 +1598,7 @@ def update_shift_template(template_id: int, template: ShiftTemplateCreate):
                 ),
             )
         except sqlite3.IntegrityError:
-            raise HTTPException(status_code=400, detail="Shift template with this name already exists")
+            raise HTTPException(status_code=400, detail="Shift template with this name already exists for this position")
         connection.commit()
         return {"message": "Shift template updated successfully", "shift_template": {"id": template_id, **template.model_dump()}}
     finally:
@@ -1557,7 +1629,12 @@ def get_shift_template_delete_impact(template_id: int):
         cursor = connection.cursor()
         template_row = fetch_one_or_404(
             cursor,
-            "SELECT id, name, category FROM shift_templates WHERE id = ?",
+            """
+            SELECT st.id, st.name, st.category, st.position_id, p.name AS position_name
+            FROM shift_templates st
+            LEFT JOIN positions p ON p.id = st.position_id
+            WHERE st.id = ?
+            """,
             (template_id,),
             "Shift template not found",
         )
@@ -1565,6 +1642,8 @@ def get_shift_template_delete_impact(template_id: int):
             "template_id": template_row["id"],
             "template_name": template_row["name"],
             "category": template_row["category"],
+            "position_id": template_row["position_id"],
+            "position_name": template_row["position_name"],
             "schedule_entries": fetch_count(
                 cursor,
                 "SELECT COUNT(*) FROM schedule_entries WHERE shift_template_id = ?",
@@ -2251,9 +2330,18 @@ def load_position_employees(connection, position_id: int) -> list[dict]:
     return employees
 
 
-def load_active_templates(connection) -> list[dict]:
+def load_active_templates(connection, position_id: int) -> list[dict]:
     cursor = connection.cursor()
-    cursor.execute("SELECT * FROM shift_templates WHERE is_active = 1 ORDER BY start_time, end_time, category")
+    cursor.execute(
+        """
+        SELECT st.*, p.name AS position_name
+        FROM shift_templates st
+        JOIN positions p ON p.id = st.position_id
+        WHERE st.position_id = ? AND st.is_active = 1
+        ORDER BY st.start_time, st.end_time, st.category
+        """,
+        (position_id,),
+    )
     return [row_to_shift_template_dict(row) for row in cursor.fetchall()]
 
 
@@ -3792,102 +3880,164 @@ def post_optimize_generated_schedule(
     return moved_count
 
 
-@app.post("/api/schedule/auto-generate", tags=["Schedule"])
-def auto_generate_schedule(request_data: AutoGenerateScheduleRequest):
-    connection = get_connection()
-    try:
-        cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (request_data.position_id,), "Position not found")
-        week_dates = build_week_dates(request_data.week_start_date)
-        employees = load_position_employees(connection, request_data.position_id)
-        if not employees:
-            raise HTTPException(status_code=400, detail="No employees assigned to this position")
+def run_auto_generate_for_position(connection, position_id: int, week_start_date: str) -> dict:
+    cursor = connection.cursor()
+    position_row = fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (position_id,), "Position not found")
+    position = row_to_position_dict(position_row)
+    week_dates = build_week_dates(week_start_date)
+    employees = load_position_employees(connection, position_id)
+    if not employees:
+        raise HTTPException(status_code=400, detail="No employees assigned to this position")
 
-        templates_list = load_active_templates(connection)
-        if not templates_list:
-            raise HTTPException(status_code=400, detail="No active shift templates found")
+    templates_list = load_active_templates(connection, position_id)
+    if not templates_list:
+        raise HTTPException(status_code=400, detail="No active shift templates found")
 
-        coverage_requirements = load_coverage_requirements_for_position(connection, request_data.position_id)
-        legacy_requirements = load_legacy_shift_requirements(connection, request_data.position_id)
-        if not coverage_requirements and not legacy_requirements:
-            raise HTTPException(status_code=400, detail="No coverage or shift requirements found for this position")
+    coverage_requirements = load_coverage_requirements_for_position(connection, position_id)
+    legacy_requirements = load_legacy_shift_requirements(connection, position_id)
+    if not coverage_requirements and not legacy_requirements:
+        raise HTTPException(status_code=400, detail="No coverage or shift requirements found for this position")
 
-        created_entries: list[dict] = []
-        errors: list[str] = []
-        unfilled_reports: list[dict] = []
-        feasibility_report = build_generation_feasibility_report(
+    created_entries: list[dict] = []
+    errors: list[str] = []
+    unfilled_reports: list[dict] = []
+    feasibility_report = build_generation_feasibility_report(
+        connection,
+        employees,
+        templates_list,
+        coverage_requirements,
+        legacy_requirements,
+        position_id,
+        week_start_date,
+        week_dates,
+    )
+    for issue in feasibility_report["issues"]:
+        errors.append(format_feasibility_issue(issue))
+
+    if coverage_requirements:
+        fill_week_by_interval_coverage(
             connection,
+            cursor,
             employees,
             templates_list,
             coverage_requirements,
-            legacy_requirements,
-            request_data.position_id,
-            request_data.week_start_date,
+            position_id,
+            week_start_date,
             week_dates,
+            created_entries,
+            errors,
+            unfilled_reports,
         )
-        for issue in feasibility_report["issues"]:
-            errors.append(format_feasibility_issue(issue))
-
-        if coverage_requirements:
-            fill_week_by_interval_coverage(
+    else:
+        for date_string in week_dates:
+            fill_day_by_legacy_categories(
                 connection,
                 cursor,
                 employees,
                 templates_list,
-                coverage_requirements,
-                request_data.position_id,
-                request_data.week_start_date,
-                week_dates,
+                legacy_requirements,
+                position_id,
+                week_start_date,
+                date_string,
                 created_entries,
                 errors,
                 unfilled_reports,
             )
-        else:
-            for date_string in week_dates:
-                fill_day_by_legacy_categories(
-                    connection,
-                    cursor,
-                    employees,
-                    templates_list,
-                    legacy_requirements,
-                    request_data.position_id,
-                    request_data.week_start_date,
-                    date_string,
-                    created_entries,
-                    errors,
-                    unfilled_reports,
-                )
 
-        optimization_moved_count = post_optimize_generated_schedule(
-            connection,
-            cursor,
-            employees,
-            request_data.position_id,
-            request_data.week_start_date,
-            week_dates,
-            created_entries,
-            errors,
-        )
+    optimization_moved_count = post_optimize_generated_schedule(
+        connection,
+        cursor,
+        employees,
+        position_id,
+        week_start_date,
+        week_dates,
+        created_entries,
+        errors,
+    )
 
-        append_fatigue_summary_warnings(connection, employees, week_dates, request_data.week_start_date, errors)
-        day_off_count = sync_generated_day_off_statuses(
-            connection,
-            cursor,
-            employees,
-            request_data.position_id,
-            week_dates,
-        )
+    append_fatigue_summary_warnings(connection, employees, week_dates, week_start_date, errors)
+    day_off_count = sync_generated_day_off_statuses(
+        connection,
+        cursor,
+        employees,
+        position_id,
+        week_dates,
+    )
+
+    return {
+        "message": "Auto-generation finished",
+        "position_id": position_id,
+        "position_name": position["name"],
+        "created_count": len(created_entries),
+        "created_entries": created_entries,
+        "day_off_count": day_off_count,
+        "optimization_moved_count": optimization_moved_count,
+        "feasibility_report": feasibility_report,
+        "unfilled_reports": unfilled_reports,
+        "errors": errors,
+    }
+
+
+@app.post("/api/schedule/auto-generate", tags=["Schedule"])
+def auto_generate_schedule(request_data: AutoGenerateScheduleRequest):
+    connection = get_connection()
+    try:
+        result = run_auto_generate_for_position(connection, request_data.position_id, request_data.week_start_date)
+        connection.commit()
+        return result
+    finally:
+        connection.close()
+
+
+@app.post("/api/schedule/auto-generate-all", tags=["Schedule"])
+def auto_generate_all_schedules(request_data: AutoGenerateAllScheduleRequest):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id, name FROM positions ORDER BY id")
+        positions = [dict(row) for row in cursor.fetchall()]
+        if not positions:
+            raise HTTPException(status_code=400, detail="No positions found")
+
+        results: list[dict] = []
+        failures: list[dict] = []
+        total_created_count = 0
+        total_day_off_count = 0
+        total_optimization_moved_count = 0
+
+        for position in positions:
+            savepoint_name = f"auto_generate_position_{position['id']}"
+            cursor.execute(f"SAVEPOINT {savepoint_name}")
+            try:
+                result = run_auto_generate_for_position(connection, position["id"], request_data.week_start_date)
+            except HTTPException as exc:
+                cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+                failures.append({
+                    "position_id": position["id"],
+                    "position_name": position["name"],
+                    "detail": exc.detail,
+                    "status_code": exc.status_code,
+                })
+                continue
+
+            cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+            results.append(result)
+            total_created_count += result["created_count"]
+            total_day_off_count += result["day_off_count"]
+            total_optimization_moved_count += result["optimization_moved_count"]
 
         connection.commit()
         return {
-            "message": "Auto-generation finished",
-            "created_count": len(created_entries),
-            "created_entries": created_entries,
-            "day_off_count": day_off_count,
-            "optimization_moved_count": optimization_moved_count,
-            "feasibility_report": feasibility_report,
-            "unfilled_reports": unfilled_reports,
-            "errors": errors,
+            "message": "Auto-generation for all positions finished",
+            "week_start_date": request_data.week_start_date,
+            "generated_positions": len(results),
+            "failed_positions": len(failures),
+            "total_created_count": total_created_count,
+            "total_day_off_count": total_day_off_count,
+            "total_optimization_moved_count": total_optimization_moved_count,
+            "results": results,
+            "failures": failures,
         }
     finally:
         connection.close()
@@ -3924,3 +4074,4 @@ def export_schedule_excel(week_start_date: str, position_id: int, lang: str = "e
         )
     finally:
         connection.close()
+

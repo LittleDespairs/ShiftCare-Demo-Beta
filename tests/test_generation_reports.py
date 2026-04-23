@@ -37,8 +37,8 @@ class GenerationReportTests(unittest.TestCase):
         cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
         cursor.execute(
             """
-            INSERT INTO shift_templates (id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
-            VALUES (1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
+            INSERT INTO shift_templates (id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+            VALUES (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
             """
         )
         cursor.execute(
@@ -104,8 +104,8 @@ class GenerationReportTests(unittest.TestCase):
         cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
         cursor.execute(
             """
-            INSERT INTO shift_templates (id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
-            VALUES (1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
+            INSERT INTO shift_templates (id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+            VALUES (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
             """
         )
         cursor.execute(
@@ -384,10 +384,10 @@ class GenerationReportTests(unittest.TestCase):
         )
         cursor.execute(
             """
-            INSERT INTO shift_templates (id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+            INSERT INTO shift_templates (id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
             VALUES
-                (1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0),
-                (2, 'Evening', 'evening', '15:00', '20:00', 0, 1, 0)
+                (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0),
+                (2, 1, 'Evening', 'evening', '15:00', '20:00', 0, 1, 0)
             """
         )
         cursor.execute(
@@ -477,10 +477,10 @@ class GenerationReportTests(unittest.TestCase):
         )
         cursor.execute(
             """
-            INSERT INTO shift_templates (id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+            INSERT INTO shift_templates (id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
             VALUES
-                (1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0),
-                (2, 'Night', 'night', '23:00', '07:00', 1, 1, 0)
+                (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0),
+                (2, 1, 'Night', 'night', '23:00', '07:00', 1, 1, 0)
             """
         )
         cursor.execute(

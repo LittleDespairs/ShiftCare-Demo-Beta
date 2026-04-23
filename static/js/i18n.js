@@ -20,7 +20,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Preferences",
         nav_settings: "Settings",
 
-        sidebar_footer_title: "Version 0.12.5_beta",
+        sidebar_footer_title: "Version 0.12.6_beta",
         sidebar_footer_text: "Interface redesign in progress. The current goal is a simpler and clearer workflow.",
 
         page_title: "Dashboard",
@@ -66,7 +66,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Documentation",
         footer_guide: "User Guide",
-        footer_version: "Schedule App v0.12.5_beta",
+        footer_version: "Schedule App v0.12.6_beta",
 
         quick_actions_title: "Quick actions",
         quick_action_schedule_title: "Open current week",
@@ -103,6 +103,7 @@ const I18N_TRANSLATIONS = {
 
         schedule_load_btn: "Load",
         schedule_generate_btn: "Auto generate",
+        schedule_generate_all_btn: "Auto generate all",
         schedule_generating_title: "Generating schedule",
         schedule_generating_text: "The algorithm is checking coverage, rest rules, and employee limits.",
         schedule_clear_btn: "Clear week",
@@ -121,6 +122,7 @@ const I18N_TRANSLATIONS = {
 
         schedule_manual_day_status: "Manual day status",
         schedule_no_shifts_assigned: "No shifts assigned",
+        schedule_other_positions_label: "Other positions",
         schedule_delete_shift_btn: "Delete",
         schedule_remove_status: "Remove status",
         schedule_shift_status: "Shift status",
@@ -167,6 +169,10 @@ const I18N_TRANSLATIONS = {
 
         msg_auto_generate_failed: "Auto-generation failed.",
         msg_auto_generate_done: "Auto-generation finished.",
+        schedule_generate_all_done: "Auto-generation for all positions finished.",
+        schedule_generate_all_success_summary: "Generated positions",
+        schedule_generate_all_created_summary: "Created shifts",
+        schedule_generate_all_failures_prefix: "Failed positions",
         msg_created_count: "Created",
         msg_optimization_moved: "Optimized moves",
         msg_warnings: "Warnings",
@@ -496,7 +502,7 @@ const I18N_TRANSLATIONS = {
         templates_page_subtitle: "Create and manage reusable shift templates for schedule generation and manual assignment.",
 
         templates_form_title: "Shift template form",
-        templates_form_subtitle: "Add or edit a reusable shift template.",
+        templates_form_subtitle: "Add or edit a shift template that belongs to one position.",
 
         templates_name: "Template name",
         templates_name_placeholder: "Example: Morning 06:30-13:30",
@@ -515,7 +521,7 @@ const I18N_TRANSLATIONS = {
         templates_update_button: "Update shift template",
 
         templates_list_title: "Template list",
-        templates_list_subtitle: "All shift templates currently saved in the system.",
+        templates_list_subtitle: "All shift templates currently saved in the system, grouped by position.",
         templates_reload_button: "Reload",
 
         templates_table_id: "ID",
@@ -540,7 +546,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.12.5_beta",
+        footer_version: "Schedule App v0.12.6_beta",
 
         msg_enter_template_name: "Please enter template name.",
         msg_select_shift_category: "Please select shift category.",
@@ -608,14 +614,15 @@ const I18N_TRANSLATIONS = {
         settings_positions_text: "Create and manage department positions used by the scheduling system.",
 
         settings_templates_title: "Shift templates",
-        settings_templates_text: "Create reusable shift templates for morning, evening, night, and split shifts.",
+        settings_templates_text: "Create reusable shift templates for each position.",
 
         settings_assignments_title: "Assignments",
         settings_assignments_text: "Assign employees to positions and define priority or fallback usage.",
         settings_coverage_title: "Coverage requirements",
         settings_coverage_text: "Define how many employees are needed for each time interval.",
         settings_generation_title: "Generation rules",
-        settings_generation_text: "Tune fatigue limits and balancing weights used by auto-generation.",
+        settings_generation_text: "Configure emergency limits and cross-position shift behavior for auto-generation.",
+        settings_allow_multiple_positions_per_day: "Allow multiple positions in one day",
         settings_max_work_days: "Max work days per week",
         settings_max_nights: "Max consecutive nights",
         settings_emergency_nights: "Emergency night limit",
@@ -734,7 +741,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Пожелания",
         nav_settings: "Настройки",
 
-        sidebar_footer_title: "Версия 0.12.5_beta",
+        sidebar_footer_title: "Версия 0.12.6_beta",
         sidebar_footer_text: "Сейчас идёт редизайн интерфейса. Главная цель — сделать рабочий процесс проще и понятнее.",
 
         page_title: "Главная",
@@ -780,7 +787,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.12.5_beta",
+        footer_version: "Schedule App v0.12.6_beta",
 
         quick_actions_title: "Быстрые действия",
         quick_action_schedule_title: "Открыть текущую неделю",
@@ -871,6 +878,7 @@ const I18N_TRANSLATIONS = {
 
         schedule_load_btn: "Загрузить",
         schedule_generate_btn: "Автогенерация",
+        schedule_generate_all_btn: "Сгенерировать всё",
         schedule_generating_title: "Составляем расписание",
         schedule_generating_text: "Алгоритм проверяет покрытие, правила отдыха и лимиты сотрудников.",
         schedule_clear_btn: "Очистить неделю",
@@ -889,6 +897,7 @@ const I18N_TRANSLATIONS = {
 
         schedule_manual_day_status: "Статус дня вручную",
         schedule_no_shifts_assigned: "Смены не назначены",
+        schedule_other_positions_label: "Другие должности",
         schedule_delete_shift_btn: "Удалить",
 
         schedule_employee_header: "Сотрудник",
@@ -935,6 +944,10 @@ const I18N_TRANSLATIONS = {
 
         msg_auto_generate_failed: "Автогенерация не удалась.",
         msg_auto_generate_done: "Автогенерация завершена.",
+        schedule_generate_all_done: "Автогенерация по всем должностям завершена.",
+        schedule_generate_all_success_summary: "Сгенерировано должностей",
+        schedule_generate_all_created_summary: "Создано смен",
+        schedule_generate_all_failures_prefix: "Ошибки по должностям",
         msg_created_count: "Создано",
         msg_optimization_moved: "Оптимизировано перестановок",
         msg_warnings: "Предупреждения",
@@ -1209,7 +1222,7 @@ const I18N_TRANSLATIONS = {
         templates_page_subtitle: "Создание и управление шаблонами смен для автогенерации и ручного назначения.",
 
         templates_form_title: "Форма шаблона смены",
-        templates_form_subtitle: "Добавьте или отредактируйте повторно используемый шаблон смены.",
+        templates_form_subtitle: "Добавьте или отредактируйте шаблон смены, привязанный к одной должности.",
 
         templates_name: "Название шаблона",
         templates_name_placeholder: "Пример: Утро 06:30-13:30",
@@ -1228,7 +1241,7 @@ const I18N_TRANSLATIONS = {
         templates_update_button: "Обновить шаблон смены",
 
         templates_list_title: "Список шаблонов",
-        templates_list_subtitle: "Все шаблоны смен, сохранённые в системе.",
+        templates_list_subtitle: "Все шаблоны смен, сохранённые в системе и распределённые по должностям.",
         templates_reload_button: "Обновить",
 
         templates_table_id: "ID",
@@ -1317,7 +1330,7 @@ const I18N_TRANSLATIONS = {
         settings_positions_text: "Создание и управление должностями отдела, используемыми системой расписания.",
 
         settings_templates_title: "Шаблоны смен",
-        settings_templates_text: "Создание повторно используемых шаблонов для утренних, вечерних, ночных и сплит-смен.",
+        settings_templates_text: "Создание шаблонов смен отдельно для каждой должности.",
 
         settings_assignments_title: "Назначения",
         settings_assignments_text: "Связывайте сотрудников с должностями и задавайте приоритет или резервную роль.",
@@ -1325,7 +1338,8 @@ const I18N_TRANSLATIONS = {
         settings_coverage_title: "Требования покрытия",
         settings_coverage_text: "Задайте, сколько сотрудников нужно на каждом временном интервале.",
         settings_generation_title: "Правила генерации",
-        settings_generation_text: "Настройка лимитов усталости и весов баланса для автогенерации.",
+        settings_generation_text: "Настройка аварийных лимитов и поведения смен между должностями для автогенерации.",
+        settings_allow_multiple_positions_per_day: "Разрешить несколько должностей в один день",
         settings_max_work_days: "Максимум рабочих дней в неделю",
         settings_max_nights: "Максимум ночей подряд",
         settings_emergency_nights: "Аварийный лимит ночей",
@@ -1444,7 +1458,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "העדפות",
         nav_settings: "הגדרות",
 
-        sidebar_footer_title: "גרסה 0.12.5_beta",
+        sidebar_footer_title: "גרסה 0.12.6_beta",
         sidebar_footer_text: "כעת מתבצע עיצוב מחדש של הממשק. המטרה היא להפוך את תהליך העבודה לפשוט וברור יותר.",
 
         page_title: "דף הבית",
@@ -1533,6 +1547,7 @@ const I18N_TRANSLATIONS = {
 
         schedule_load_btn: "טען",
         schedule_generate_btn: "יצירה אוטומטית",
+        schedule_generate_all_btn: "יצירה לכולן",
         schedule_generating_title: "יוצר סידור עבודה",
         schedule_generating_text: "האלגוריתם בודק כיסוי, כללי מנוחה ומגבלות עובדים.",
         schedule_clear_btn: "נקה שבוע",
@@ -1551,6 +1566,7 @@ const I18N_TRANSLATIONS = {
 
         schedule_manual_day_status: "סטטוס יומי ידני",
         schedule_no_shifts_assigned: "לא הוקצו משמרות",
+        schedule_other_positions_label: "תפקידים אחרים",
         schedule_delete_shift_btn: "מחק",
 
         schedule_employee_header: "עובד",
@@ -1597,6 +1613,10 @@ const I18N_TRANSLATIONS = {
 
         msg_auto_generate_failed: "היצירה האוטומטית נכשלה.",
         msg_auto_generate_done: "היצירה האוטומטית הסתיימה.",
+        schedule_generate_all_done: "היצירה האוטומטית לכל התפקידים הסתיימה.",
+        schedule_generate_all_success_summary: "תפקידים שנוצרו",
+        schedule_generate_all_created_summary: "משמרות שנוצרו",
+        schedule_generate_all_failures_prefix: "תפקידים שנכשלו",
         msg_created_count: "נוצרו",
         msg_optimization_moved: "העברות שעברו אופטימיזציה",
         msg_warnings: "אזהרות",
@@ -1754,7 +1774,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "תיעוד",
         footer_guide: "מדריך",
-        footer_version: "Schedule App v0.12.5_beta",
+        footer_version: "Schedule App v0.12.6_beta",
 
         employees_table_id: "מזהה",
         employees_table_name: "שם מלא",
@@ -1919,7 +1939,7 @@ const I18N_TRANSLATIONS = {
         templates_page_subtitle: "יצירה וניהול תבניות משמרת לשימוש ביצירה אוטומטית ובהקצאה ידנית.",
 
         templates_form_title: "טופס תבנית משמרת",
-        templates_form_subtitle: "הוסף או ערוך תבנית משמרת לשימוש חוזר.",
+        templates_form_subtitle: "הוסף או ערוך תבנית משמרת ששייכת לתפקיד אחד.",
 
         templates_name: "שם התבנית",
         templates_name_placeholder: "לדוגמה: בוקר 06:30-13:30",
@@ -1938,7 +1958,7 @@ const I18N_TRANSLATIONS = {
         templates_update_button: "עדכן תבנית משמרת",
 
         templates_list_title: "רשימת תבניות",
-        templates_list_subtitle: "כל תבניות המשמרת השמורות כרגע במערכת.",
+        templates_list_subtitle: "כל תבניות המשמרת השמורות במערכת, לפי תפקיד.",
         templates_reload_button: "טען מחדש",
 
         templates_table_id: "מזהה",
@@ -2027,7 +2047,7 @@ const I18N_TRANSLATIONS = {
         settings_positions_text: "יצירה וניהול תפקידי מחלקה המשמשים את מערכת סידור העבודה.",
 
         settings_templates_title: "תבניות משמרת",
-        settings_templates_text: "יצירת תבניות משמרת לשימוש חוזר עבור בוקר, ערב, לילה ומשמרות מפוצלות.",
+        settings_templates_text: "צור תבניות משמרת נפרדות לכל תפקיד.",
 
         settings_assignments_title: "שיוכים",
         settings_assignments_text: "שייך עובדים לתפקידים והגדר עדיפות או שימוש כגיבוי.",
@@ -2035,7 +2055,8 @@ const I18N_TRANSLATIONS = {
         settings_coverage_title: "דרישות כיסוי",
         settings_coverage_text: "הגדר כמה עובדים נדרשים בכל טווח זמן.",
         settings_generation_title: "כללי יצירה",
-        settings_generation_text: "כוונון מגבלות עייפות ומשקלי איזון ליצירה אוטומטית.",
+        settings_generation_text: "הגדר מגבלות חירום והתנהגות משמרות בין תפקידים עבור יצירה אוטומטית.",
+        settings_allow_multiple_positions_per_day: "אפשר כמה תפקידים באותו יום",
         settings_max_work_days: "מקסימום ימי עבודה בשבוע",
         settings_max_nights: "מקסימום לילות רצופים",
         settings_emergency_nights: "מגבלת חירום ללילות",
@@ -2384,3 +2405,4 @@ function bindSidebarToggle() {
 window.addEventListener("resize", () => {
     applySidebarState(getSavedSidebarState());
 });
+
