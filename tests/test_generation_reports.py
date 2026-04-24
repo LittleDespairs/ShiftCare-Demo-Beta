@@ -535,6 +535,192 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
 
+    def test_staged_previous_night_blocks_next_morning(self):
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM schedule_entries")
+        cursor.execute("DELETE FROM employee_day_statuses")
+        cursor.execute("DELETE FROM shift_templates")
+        cursor.execute("DELETE FROM employee_positions")
+        cursor.execute("DELETE FROM positions")
+        cursor.execute("DELETE FROM employees")
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (1, 'Employee A', 'female', 0, 4, 6, 1, 1, 1, 1)
+            """
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.execute(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (1, 1, 1, 100, 0)
+            """
+        )
+
+        employee = {
+            "id": 1,
+            "full_name": "Employee A",
+            "sex": "female",
+            "min_shifts_per_week": 0,
+            "target_shifts_per_week": 4,
+            "max_shifts_per_week": 6,
+            "can_work_night": True,
+            "can_work_weekends": True,
+            "can_work_evenings_after_night": True,
+            "can_work_mornings_and_evenings": True,
+        }
+        morning_template = {
+            "id": 1,
+            "name": "Morning",
+            "category": "morning",
+            "start_time": "06:00",
+            "end_time": "14:00",
+            "is_overnight": False,
+            "is_active": True,
+            "is_split_only": False,
+        }
+        night_template = {
+            "id": 2,
+            "name": "Night",
+            "category": "night",
+            "start_time": "22:00",
+            "end_time": "06:00",
+            "is_overnight": True,
+            "is_active": True,
+            "is_split_only": False,
+        }
+        staged_entries = [
+            main.create_entry_preview(employee, 1, WEEK_DATES[0], night_template)
+        ]
+
+        self.assertFalse(
+            main.can_employee_take_template(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[1],
+                morning_template,
+                WEEK_START_DATE,
+                staged_entries=staged_entries,
+            )
+        )
+        self.assertEqual(
+            main.explain_employee_template_rejection(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[1],
+                morning_template,
+                WEEK_START_DATE,
+                staged_entries=staged_entries,
+            ),
+            "morning after previous night is forbidden",
+        )
+
+    def test_next_morning_blocks_previous_night_assignment(self):
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM schedule_entries")
+        cursor.execute("DELETE FROM employee_day_statuses")
+        cursor.execute("DELETE FROM shift_templates")
+        cursor.execute("DELETE FROM employee_positions")
+        cursor.execute("DELETE FROM positions")
+        cursor.execute("DELETE FROM employees")
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (1, 'Employee A', 'female', 0, 4, 6, 1, 1, 1, 1)
+            """
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.execute(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (1, 1, 1, 100, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+            VALUES
+                (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0),
+                (2, 1, 'Night', 'night', '22:00', '06:00', 1, 1, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
+            VALUES (1, 1, ?, 1)
+            """,
+            (WEEK_DATES[1],),
+        )
+
+        employee = {
+            "id": 1,
+            "full_name": "Employee A",
+            "sex": "female",
+            "min_shifts_per_week": 0,
+            "target_shifts_per_week": 4,
+            "max_shifts_per_week": 6,
+            "can_work_night": True,
+            "can_work_weekends": True,
+            "can_work_evenings_after_night": True,
+            "can_work_mornings_and_evenings": True,
+        }
+        night_template = {
+            "id": 2,
+            "name": "Night",
+            "category": "night",
+            "start_time": "22:00",
+            "end_time": "06:00",
+            "is_overnight": True,
+            "is_active": True,
+            "is_split_only": False,
+        }
+
+        self.assertFalse(
+            main.can_employee_take_template(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[0],
+                night_template,
+                WEEK_START_DATE,
+            )
+        )
+        self.assertEqual(
+            main.explain_employee_template_rejection(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[0],
+                night_template,
+                WEEK_START_DATE,
+            ),
+            "night before next morning is forbidden",
+        )
+
     def test_weekend_restriction_blocks_weekend_assignment(self):
         employee = {
             "id": 1,

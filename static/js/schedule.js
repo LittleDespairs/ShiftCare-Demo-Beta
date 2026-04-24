@@ -1206,6 +1206,10 @@
             return requirementMap;
         }
 
+        function getShiftTemplatesForPosition(positionId) {
+            return allShiftTemplates.filter(item => item.position_id === positionId);
+        }
+
         function parseTimeToMinutes(value) {
             if (!value) return 0;
             const [hours, minutes] = value.split(":").map(Number);
@@ -1229,6 +1233,59 @@
             return allCoverageRequirements
                 .filter(item => item.position_id === positionId)
                 .sort((a, b) => parseTimeToMinutes(a.start_time) - parseTimeToMinutes(b.start_time));
+        }
+
+        function shiftTemplateCoversRequirement(template, requirement) {
+            const templateInterval = buildTimeInterval(
+                template.start_time,
+                template.end_time,
+                template.is_overnight
+            );
+            const requiredInterval = buildTimeInterval(
+                requirement.start_time,
+                requirement.end_time,
+                requirement.is_overnight
+            );
+            return intervalContains(templateInterval, requiredInterval);
+        }
+
+        function getCoverageRequirementCategories(positionId, requirement) {
+            const categories = new Set();
+            getShiftTemplatesForPosition(positionId).forEach(template => {
+                if (shiftTemplateCoversRequirement(template, requirement)) {
+                    categories.add(template.category);
+                }
+            });
+            return categories;
+        }
+
+        function buildCategoryCoverageRequirementMap(positionId, coverageRequirements) {
+            const map = {
+                morning: null,
+                evening: null,
+                night: null
+            };
+
+            coverageRequirements.forEach(requirement => {
+                const categories = getCoverageRequirementCategories(positionId, requirement);
+                categories.forEach(category => {
+                    const current = map[category] || {
+                        required_total: 0,
+                        required_female_min: 0,
+                        required_male_min: 0,
+                        interval_count: 0
+                    };
+
+                    map[category] = {
+                        required_total: Math.max(current.required_total, Number(requirement.required_total) || 0),
+                        required_female_min: Math.max(current.required_female_min, Number(requirement.required_female_min) || 0),
+                        required_male_min: Math.max(current.required_male_min, Number(requirement.required_male_min) || 0),
+                        interval_count: current.interval_count + 1
+                    };
+                });
+            });
+
+            return map;
         }
 
         function entryCountsTowardCoverage(entry) {
@@ -1265,6 +1322,62 @@
 
             return {
                 total: matchingEntries.length,
+                female: femaleCount,
+                male: maleCount
+            };
+        }
+
+        function getCategoryCoverageStats(positionId, date, shiftCategory, coverageRequirements) {
+            const relevantRequirements = coverageRequirements.filter(requirement =>
+                getCoverageRequirementCategories(positionId, requirement).has(shiftCategory)
+            );
+
+            const matchingEntries = allScheduleEntries.filter(entry => {
+                if (
+                    entry.position_id !== positionId ||
+                    entry.date !== date ||
+                    entry.shift_category !== shiftCategory ||
+                    !entryCountsTowardCoverage(entry)
+                ) {
+                    return false;
+                }
+
+                if (relevantRequirements.length === 0) {
+                    return true;
+                }
+
+                const entryInterval = buildTimeInterval(
+                    entry.start_time,
+                    entry.end_time,
+                    entry.is_overnight
+                );
+
+                return relevantRequirements.some(requirement => {
+                    const requiredInterval = buildTimeInterval(
+                        requirement.start_time,
+                        requirement.end_time,
+                        requirement.is_overnight
+                    );
+                    return intervalContains(entryInterval, requiredInterval);
+                });
+            });
+
+            const uniqueEmployeeIds = new Set(matchingEntries.map(entry => entry.employee_id));
+            let femaleCount = 0;
+            let maleCount = 0;
+
+            uniqueEmployeeIds.forEach(employeeId => {
+                const employee = allEmployees.find(item => item.id === employeeId);
+                if (employee && employee.sex === "female") {
+                    femaleCount += 1;
+                }
+                if (employee && employee.sex === "male") {
+                    maleCount += 1;
+                }
+            });
+
+            return {
+                total: uniqueEmployeeIds.size,
                 female: femaleCount,
                 male: maleCount
             };
@@ -1327,6 +1440,34 @@
             }
 
             return "success";
+        }
+
+        function renderCoveragePill(title, stats, requirement, options = {}) {
+            const coverageClass = getCoverageClass(stats, requirement);
+            const totalLine = requirement
+                ? `${t("coverage_staff", "Staff")}: ${stats.total} / ${requirement.required_total}`
+                : `${t("coverage_staff", "Staff")}: ${stats.total} / -`;
+            const femaleLine = requirement && requirement.required_female_min > 0
+                ? `${t("coverage_women", "Women")}: ${stats.female} / ${requirement.required_female_min}`
+                : "";
+            const maleLine = requirement && requirement.required_male_min > 0
+                ? `${t("coverage_men", "Men")}: ${stats.male} / ${requirement.required_male_min}`
+                : "";
+            const detailLines = [totalLine, femaleLine, maleLine].filter(Boolean);
+            const intervalCount = Number(options.intervalCount || 0);
+            const titleMeta = intervalCount > 1
+                ? ` · ${intervalCount} ${t("coverage_intervals_short", "slots")}`
+                : "";
+            const titleText = `${title}${titleMeta}`;
+
+            return `
+                <div class="coverage-pill ${coverageClass}" title="${escapeHtml(detailLines.join(" · "))}">
+                    <div class="coverage-title">${escapeHtml(titleText)}</div>
+                    <div class="coverage-metrics">
+                        ${detailLines.map(line => `<span class="coverage-metric">${escapeHtml(line)}</span>`).join("")}
+                    </div>
+                </div>
+            `;
         }
 
         function getDayStatus(employeeId, date) {
@@ -1425,62 +1566,33 @@
                     <div class="coverage-stack">
                         ${coverageRequirements.map(requirement => {
                     const stats = getIntervalCoverageStats(positionId, date, requirement);
-                    const coverageClass = getCoverageClass(stats, requirement);
                     const title = `${requirement.start_time} - ${requirement.end_time}`;
-                    const totalLine = `${t("coverage_staff", "Staff")}: ${stats.total} / ${requirement.required_total}`;
-                    const femaleLine = requirement.required_female_min > 0
-                        ? `${t("coverage_women", "Women")}: ${stats.female} / ${requirement.required_female_min}`
-                        : "";
-                    const maleLine = requirement.required_male_min > 0
-                        ? `${t("coverage_men", "Men")}: ${stats.male} / ${requirement.required_male_min}`
-                        : "";
-
-                    return `
-                                <div class="coverage-pill ${coverageClass}">
-                                    <div class="coverage-title">${escapeHtml(title)}</div>
-                                    <div class="coverage-line">${escapeHtml(totalLine)}</div>
-                                    ${femaleLine ? `<div class="coverage-line">${escapeHtml(femaleLine)}</div>` : ""}
-                                    ${maleLine ? `<div class="coverage-line">${escapeHtml(maleLine)}</div>` : ""}
-                                </div>
-                            `;
+                    return renderCoveragePill(title, stats, requirement);
                 }).join("")}
                     </div>
                 `;
             }
 
-            const requirementMap = getRequirementMapForPosition(positionId);
+            const requirementMap = coverageRequirements.length > 0
+                ? buildCategoryCoverageRequirementMap(positionId, coverageRequirements)
+                : getRequirementMapForPosition(positionId);
 
             return `
                 <div class="coverage-stack">
                     ${SHIFT_CATEGORIES.map(([shiftCategory, defaultTitle]) => {
-                const stats = getCoverageStats(positionId, date, shiftCategory);
+                const stats = coverageRequirements.length > 0
+                    ? getCategoryCoverageStats(positionId, date, shiftCategory, coverageRequirements)
+                    : getCoverageStats(positionId, date, shiftCategory);
                 const requirement = requirementMap[shiftCategory];
-                const coverageClass = getCoverageClass(stats, requirement);
 
                 const translatedTitle =
                     shiftCategory === "morning" ? t("shift_morning", "Morning") :
                         shiftCategory === "evening" ? t("shift_evening", "Evening") :
                             t("shift_night", "Night");
 
-                const totalLine = requirement
-                    ? `${t("coverage_staff", "Staff")}: ${stats.total} / ${requirement.required_total}`
-                    : `${t("coverage_staff", "Staff")}: ${stats.total} / -`;
-
-                const femaleLine = requirement && requirement.required_female_min > 0
-                    ? `${t("coverage_women", "Women")}: ${stats.female} / ${requirement.required_female_min}`
-                    : "";
-                const maleLine = requirement
-                    ? `${t("coverage_men", "Men")}: ${stats.male} / ${requirement.required_male_min}`
-                    : `${t("coverage_men", "Men")}: ${stats.male} / -`;
-
-                return `
-                            <div class="coverage-pill ${coverageClass}">
-                                <div class="coverage-title">${escapeHtml(translatedTitle)}</div>
-                                <div class="coverage-line">${escapeHtml(totalLine)}</div>
-                                ${femaleLine ? `<div class="coverage-line">${escapeHtml(femaleLine)}</div>` : ""}
-                                ${maleLine ? `<div class="coverage-line">${escapeHtml(maleLine)}</div>` : ""}
-                            </div>
-                        `;
+                return renderCoveragePill(translatedTitle, stats, requirement, {
+                    intervalCount: requirement?.interval_count
+                });
             }).join("")}
                 </div>
             `;

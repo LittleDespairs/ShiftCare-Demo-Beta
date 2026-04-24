@@ -1,6 +1,52 @@
 # Beta Changelog
 
-This file tracks the beta builds in the `0.12.x_beta` line.
+This file tracks beta builds across the `0.12.x_beta` and `0.13.x_beta` lines.
+
+## 0.13.2_beta - 2026-04-25
+
+### Release Focus
+
+Fix a rare generator and post-optimization fatigue violation where a morning shift could be placed immediately after a night shift.
+
+### What Changed
+
+- Blocked morning assignments when the previous night shift exists only in staged generation entries.
+- Blocked night assignments when the same employee already has a morning shift on the following day.
+- Added regression tests for both directions of the night-to-morning rule.
+- Updated runtime version references, asset cache-busting strings, and build references to `0.13.2_beta`.
+
+### User Impact
+
+- Auto-generation should no longer create an invalid night-to-next-morning sequence for the same employee.
+
+### Technical Impact
+
+- Eligibility checks now account for both persisted schedule entries and staged generator entries when enforcing the night-to-morning rule.
+
+## 0.13.1_beta - 2026-04-24
+
+### Release Focus
+
+Start the next beta line with a clean planning baseline and remove active references to the previous beta stage from runtime and packaging files.
+
+### What Changed
+
+- Set the active app version line to `0.13.1_beta`.
+- Updated runtime version references, asset cache-busting strings, and build references to `0.13.1_beta`.
+- Renamed the PyInstaller spec file to `ScheduleApp_0.13.1_beta.spec`.
+- Moved completed `0.12.x_beta` planning and release documents into `docs/archive/beta-0.12`.
+- Kept `BETA_CHANGELOG.md` at the project root as the historical source for previous beta builds.
+- Removed the stale local `__pycache__` artifact from the project root.
+
+### User Impact
+
+- The visible app version now starts the `0.13.x_beta` line.
+- Previous beta-stage planning files no longer clutter the active project root.
+
+### Technical Impact
+
+- Backend, templates, static asset cache keys, build docs, and packaging metadata now point to the same active beta version.
+- Completed `0.12.x_beta` documentation remains available for reference in the archive folder.
 
 ## 0.12.6_beta - 2026-04-24
 

@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 from database import get_connection, init_db
 from excel_export import build_schedule_export_workbook
 
-APP_VERSION = "0.12.6_beta"
+APP_VERSION = "0.13.2_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
 
 tags_metadata = [
@@ -552,21 +552,76 @@ def employee_has_night_on_date(connection, employee_id: int, date_string: str) -
     return any(entry["category"] == "night" for entry in get_employee_entries_for_date(connection, employee_id, date_string))
 
 
-def get_previous_night_entries(connection, employee_id: int, date_string: str) -> list[dict]:
-    previous_date = (parse_date_string(date_string) - timedelta(days=1)).isoformat()
+def get_staged_employee_entries_for_date(staged_entries: list[dict] | None, employee_id: int, date_string: str) -> list[dict]:
     return [
         entry
-        for entry in get_employee_entries_for_date(connection, employee_id, previous_date)
-        if entry["category"] == "night"
+        for entry in staged_entries or []
+        if entry["employee_id"] == employee_id
+        and entry["date"] == date_string
+        and not entry.get("no_show", False)
     ]
 
 
-def had_previous_night(connection, employee_id: int, date_string: str) -> bool:
-    return bool(get_previous_night_entries(connection, employee_id, date_string))
+def get_previous_night_entries(
+    connection,
+    employee_id: int,
+    date_string: str,
+    staged_entries: list[dict] | None = None,
+) -> list[dict]:
+    previous_date = (parse_date_string(date_string) - timedelta(days=1)).isoformat()
+    return [
+        entry
+        for entry in [
+            *get_employee_entries_for_date(connection, employee_id, previous_date),
+            *get_staged_employee_entries_for_date(staged_entries, employee_id, previous_date),
+        ]
+        if entry_category(entry) == "night"
+    ]
 
 
-def get_break_minutes_after_previous_night(connection, employee_id: int, date_string: str, template: dict) -> int | None:
-    previous_nights = get_previous_night_entries(connection, employee_id, date_string)
+def had_previous_night(
+    connection,
+    employee_id: int,
+    date_string: str,
+    staged_entries: list[dict] | None = None,
+) -> bool:
+    return bool(get_previous_night_entries(connection, employee_id, date_string, staged_entries=staged_entries))
+
+
+def get_next_morning_entries(
+    connection,
+    employee_id: int,
+    date_string: str,
+    staged_entries: list[dict] | None = None,
+) -> list[dict]:
+    next_date = (parse_date_string(date_string) + timedelta(days=1)).isoformat()
+    return [
+        entry
+        for entry in [
+            *get_employee_entries_for_date(connection, employee_id, next_date),
+            *get_staged_employee_entries_for_date(staged_entries, employee_id, next_date),
+        ]
+        if entry_category(entry) == "morning"
+    ]
+
+
+def has_next_morning(
+    connection,
+    employee_id: int,
+    date_string: str,
+    staged_entries: list[dict] | None = None,
+) -> bool:
+    return bool(get_next_morning_entries(connection, employee_id, date_string, staged_entries=staged_entries))
+
+
+def get_break_minutes_after_previous_night(
+    connection,
+    employee_id: int,
+    date_string: str,
+    template: dict,
+    staged_entries: list[dict] | None = None,
+) -> int | None:
+    previous_nights = get_previous_night_entries(connection, employee_id, date_string, staged_entries=staged_entries)
     if not previous_nights:
         return None
 
@@ -862,7 +917,7 @@ def can_employee_take_template(
     if explain_same_day_pairing_rejection(connection, employee, date_string, template, existing_entries, app_settings):
         return False
 
-    if had_previous_night(connection, employee["id"], date_string):
+    if had_previous_night(connection, employee["id"], date_string, staged_entries=staged_entries):
         if template["category"] == "morning":
             return False
 
@@ -872,12 +927,21 @@ def can_employee_take_template(
                 employee["id"],
                 date_string,
                 template,
+                staged_entries=staged_entries,
             )
             if (
                 break_minutes is None
                 or break_minutes < app_settings["min_rest_minutes_after_night_before_evening"]
             ):
                 return False
+
+    if template["category"] == "night" and has_next_morning(
+        connection,
+        employee["id"],
+        date_string,
+        staged_entries=staged_entries,
+    ):
+        return False
 
     if would_have_night_day(connection, employee["id"], date_string, template):
         previous_nights = count_consecutive_days_before(connection, employee["id"], date_string, employee_has_night_on_date)
@@ -984,7 +1048,7 @@ def explain_employee_template_rejection(
     if pairing_rejection:
         return pairing_rejection
 
-    if had_previous_night(connection, employee["id"], date_string):
+    if had_previous_night(connection, employee["id"], date_string, staged_entries=staged_entries):
         if template["category"] == "morning":
             return "morning after previous night is forbidden"
 
@@ -994,12 +1058,21 @@ def explain_employee_template_rejection(
                 employee["id"],
                 date_string,
                 template,
+                staged_entries=staged_entries,
             )
             if (
                 break_minutes is None
                 or break_minutes < app_settings["min_rest_minutes_after_night_before_evening"]
             ):
                 return "night-evening rest gap is too short"
+
+    if template["category"] == "night" and has_next_morning(
+        connection,
+        employee["id"],
+        date_string,
+        staged_entries=staged_entries,
+    ):
+        return "night before next morning is forbidden"
 
     if would_have_night_day(connection, employee["id"], date_string, template):
         previous_nights = count_consecutive_days_before(connection, employee["id"], date_string, employee_has_night_on_date)
