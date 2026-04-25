@@ -26,24 +26,59 @@ Run the web app in the project environment:
 .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
+Run for an Android tablet on the same Wi-Fi network:
+
+```powershell
+.\.venv\Scripts\python.exe run_tablet_server.py
+```
+
+If port `8000` is busy:
+
+```powershell
+$env:SCHEDULE_APP_PORT = "8001"
+.\.venv\Scripts\python.exe run_tablet_server.py
+```
+
 Desktop launcher path:
 
 ```powershell
 .\.venv\Scripts\python.exe launcher.py
 ```
 
+## Android Standalone APK
+
+The standalone Android wrapper is in `android/`.
+
+It requires Android Studio, Android SDK, and JDK 17+. The current local Java is Java 8, so install/configure JDK 17 before building.
+
+```powershell
+cd android
+.\gradlew.bat assembleDebug
+```
+
+On this machine, the working build command is:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\JetBrains\IntelliJ IDEA 2025.2.5\jbr"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+cd android
+.\gradlew.bat assembleDebug
+```
+
+See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
+
 ## PyInstaller Build
 
 Current spec:
 
 ```text
-ScheduleApp_0.13.2_beta.spec
+ScheduleApp_0.13.3_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.13.2_beta.spec
+.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.13.3_beta.spec
 ```
 
 ## Before Committing

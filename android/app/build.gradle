@@ -1,0 +1,71 @@
+plugins {
+    id "com.android.application"
+    id "com.chaquo.python"
+}
+
+android {
+    namespace "com.scheduleapp.tablet"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.scheduleapp.tablet"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "0.13.2-beta-standalone"
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.12"
+        buildPython("C:/Users/misha/AppData/Local/Programs/Python/Python312/python.exe")
+        pip {
+            install("uvicorn==0.44.0")
+            install("starlette==1.0.0")
+            install("Jinja2==3.1.6")
+            install("openpyxl==3.1.5")
+            install("python-multipart==0.0.26")
+        }
+        extractPackages("schedule_app_backend")
+    }
+}
+
+tasks.register("syncScheduleBackend", Copy) {
+    from("../..") {
+        include "main.py"
+        include "database.py"
+        include "excel_export.py"
+        include "schedule_app.db"
+        include "templates/**"
+        include "static/**"
+    }
+    into("src/main/python/schedule_app_backend")
+}
+
+tasks.register("syncScheduleBackendAssets", Copy) {
+    from("../..") {
+        include "main.py"
+        include "database.py"
+        include "excel_export.py"
+        include "schedule_app.db"
+        include "templates/**"
+        include "static/**"
+    }
+    into("src/main/assets/schedule_app_backend")
+}
+
+preBuild.dependsOn("syncScheduleBackend")
+preBuild.dependsOn("syncScheduleBackendAssets")
+
+tasks.matching { it.name == "mergeDebugPythonSources" }.configureEach {
+    dependsOn("syncScheduleBackend")
+}
+
+tasks.matching { it.name == "mergeDebugAssets" }.configureEach {
+    dependsOn("syncScheduleBackendAssets")
+}

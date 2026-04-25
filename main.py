@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, model_validator
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 from database import get_connection, init_db
 from excel_export import build_schedule_export_workbook
 
-APP_VERSION = "0.13.2_beta"
+APP_VERSION = "0.13.3_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
 
 tags_metadata = [
@@ -1183,6 +1183,11 @@ def restore_database_backup_endpoint(request_data: DatabaseRestoreRequest):
 @app.get("/", tags=["Pages"])
 def home_page(request: Request):
     return templates.TemplateResponse(request=request, name="index.html", context={})
+
+
+@app.get("/service-worker.js", include_in_schema=False)
+def service_worker():
+    return FileResponse(BASE_PATH / "static" / "service-worker.js", media_type="application/javascript")
 
 
 @app.get("/employees", tags=["Pages"])

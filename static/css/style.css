@@ -1,23 +1,29 @@
 :root {
-    --bg: #f4f7fb;
+    --bg: #f6f8fb;
     --panel: #ffffff;
     --panel-soft: #f8fafc;
-    --border: #e2e8f0;
-    --text: #1e293b;
-    --muted: #64748b;
-    --primary: #2563eb;
-    --primary-soft: #dbeafe;
-    --success: #16a34a;
-    --warning: #ea580c;
-    --danger: #dc2626;
+    --border: #dde4ee;
+    --border-strong: #c7d2df;
+    --text: #172033;
+    --muted: #66758a;
+    --primary: #2357d6;
+    --primary-hover: #1e49b5;
+    --primary-soft: #e8efff;
+    --success: #16834a;
+    --success-soft: #e9f8ef;
+    --warning: #b95f09;
+    --warning-soft: #fff4dd;
+    --danger: #c62828;
+    --danger-soft: #ffeded;
     --night: #e0f2fe;
     --evening: #ffedd5;
     --morning: #f8fafc;
-    --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-    --radius-xl: 22px;
-    --radius-lg: 16px;
-    --radius-md: 12px;
-    --radius-sm: 10px;
+    --shadow: 0 8px 24px rgba(17, 24, 39, 0.07);
+    --shadow-sm: 0 3px 12px rgba(17, 24, 39, 0.06);
+    --radius-xl: 14px;
+    --radius-lg: 12px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
     --sidebar-width: 280px;
     --transition: 0.2s ease;
     --font-main: "Segoe UI", "Noto Sans", "Arial", sans-serif;
@@ -34,7 +40,7 @@ html {
 body {
     margin: 0;
     font-family: var(--font-main);
-    background: linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+    background: var(--bg);
     color: var(--text);
 }
 
@@ -77,8 +83,7 @@ body.rtl .app-layout {
 
 .sidebar {
     width: var(--sidebar-width);
-    background: rgba(255, 255, 255, 0.86);
-    backdrop-filter: blur(10px);
+    background: #ffffff;
     border-inline-end: 1px solid var(--border);
     padding: 24px 18px;
     display: flex;
@@ -107,14 +112,14 @@ body.rtl .sidebar {
 .brand-logo {
     width: 46px;
     height: 46px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, var(--primary), #60a5fa);
+    border-radius: 12px;
+    background: var(--primary);
     color: #fff;
     display: grid;
     place-items: center;
     font-size: 1.15rem;
     font-weight: 700;
-    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
+    box-shadow: var(--shadow-sm);
     flex-shrink: 0;
 }
 
@@ -155,21 +160,20 @@ body.rtl .sidebar {
     align-items: center;
     gap: 12px;
     padding: 13px 14px;
-    border-radius: 14px;
+    border-radius: 10px;
     color: var(--text);
-    transition: background var(--transition), color var(--transition), transform var(--transition);
+    transition: background var(--transition), color var(--transition), box-shadow var(--transition);
 }
 
 .nav-item:hover {
     background: #eff6ff;
     color: var(--primary);
-    transform: translateY(-1px);
 }
 
 .nav-item.active {
     background: var(--primary);
     color: #fff;
-    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.22);
+    box-shadow: var(--shadow-sm);
 }
 
 .nav-icon {
@@ -272,7 +276,7 @@ body.rtl .topbar-actions {
     padding: 9px 14px;
     border-radius: 999px;
     cursor: pointer;
-    transition: background var(--transition), color var(--transition), transform var(--transition);
+    transition: background var(--transition), color var(--transition), box-shadow var(--transition);
     font-size: 0.92rem;
     font-weight: 600;
 }
@@ -338,8 +342,8 @@ body.rtl .topbar-actions {
 
 .btn {
     border: none;
-    border-radius: 14px;
-    padding: 12px 18px;
+    border-radius: 10px;
+    padding: 10px 16px;
     cursor: pointer;
     transition: transform var(--transition), box-shadow var(--transition), background var(--transition), color var(--transition);
     display: inline-flex;
@@ -347,12 +351,33 @@ body.rtl .topbar-actions {
     justify-content: center;
     gap: 8px;
     font-weight: 700;
-    font-size: 0.95rem;
-    min-height: 46px;
+    font-size: 0.92rem;
+    min-height: 42px;
+    white-space: nowrap;
 }
 
 .btn:hover {
     transform: translateY(-1px);
+}
+
+.btn:focus-visible,
+.lang-btn:focus-visible,
+.nav-item:focus-visible,
+.sidebar-toggle:focus-visible,
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+    outline: 3px solid rgba(35, 87, 214, 0.22);
+    outline-offset: 2px;
+}
+
+.btn:disabled,
+.cell-btn:disabled,
+.table-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.52;
+    transform: none;
+    box-shadow: none;
 }
 
 .btn-primary {
@@ -362,7 +387,7 @@ body.rtl .topbar-actions {
 }
 
 .btn-primary:hover {
-    background: #1d4ed8;
+    background: var(--primary-hover);
 }
 
 .btn-secondary {
@@ -382,6 +407,16 @@ body.rtl .topbar-actions {
 
 .btn-soft:hover {
     background: #c7ddff;
+}
+
+.btn-danger {
+    background: var(--danger-soft);
+    color: var(--danger);
+    border: 1px solid #ffc9c9;
+}
+
+.btn-danger:hover {
+    background: #ffdede;
 }
 
 .section-title-row {
@@ -533,7 +568,7 @@ body.rtl .topbar-actions {
     justify-content: space-between;
     gap: 12px;
     padding: 12px 14px;
-    border-radius: 14px;
+    border-radius: 10px;
     background: var(--panel-soft);
     border: 1px solid var(--border);
 }
@@ -644,7 +679,7 @@ body.rtl .empty-state {
     width: 100%;
     border: 1px solid var(--border);
     background: #fff;
-    border-radius: 14px;
+    border-radius: 10px;
     padding: 12px 14px;
     color: var(--text);
     transition: border-color var(--transition), box-shadow var(--transition);
@@ -793,7 +828,6 @@ body.rtl .footer-left {
 
 .sidebar-toggle:hover {
     background: #f8fafc;
-    transform: translateY(-1px);
 }
 
 body.sidebar-collapsed {
@@ -926,7 +960,7 @@ body.rtl .app-footer {
 
 .app-modal {
     width: min(440px, 100%);
-    border-radius: 14px;
+    border-radius: 10px;
     background: #fff;
     box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
     overflow: hidden;

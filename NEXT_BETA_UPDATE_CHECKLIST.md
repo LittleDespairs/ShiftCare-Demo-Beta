@@ -1,12 +1,12 @@
 # Next Beta Update Checklist
 
-Planning checklist for the active `0.13.x_beta` line. Current build: `0.13.2_beta`.
+Planning checklist for the active `0.13.x_beta` line. Current build: `0.13.3_beta`.
 
 ## English
 
 ### 1. Scope and Version
 
-- [x] Decide the target version for the next build: `0.13.2_beta`.
+- [x] Decide the target version for the next build: `0.13.3_beta`.
 - [x] Define the main update goal: start the `0.13.x_beta` beta line with a clean documentation baseline and current runtime version references.
 - [x] Separate required fixes from optional polish.
 - [x] Start a new line `0.13.x_beta`.
@@ -107,7 +107,7 @@ Planning checklist for the active `0.13.x_beta` line. Current build: `0.13.2_bet
 
 ### 1. Объём обновления и версия
 
-- [x] Определить целевую версию следующей сборки: `0.13.2_beta`.
+- [x] Определить целевую версию следующей сборки: `0.13.3_beta`.
 - [x] Сформулировать главную цель обновления: начать beta-линейку `0.13.x_beta` с чистой документационной базы и актуальных runtime-ссылок версии.
 - [x] Разделить обязательные исправления и необязательную полировку.
 - [x] Зафиксировать переход на новую линейку `0.13.x_beta`.

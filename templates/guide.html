@@ -4,8 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Guide - Schedule App</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=0.13.2_beta">
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css?v=0.13.3_beta">
 
     <style>
         .guide-layout {
@@ -274,7 +278,7 @@
 
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    Schedule App v0.13.2_beta
+                    Schedule App v0.13.3_beta
                 </div>
 
                 <div class="footer-right">
@@ -285,12 +289,13 @@
         </main>
     </div>
 
-    <script src="/static/js/i18n.js?v=0.13.2_beta"></script>
+    <script src="/static/js/i18n.js?v=0.13.3_beta"></script>
     <script>
         document.addEventListener("app-language-changed", () => {
             document.title = `${translate("guide_page_title")} - Schedule App`;
         });
     </script>
+    <script src="/static/js/pwa.js?v=0.13.3_beta"></script>
 </body>
 
 </html>

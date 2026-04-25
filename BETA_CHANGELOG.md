@@ -2,6 +2,32 @@
 
 This file tracks beta builds across the `0.12.x_beta` and `0.13.x_beta` lines.
 
+## 0.13.3_beta - 2026-04-25
+
+### Release Focus
+
+Ship the first broad frontend modernization pass for the schedule workspace and prepare the app for tablet/PWA testing.
+
+### What Changed
+
+- Reworked the schedule toolbar into clearer action groups: context loading, generation, output, and dangerous actions.
+- Added a shift legend and schedule status strip with week, position, staff, shift count, coverage mode, and coverage gaps.
+- Refined the shared visual system with calmer colors, tighter radii, clearer focus states, disabled states, and a destructive button style.
+- Improved schedule coverage-row rendering and compactness from the previous UI pass.
+- Added PWA/tablet assets and references, including manifest, service worker, app icon, and tablet installation documentation.
+- Updated runtime version references, asset cache-busting strings, and build references to `0.13.3_beta`.
+
+### User Impact
+
+- The schedule page is easier to scan and its key actions are grouped by intent.
+- Dangerous actions are visually separated from routine generation/export actions.
+- Tablet/PWA testing has a clearer baseline.
+
+### Technical Impact
+
+- The frontend now has a cleaner shared design-token baseline for the next UI customization work.
+- The beta build metadata is aligned again across backend, templates, static assets, PWA cache keys, and packaging files.
+
 ## 0.13.2_beta - 2026-04-25
 
 ### Release Focus

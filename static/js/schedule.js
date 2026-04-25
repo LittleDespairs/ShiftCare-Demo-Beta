@@ -654,7 +654,92 @@
                 </tr>
             `;
             updateScheduleActionAvailability();
+            updateScheduleStatusStrip();
             syncScheduleFloatingHeader();
+        }
+
+        function getVisibleScheduleEntries(positionId) {
+            const weekDateSet = new Set(weekDates);
+            return allScheduleEntries.filter(entry =>
+                entry.position_id === positionId &&
+                weekDateSet.has(entry.date) &&
+                !entry.no_show
+            );
+        }
+
+        function countVisibleCoverageGaps(positionId) {
+            if (!weekDates.length || !positionId) {
+                return 0;
+            }
+
+            const coverageRequirements = getCoverageRequirementsForPosition(positionId);
+            if (coverageRequirements.length > 0) {
+                return weekDates.reduce((count, date) => {
+                    return count + coverageRequirements.filter(requirement => {
+                        const stats = getIntervalCoverageStats(positionId, date, requirement);
+                        return getCoverageClass(stats, requirement) === "danger";
+                    }).length;
+                }, 0);
+            }
+
+            const requirementMap = getRequirementMapForPosition(positionId);
+            return weekDates.reduce((count, date) => {
+                return count + SHIFT_CATEGORIES.filter(([shiftCategory]) => {
+                    const requirement = requirementMap[shiftCategory];
+                    if (!requirement) {
+                        return false;
+                    }
+                    const stats = getCoverageStats(positionId, date, shiftCategory);
+                    return getCoverageClass(stats, requirement) === "danger";
+                }).length;
+            }, 0);
+        }
+
+        function updateScheduleStatusStrip() {
+            const strip = document.getElementById("schedule-status-strip");
+            if (!strip) return;
+
+            const positionId = Number(document.getElementById("position_select").value);
+            if (!scheduleDataLoaded || !positionId || weekDates.length === 0) {
+                strip.classList.remove("is-visible");
+                strip.innerHTML = "";
+                return;
+            }
+
+            const selectedPosition = allPositions.find(item => item.id === positionId);
+            const employeesForPosition = getEmployeesForPosition(positionId);
+            const visibleEntries = getVisibleScheduleEntries(positionId);
+            const coverageMode = appSettings.schedule_coverage_display_mode === "category"
+                ? t("coverage_display_category", "By shift categories")
+                : t("coverage_display_interval", "By time intervals");
+            const gapCount = countVisibleCoverageGaps(positionId);
+
+            const items = [
+                {
+                    label: t("schedule_status_week", "Week"),
+                    value: `${weekDates[0]} - ${weekDates[6]}`
+                },
+                {
+                    label: t("schedule_status_position", "Position"),
+                    value: selectedPosition ? selectedPosition.name : "-"
+                },
+                {
+                    label: t("schedule_status_staff", "Staff"),
+                    value: String(employeesForPosition.length)
+                },
+                {
+                    label: t("schedule_status_shifts", "Shifts"),
+                    value: `${visibleEntries.length} · ${coverageMode} · ${gapCount} ${t("schedule_status_gaps", "gaps")}`
+                }
+            ];
+
+            strip.innerHTML = items.map(item => `
+                <div class="schedule-status-item">
+                    <div class="schedule-status-label">${escapeHtml(item.label)}</div>
+                    <div class="schedule-status-value" title="${escapeHtml(item.value)}">${escapeHtml(item.value)}</div>
+                </div>
+            `).join("");
+            strip.classList.add("is-visible");
         }
 
         function updateScheduleActionAvailability() {
@@ -872,7 +957,7 @@
            EXPORT / ЭКСПОРТ
            ========================================================= */
 
-        function exportScheduleExcel() {
+        async function exportScheduleExcel() {
             // Export current selected week and position to Excel
             // Экспортируем текущую неделю и должность в Excel
             const weekStart = document.getElementById("week_start").value;
@@ -890,7 +975,35 @@
 
             const lang = localStorage.getItem("scheduleAppLanguage") || "en";
             const url = `/api/schedule/export-excel?week_start_date=${encodeURIComponent(weekStart)}&position_id=${positionId}&lang=${encodeURIComponent(lang)}`;
-            window.open(url, "_blank");
+            const button = document.getElementById("export-excel-btn");
+            button.disabled = true;
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    showMessage(t("msg_export_failed", "Export failed."), "danger");
+                    return;
+                }
+
+                const blob = await response.blob();
+                const disposition = response.headers.get("Content-Disposition") || "";
+                const filenameMatch = disposition.match(/filename="([^"]+)"/);
+                const filename = filenameMatch ? filenameMatch[1] : `schedule_${weekStart}.xlsx`;
+                const downloadUrl = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = downloadUrl;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(downloadUrl);
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_export_failed", "Export failed."), "danger");
+            } finally {
+                button.disabled = false;
+                updateScheduleActionAvailability();
+            }
         }
 
         /* =========================================================
@@ -1825,6 +1938,7 @@
             if (firstHeaderRow && shell) {
                 shell.style.setProperty("--schedule-date-header-height", `${firstHeaderRow.offsetHeight}px`);
             }
+            updateScheduleStatusStrip();
 
             if (employeesForPosition.length === 0) {
                 const actionHtml = [

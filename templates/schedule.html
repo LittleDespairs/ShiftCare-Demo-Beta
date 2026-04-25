@@ -4,14 +4,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Schedule - Schedule App</title>
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
 
     <!--
         Main shared stylesheet / Основной общий CSS-файл
         Он уже используется новой главной страницей
     -->
-    <link rel="stylesheet" href="/static/css/style.css?v=0.13.2_beta">
-    <link rel="stylesheet" href="/static/css/schedule.css?v=0.13.2_beta">
+    <link rel="stylesheet" href="/static/css/style.css?v=0.13.3_beta">
+    <link rel="stylesheet" href="/static/css/schedule.css?v=0.13.3_beta">
 </head>
 
 <body class="app-shell ltr">
@@ -126,54 +130,71 @@
                 Week selector, position selector, and action buttons.
                 Выбор недели, должности и основные кнопки действий.
             -->
-            <section class="panel">
+            <section class="panel schedule-command-panel">
                 <div class="panel-body">
                     <div class="schedule-toolbar">
-                        <div class="toolbar-field">
-                            <label class="form-label" for="week_start" data-i18n="schedule_week_start">
-                                Week start
-                            </label>
-                            <input type="date" id="week_start" class="input">
-                        </div>
+                        <div class="toolbar-context">
+                            <div class="toolbar-field">
+                                <label class="form-label" for="week_start" data-i18n="schedule_week_start">
+                                    Week start
+                                </label>
+                                <input type="date" id="week_start" class="input">
+                            </div>
 
-                        <div class="toolbar-field">
-                            <label class="form-label" for="position_select" data-i18n="schedule_position">
-                                Position
-                            </label>
-                            <select id="position_select" class="select">
-                                <option value="" data-i18n="schedule_select_position">Select position</option>
-                            </select>
-                        </div>
+                            <div class="toolbar-field">
+                                <label class="form-label" for="position_select" data-i18n="schedule_position">
+                                    Position
+                                </label>
+                                <select id="position_select" class="select">
+                                    <option value="" data-i18n="schedule_select_position">Select position</option>
+                                </select>
+                            </div>
 
-                        <div class="toolbar-actions">
                             <button id="load-btn" class="btn btn-primary" type="button" data-i18n="schedule_load_btn">
                                 Load
                             </button>
+                        </div>
 
-                            <button id="auto-generate-btn" class="btn btn-secondary" type="button"
-                                data-i18n="schedule_generate_btn">
-                                Auto generate
-                            </button>
+                        <div class="toolbar-actions">
+                            <div class="toolbar-command-group">
+                                <div class="toolbar-group-label" data-i18n="schedule_toolbar_generate">Generate</div>
+                                <div class="toolbar-command-row">
+                                    <button id="auto-generate-btn" class="btn btn-secondary" type="button"
+                                        data-i18n="schedule_generate_btn">
+                                        Auto generate
+                                    </button>
 
-                            <button id="auto-generate-all-btn" class="btn btn-secondary" type="button"
-                                data-i18n="schedule_generate_all_btn">
-                                Auto generate all
-                            </button>
+                                    <button id="auto-generate-all-btn" class="btn btn-secondary" type="button"
+                                        data-i18n="schedule_generate_all_btn">
+                                        Auto generate all
+                                    </button>
+                                </div>
+                            </div>
 
-                            <button id="clear-week-btn" class="btn btn-secondary" type="button"
-                                data-i18n="schedule_clear_btn">
-                                Clear week
-                            </button>
+                            <div class="toolbar-command-group">
+                                <div class="toolbar-group-label" data-i18n="schedule_toolbar_output">Output</div>
+                                <div class="toolbar-command-row">
+                                    <button id="export-excel-btn" class="btn btn-soft" type="button"
+                                        data-i18n="schedule_export_btn">
+                                        Export Excel
+                                    </button>
 
-                            <button id="export-excel-btn" class="btn btn-soft" type="button"
-                                data-i18n="schedule_export_btn">
-                                Export Excel
-                            </button>
+                                    <button id="clear-message-btn" class="btn btn-secondary" type="button"
+                                        data-i18n="schedule_clear_message_btn">
+                                        Clear message
+                                    </button>
+                                </div>
+                            </div>
 
-                            <button id="clear-message-btn" class="btn btn-secondary" type="button"
-                                data-i18n="schedule_clear_message_btn">
-                                Clear message
-                            </button>
+                            <div class="toolbar-command-group toolbar-danger-group">
+                                <div class="toolbar-group-label" data-i18n="schedule_toolbar_danger">Danger zone</div>
+                                <div class="toolbar-command-row">
+                                    <button id="clear-week-btn" class="btn btn-danger" type="button"
+                                        data-i18n="schedule_clear_btn">
+                                        Clear week
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -187,17 +208,28 @@
             -->
             <section class="panel schedule-panel mt-22">
                 <div class="panel-body">
-                    <div class="schedule-display-control">
-                        <div class="schedule-display-field">
-                            <label class="form-label" for="schedule_coverage_display_mode" data-i18n="coverage_display_mode">
-                                Schedule coverage display
-                            </label>
-                            <select id="schedule_coverage_display_mode" class="select">
-                                <option value="interval" data-i18n="coverage_display_interval">By time intervals</option>
-                                <option value="category" data-i18n="coverage_display_category">By shift categories</option>
-                            </select>
+                    <div class="schedule-stage-top">
+                        <div class="schedule-legend" aria-label="Shift legend">
+                            <span class="legend-chip morning" data-i18n="shift_morning">Morning</span>
+                            <span class="legend-chip evening" data-i18n="shift_evening">Evening</span>
+                            <span class="legend-chip night" data-i18n="shift_night">Night</span>
+                            <span class="legend-chip status" data-i18n="schedule_status_legend">Status</span>
+                        </div>
+
+                        <div class="schedule-display-control">
+                            <div class="schedule-display-field">
+                                <label class="form-label" for="schedule_coverage_display_mode" data-i18n="coverage_display_mode">
+                                    Schedule coverage display
+                                </label>
+                                <select id="schedule_coverage_display_mode" class="select">
+                                    <option value="interval" data-i18n="coverage_display_interval">By time intervals</option>
+                                    <option value="category" data-i18n="coverage_display_category">By shift categories</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
+
+                    <div id="schedule-status-strip" class="schedule-status-strip" aria-live="polite"></div>
 
                     <div id="schedule-workspace-hint" class="schedule-workspace-hint"></div>
 
@@ -273,7 +305,7 @@
             </div>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    Schedule App v0.13.2_beta
+                    Schedule App v0.13.3_beta
                 </div>
 
                 <div class="footer-right">
@@ -289,8 +321,9 @@
         It controls language switching and RTL/LTR direction.
         Он управляет языком и направлением интерфейса RTL/LTR.
     -->
-    <script src="/static/js/i18n.js?v=0.13.2_beta"></script>
-    <script src="/static/js/schedule.js?v=0.13.2_beta"></script>
+    <script src="/static/js/i18n.js?v=0.13.3_beta"></script>
+    <script src="/static/js/pwa.js?v=0.13.3_beta"></script>
+    <script src="/static/js/schedule.js?v=0.13.3_beta"></script>
 </body>
 
 </html>

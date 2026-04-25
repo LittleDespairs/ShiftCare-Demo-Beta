@@ -1,6 +1,7 @@
 import shutil
 import sqlite3
 import sys
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,18 @@ def get_database_path() -> Path:
         if not runtime_path.exists():
             bundled_dir = Path(getattr(sys, "_MEIPASS", runtime_dir))
             bundled_path = bundled_dir / "schedule_app.db"
+            if bundled_path.exists():
+                shutil.copy2(bundled_path, runtime_path)
+
+        return runtime_path
+
+    if os.environ.get("ANDROID_ROOT") and os.environ.get("ANDROID_DATA") and os.environ.get("HOME"):
+        runtime_dir = Path(os.environ["HOME"]).resolve()
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        runtime_path = runtime_dir / "schedule_app.db"
+
+        if not runtime_path.exists():
+            bundled_path = BASE_DIR / "schedule_app.db"
             if bundled_path.exists():
                 shutil.copy2(bundled_path, runtime_path)
 

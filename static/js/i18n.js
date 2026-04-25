@@ -20,7 +20,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Preferences",
         nav_settings: "Settings",
 
-        sidebar_footer_title: "Version 0.13.2_beta",
+        sidebar_footer_title: "Version 0.13.3_beta",
         sidebar_footer_text: "Interface redesign in progress. The current goal is a simpler and clearer workflow.",
 
         page_title: "Dashboard",
@@ -66,7 +66,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Documentation",
         footer_guide: "User Guide",
-        footer_version: "Schedule App v0.13.2_beta",
+        footer_version: "Schedule App v0.13.3_beta",
 
         quick_actions_title: "Quick actions",
         quick_action_schedule_title: "Open current week",
@@ -109,6 +109,15 @@ const I18N_TRANSLATIONS = {
         schedule_clear_btn: "Clear week",
         schedule_export_btn: "Export Excel",
         schedule_clear_message_btn: "Clear message",
+        schedule_toolbar_generate: "Generate",
+        schedule_toolbar_output: "Output",
+        schedule_toolbar_danger: "Danger zone",
+        schedule_status_legend: "Status",
+        schedule_status_week: "Week",
+        schedule_status_position: "Position",
+        schedule_status_staff: "Staff",
+        schedule_status_shifts: "Shifts",
+        schedule_status_gaps: "gaps",
 
         schedule_initial_hint: "Select a week and a position, then load the schedule.",
 
@@ -547,7 +556,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.13.2_beta",
+        footer_version: "Schedule App v0.13.3_beta",
 
         msg_enter_template_name: "Please enter template name.",
         msg_select_shift_category: "Please select shift category.",
@@ -742,7 +751,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Пожелания",
         nav_settings: "Настройки",
 
-        sidebar_footer_title: "Версия 0.13.2_beta",
+        sidebar_footer_title: "Версия 0.13.3_beta",
         sidebar_footer_text: "Сейчас идёт редизайн интерфейса. Главная цель — сделать рабочий процесс проще и понятнее.",
 
         page_title: "Главная",
@@ -788,7 +797,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.13.2_beta",
+        footer_version: "Schedule App v0.13.3_beta",
 
         quick_actions_title: "Быстрые действия",
         quick_action_schedule_title: "Открыть текущую неделю",
@@ -885,6 +894,15 @@ const I18N_TRANSLATIONS = {
         schedule_clear_btn: "Очистить неделю",
         schedule_export_btn: "Экспорт Excel",
         schedule_clear_message_btn: "Очистить сообщение",
+        schedule_toolbar_generate: "Генерация",
+        schedule_toolbar_output: "Вывод",
+        schedule_toolbar_danger: "Опасные действия",
+        schedule_status_legend: "Статус",
+        schedule_status_week: "Неделя",
+        schedule_status_position: "Должность",
+        schedule_status_staff: "Сотрудники",
+        schedule_status_shifts: "Смены",
+        schedule_status_gaps: "пробелов",
 
         schedule_initial_hint: "Выберите неделю и должность, затем загрузите расписание.",
 
@@ -1460,7 +1478,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "העדפות",
         nav_settings: "הגדרות",
 
-        sidebar_footer_title: "גרסה 0.13.2_beta",
+        sidebar_footer_title: "גרסה 0.13.3_beta",
         sidebar_footer_text: "כעת מתבצע עיצוב מחדש של הממשק. המטרה היא להפוך את תהליך העבודה לפשוט וברור יותר.",
 
         page_title: "דף הבית",
@@ -1555,6 +1573,15 @@ const I18N_TRANSLATIONS = {
         schedule_clear_btn: "נקה שבוע",
         schedule_export_btn: "ייצוא לאקסל",
         schedule_clear_message_btn: "נקה הודעה",
+        schedule_toolbar_generate: "יצירה",
+        schedule_toolbar_output: "פלט",
+        schedule_toolbar_danger: "פעולות מסוכנות",
+        schedule_status_legend: "סטטוס",
+        schedule_status_week: "שבוע",
+        schedule_status_position: "תפקיד",
+        schedule_status_staff: "עובדים",
+        schedule_status_shifts: "משמרות",
+        schedule_status_gaps: "פערים",
 
         schedule_initial_hint: "בחר שבוע ותפקיד, ואז טען את סידור העבודה.",
 
@@ -1777,7 +1804,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "תיעוד",
         footer_guide: "מדריך",
-        footer_version: "Schedule App v0.13.2_beta",
+        footer_version: "Schedule App v0.13.3_beta",
 
         employees_table_id: "מזהה",
         employees_table_name: "שם מלא",
