@@ -2,6 +2,35 @@
 
 This file tracks beta builds across the `0.12.x_beta` and `0.13.x_beta` lines.
 
+## 0.13.4_beta - 2026-04-25
+
+### Release Focus
+
+Stabilize Excel export formatting, improve settings navigation, and finish the visual customization reset flow.
+
+### What Changed
+
+- Reworked Excel export so same-day multi-shift entries render as separate worksheet rows inside one employee block.
+- Added vertical merging for single-shift days inside multi-row employee blocks so ordinary cells remain visually centered and readable.
+- Added a visible outline around each employee schedule block in exported Excel files.
+- Highlighted other-position shifts with row-level fill while keeping text black and avoiding rich text that caused Excel repair prompts.
+- Added a reset endpoint and Settings action to restore both schedule card colors and position/export colors to defaults.
+- Merged the previous Settings `General` and `Schedule` sections into one `Appearance` section with language, version context, coverage display, and color controls.
+- Updated runtime version references, asset cache-busting strings, service worker cache name, Android version name, and PyInstaller build references to `0.13.4_beta`.
+
+### User Impact
+
+- Excel exports open without repair prompts and are easier to scan when employees have shifts in multiple positions.
+- Employees with split/multi-shift days are visually separated from neighboring employees in exported workbooks.
+- Users can reset visual colors back to the default app palette from Settings.
+- Settings navigation is simpler because visual and language options now live in one section.
+
+### Technical Impact
+
+- Excel export no longer relies on rich text fragments for partial formatting.
+- Regression coverage now verifies Excel formatting for other-position rows, merged single-shift cells, employee block borders, and color reset behavior.
+- Version metadata is aligned across backend, templates, static assets, PWA cache, Android metadata, and packaging files.
+
 ## 0.13.3_beta - 2026-04-25
 
 ### Release Focus

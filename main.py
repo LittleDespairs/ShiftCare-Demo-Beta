@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, model_validator
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 from database import get_connection, init_db
 from excel_export import build_schedule_export_workbook
 
-APP_VERSION = "0.13.3_beta"
+APP_VERSION = "0.13.4_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
 
 tags_metadata = [
@@ -59,6 +59,13 @@ EMERGENCY_MAX_CONSECUTIVE_SPLIT_DAYS = 3
 MIN_REST_MINUTES_AFTER_NIGHT_BEFORE_EVENING = 8 * 60
 MIN_REST_MINUTES_BETWEEN_MORNING_AND_EVENING = 0
 AFTER_NIGHT_EVENING_PENALTY = 1200
+DEFAULT_POSITION_COLOR = "#eff6ff"
+DEFAULT_SCHEDULE_COLORS = {
+    "schedule_morning_color": "#ecfeff",
+    "schedule_evening_color": "#fff7ed",
+    "schedule_night_color": "#eef2ff",
+    "schedule_status_color": "#f5f3ff",
+}
 
 
 # =========================
@@ -90,8 +97,13 @@ class EmployeeCreate(BaseModel):
 
 class PositionCreate(BaseModel):
     name: str = Field(min_length=2, max_length=100)
+    color: str = Field(default="#eff6ff", pattern=r"^#[0-9A-Fa-f]{6}$")
     requires_continuous_coverage: bool = False
     minimum_staff_presence: int = Field(ge=0, le=50, default=0)
+    max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
+    emergency_max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
+    max_consecutive_split_days: int | None = Field(default=None, ge=1, le=7)
+    emergency_max_consecutive_split_days: int | None = Field(default=None, ge=1, le=7)
 
     @model_validator(mode="after")
     def validate_presence(self):
@@ -395,10 +407,10 @@ def get_app_settings(connection) -> dict:
             if raw_settings.get("schedule_coverage_display_mode") in {"category", "interval"}
             else "interval"
         ),
-        "schedule_morning_color": read_color("schedule_morning_color", "#ecfeff"),
-        "schedule_evening_color": read_color("schedule_evening_color", "#fff7ed"),
-        "schedule_night_color": read_color("schedule_night_color", "#eef2ff"),
-        "schedule_status_color": read_color("schedule_status_color", "#f5f3ff"),
+        "schedule_morning_color": read_color("schedule_morning_color", DEFAULT_SCHEDULE_COLORS["schedule_morning_color"]),
+        "schedule_evening_color": read_color("schedule_evening_color", DEFAULT_SCHEDULE_COLORS["schedule_evening_color"]),
+        "schedule_night_color": read_color("schedule_night_color", DEFAULT_SCHEDULE_COLORS["schedule_night_color"]),
+        "schedule_status_color": read_color("schedule_status_color", DEFAULT_SCHEDULE_COLORS["schedule_status_color"]),
         "allow_multiple_positions_per_day": read_bool("allow_multiple_positions_per_day", False),
         "max_work_days_per_week": read_int("max_work_days_per_week", MAX_WORK_DAYS_PER_WEEK),
         "max_consecutive_nights": read_int("max_consecutive_nights", MAX_CONSECUTIVE_NIGHTS),
@@ -426,6 +438,41 @@ def get_app_settings(connection) -> dict:
     }
 
 
+POSITION_GENERATION_LIMIT_FIELDS = (
+    "max_consecutive_nights",
+    "emergency_max_consecutive_nights",
+    "max_consecutive_split_days",
+    "emergency_max_consecutive_split_days",
+)
+
+
+def apply_position_generation_limits(settings: dict, position: dict | sqlite3.Row | None) -> dict:
+    effective_settings = dict(settings)
+    if position is None:
+        return effective_settings
+
+    for field in POSITION_GENERATION_LIMIT_FIELDS:
+        value = position[field] if isinstance(position, sqlite3.Row) else position.get(field)
+        if value is not None:
+            effective_settings[field] = int(value)
+    return effective_settings
+
+
+def get_position_app_settings(connection, position_id: int, base_settings: dict | None = None) -> dict:
+    settings = base_settings or get_app_settings(connection)
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT max_consecutive_nights, emergency_max_consecutive_nights,
+               max_consecutive_split_days, emergency_max_consecutive_split_days
+        FROM positions
+        WHERE id = ?
+        """,
+        (position_id,),
+    )
+    return apply_position_generation_limits(settings, cursor.fetchone())
+
+
 def save_app_settings(connection, settings: AppSettingsUpdate) -> None:
     cursor = connection.cursor()
     for key, value in settings.model_dump(exclude_none=True).items():
@@ -438,6 +485,22 @@ def save_app_settings(connection, settings: AppSettingsUpdate) -> None:
             """,
             (key, str(value)),
         )
+
+
+def reset_visual_color_settings(connection) -> int:
+    cursor = connection.cursor()
+    for key, value in DEFAULT_SCHEDULE_COLORS.items():
+        cursor.execute(
+            """
+            INSERT INTO app_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key)
+            DO UPDATE SET value = excluded.value
+            """,
+            (key, value),
+        )
+    cursor.execute("UPDATE positions SET color = ?", (DEFAULT_POSITION_COLOR,))
+    return cursor.rowcount
 
 
 def is_weekend(date_string: str) -> bool:
@@ -465,8 +528,13 @@ def row_to_position_dict(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
+        "color": row["color"] if "color" in row.keys() and row["color"] else "#eff6ff",
         "requires_continuous_coverage": bool(row["requires_continuous_coverage"]),
         "minimum_staff_presence": row["minimum_staff_presence"],
+        "max_consecutive_nights": row["max_consecutive_nights"] if "max_consecutive_nights" in row.keys() else None,
+        "emergency_max_consecutive_nights": row["emergency_max_consecutive_nights"] if "emergency_max_consecutive_nights" in row.keys() else None,
+        "max_consecutive_split_days": row["max_consecutive_split_days"] if "max_consecutive_split_days" in row.keys() else None,
+        "emergency_max_consecutive_split_days": row["emergency_max_consecutive_split_days"] if "emergency_max_consecutive_split_days" in row.keys() else None,
     }
 
 
@@ -568,16 +636,6 @@ def employee_has_night_on_date(connection, employee_id: int, date_string: str) -
     return any(entry["category"] == "night" for entry in get_employee_entries_for_date(connection, employee_id, date_string))
 
 
-def get_staged_employee_entries_for_date(staged_entries: list[dict] | None, employee_id: int, date_string: str) -> list[dict]:
-    return [
-        entry
-        for entry in staged_entries or []
-        if entry["employee_id"] == employee_id
-        and entry["date"] == date_string
-        and not entry.get("no_show", False)
-    ]
-
-
 def get_previous_night_entries(
     connection,
     employee_id: int,
@@ -585,11 +643,16 @@ def get_previous_night_entries(
     staged_entries: list[dict] | None = None,
 ) -> list[dict]:
     previous_date = (parse_date_string(date_string) - timedelta(days=1)).isoformat()
+    staged_entries = staged_entries or []
     return [
         entry
         for entry in [
             *get_employee_entries_for_date(connection, employee_id, previous_date),
-            *get_staged_employee_entries_for_date(staged_entries, employee_id, previous_date),
+            *[
+                staged_entry
+                for staged_entry in staged_entries
+                if staged_entry["employee_id"] == employee_id and staged_entry["date"] == previous_date
+            ],
         ]
         if entry_category(entry) == "night"
     ]
@@ -601,7 +664,7 @@ def had_previous_night(
     date_string: str,
     staged_entries: list[dict] | None = None,
 ) -> bool:
-    return bool(get_previous_night_entries(connection, employee_id, date_string, staged_entries=staged_entries))
+    return bool(get_previous_night_entries(connection, employee_id, date_string, staged_entries))
 
 
 def get_next_morning_entries(
@@ -611,11 +674,16 @@ def get_next_morning_entries(
     staged_entries: list[dict] | None = None,
 ) -> list[dict]:
     next_date = (parse_date_string(date_string) + timedelta(days=1)).isoformat()
+    staged_entries = staged_entries or []
     return [
         entry
         for entry in [
             *get_employee_entries_for_date(connection, employee_id, next_date),
-            *get_staged_employee_entries_for_date(staged_entries, employee_id, next_date),
+            *[
+                staged_entry
+                for staged_entry in staged_entries
+                if staged_entry["employee_id"] == employee_id and staged_entry["date"] == next_date
+            ],
         ]
         if entry_category(entry) == "morning"
     ]
@@ -627,7 +695,7 @@ def has_next_morning(
     date_string: str,
     staged_entries: list[dict] | None = None,
 ) -> bool:
-    return bool(get_next_morning_entries(connection, employee_id, date_string, staged_entries=staged_entries))
+    return bool(get_next_morning_entries(connection, employee_id, date_string, staged_entries))
 
 
 def get_break_minutes_after_previous_night(
@@ -637,7 +705,7 @@ def get_break_minutes_after_previous_night(
     template: dict,
     staged_entries: list[dict] | None = None,
 ) -> int | None:
-    previous_nights = get_previous_night_entries(connection, employee_id, date_string, staged_entries=staged_entries)
+    previous_nights = get_previous_night_entries(connection, employee_id, date_string, staged_entries)
     if not previous_nights:
         return None
 
@@ -874,7 +942,7 @@ def can_employee_take_template(
     fatigue_relaxation: int = 0,
     staged_entries: list[dict] | None = None,
 ) -> bool:
-    app_settings = get_app_settings(connection)
+    app_settings = get_position_app_settings(connection, position_id)
     staged_entries = staged_entries or []
     week_end_date = get_week_end_date(week_start_date)
     staged_week_entries = [
@@ -999,7 +1067,7 @@ def explain_employee_template_rejection(
     fatigue_relaxation: int = 0,
     staged_entries: list[dict] | None = None,
 ) -> str | None:
-    app_settings = get_app_settings(connection)
+    app_settings = get_position_app_settings(connection, position_id)
     staged_entries = staged_entries or []
     week_end_date = get_week_end_date(week_start_date)
     staged_week_entries = [
@@ -1201,11 +1269,6 @@ def home_page(request: Request):
     return templates.TemplateResponse(request=request, name="index.html", context={})
 
 
-@app.get("/service-worker.js", include_in_schema=False)
-def service_worker():
-    return FileResponse(BASE_PATH / "static" / "service-worker.js", media_type="application/javascript")
-
-
 @app.get("/employees", tags=["Pages"])
 def employees_page(request: Request):
     return templates.TemplateResponse(request=request, name="employees.html", context={})
@@ -1400,10 +1463,23 @@ def add_position(position: PositionCreate):
         try:
             cursor.execute(
                 """
-                INSERT INTO positions (name, requires_continuous_coverage, minimum_staff_presence)
-                VALUES (?, ?, ?)
+                INSERT INTO positions (
+                    name, color, requires_continuous_coverage, minimum_staff_presence,
+                    max_consecutive_nights, emergency_max_consecutive_nights,
+                    max_consecutive_split_days, emergency_max_consecutive_split_days
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (position.name, int(position.requires_continuous_coverage), position.minimum_staff_presence),
+                (
+                    position.name,
+                    position.color,
+                    int(position.requires_continuous_coverage),
+                    position.minimum_staff_presence,
+                    position.max_consecutive_nights,
+                    position.emergency_max_consecutive_nights,
+                    position.max_consecutive_split_days,
+                    position.emergency_max_consecutive_split_days,
+                ),
             )
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=400, detail="Position already exists")
@@ -1423,10 +1499,22 @@ def update_position(position_id: int, position: PositionCreate):
             cursor.execute(
                 """
                 UPDATE positions
-                SET name = ?, requires_continuous_coverage = ?, minimum_staff_presence = ?
+                SET name = ?, color = ?, requires_continuous_coverage = ?, minimum_staff_presence = ?,
+                    max_consecutive_nights = ?, emergency_max_consecutive_nights = ?,
+                    max_consecutive_split_days = ?, emergency_max_consecutive_split_days = ?
                 WHERE id = ?
                 """,
-                (position.name, int(position.requires_continuous_coverage), position.minimum_staff_presence, position_id),
+                (
+                    position.name,
+                    position.color,
+                    int(position.requires_continuous_coverage),
+                    position.minimum_staff_presence,
+                    position.max_consecutive_nights,
+                    position.emergency_max_consecutive_nights,
+                    position.max_consecutive_split_days,
+                    position.emergency_max_consecutive_split_days,
+                    position_id,
+                ),
             )
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=400, detail="Position already exists")
@@ -1848,6 +1936,22 @@ def update_app_settings(settings: AppSettingsUpdate):
         connection.close()
 
 
+@app.post("/api/app-settings/reset-colors", tags=["Requirements"])
+def reset_app_visual_colors():
+    connection = get_connection()
+    try:
+        updated_positions = reset_visual_color_settings(connection)
+        connection.commit()
+        return {
+            "message": "Visual colors reset successfully",
+            "settings": get_app_settings(connection),
+            "updated_positions": updated_positions,
+            "default_position_color": DEFAULT_POSITION_COLOR,
+        }
+    finally:
+        connection.close()
+
+
 @app.post("/api/coverage-requirements", tags=["Requirements"])
 def add_coverage_requirement(requirement: CoverageRequirementCreate):
     connection = get_connection()
@@ -2233,10 +2337,13 @@ def get_schedule_entries(connection, position_id: int | None = None, dates: list
             st.end_time,
             st.is_overnight,
             st.is_split_only,
+            p.name AS position_name,
+            p.color AS position_color,
             e.full_name AS employee_name,
             e.sex AS employee_sex
         FROM schedule_entries se
         JOIN shift_templates st ON st.id = se.shift_template_id
+        JOIN positions p ON p.id = se.position_id
         JOIN employees e ON e.id = se.employee_id
         {where_sql}
         ORDER BY se.date, se.employee_id, se.position_id, st.start_time
@@ -2677,7 +2784,7 @@ def choose_best_interval_candidate(
     fatigue_relaxation: int = 0,
     target_slot: dict | None = None,
 ):
-    app_settings = get_app_settings(connection)
+    app_settings = get_position_app_settings(connection, position_id)
     baseline_shortage = coverage_shortage(current_entries, slots)
     baseline_overage = coverage_overage(current_entries, slots)
     baseline_target_shortage = slot_shortage_score(current_entries, target_slot) if target_slot is not None else 0
@@ -3509,7 +3616,7 @@ def fill_day_by_legacy_categories(
     errors: list[str],
     unfilled_reports: list[dict],
 ):
-    app_settings = get_app_settings(connection)
+    app_settings = get_position_app_settings(connection, position_id)
     for requirement in requirements:
         category = requirement["shift_category"]
         category_templates = [template for template in templates if template["category"] == category and not template["is_split_only"]]
@@ -3623,8 +3730,15 @@ def max_consecutive_in_week(connection, employee_id: int, week_dates: list[str],
     return best
 
 
-def append_fatigue_summary_warnings(connection, employees: list[dict], week_dates: list[str], week_start_date: str, errors: list[str]) -> None:
-    app_settings = get_app_settings(connection)
+def append_fatigue_summary_warnings(
+    connection,
+    employees: list[dict],
+    position_id: int,
+    week_dates: list[str],
+    week_start_date: str,
+    errors: list[str],
+) -> None:
+    app_settings = get_position_app_settings(connection, position_id)
     for employee in employees:
         worked_days = len(get_employee_week_worked_dates(connection, employee["id"], week_start_date))
         if worked_days > app_settings["max_work_days_per_week"]:
@@ -3885,7 +3999,7 @@ def post_optimize_generated_schedule(
     created_entries: list[dict],
     errors: list[str],
 ) -> int:
-    app_settings = get_app_settings(connection)
+    app_settings = get_position_app_settings(connection, position_id)
     employee_by_id = {employee["id"]: employee for employee in employees}
     groups = build_generated_assignment_groups(connection, created_entries, position_id)
     moved_count = 0
@@ -4049,7 +4163,7 @@ def run_auto_generate_for_position(connection, position_id: int, week_start_date
         errors,
     )
 
-    append_fatigue_summary_warnings(connection, employees, week_dates, week_start_date, errors)
+    append_fatigue_summary_warnings(connection, employees, position_id, week_dates, week_start_date, errors)
     day_off_count = sync_generated_day_off_statuses(
         connection,
         cursor,
@@ -4148,7 +4262,12 @@ def export_schedule_excel(week_start_date: str, position_id: int, lang: str = "e
         position_row = fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (position_id,), "Position not found")
         position = row_to_position_dict(position_row)
         employees = load_position_employees(connection, position_id)
-        entries = get_schedule_entries(connection, position_id=position_id, dates=week_dates)
+        employee_ids = {employee["id"] for employee in employees}
+        entries = [
+            entry
+            for entry in get_schedule_entries(connection, dates=week_dates)
+            if entry["employee_id"] in employee_ids
+        ]
         day_status_map = get_employee_day_status_map(connection, [employee["id"] for employee in employees], week_dates)
         output = build_schedule_export_workbook(
             position=position,

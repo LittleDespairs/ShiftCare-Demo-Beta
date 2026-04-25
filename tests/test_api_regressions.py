@@ -152,16 +152,31 @@ class ApiRegressionTests(unittest.TestCase):
             f"/api/positions/{position_id}",
             json=self._position_payload(
                 name="Charge Nurse",
+                color="#dbeafe",
                 requires_continuous_coverage=True,
                 minimum_staff_presence=2,
+                max_consecutive_nights=1,
+                emergency_max_consecutive_nights=2,
+                max_consecutive_split_days=3,
+                emergency_max_consecutive_split_days=4,
             ),
         )
         self.assertEqual(update_response.status_code, 200)
 
         positions = self.client.get("/api/positions").json()
         self.assertEqual(positions[0]["name"], "Charge Nurse")
+        self.assertEqual(positions[0]["color"], "#dbeafe")
         self.assertTrue(positions[0]["requires_continuous_coverage"])
         self.assertEqual(positions[0]["minimum_staff_presence"], 2)
+        self.assertEqual(positions[0]["max_consecutive_nights"], 1)
+        self.assertEqual(positions[0]["emergency_max_consecutive_nights"], 2)
+        self.assertEqual(positions[0]["max_consecutive_split_days"], 3)
+        self.assertEqual(positions[0]["emergency_max_consecutive_split_days"], 4)
+        effective_settings = main.get_position_app_settings(self.connection, position_id)
+        self.assertEqual(effective_settings["max_consecutive_nights"], 1)
+        self.assertEqual(effective_settings["emergency_max_consecutive_nights"], 2)
+        self.assertEqual(effective_settings["max_consecutive_split_days"], 3)
+        self.assertEqual(effective_settings["emergency_max_consecutive_split_days"], 4)
 
     def test_validation_rejects_conflicting_assignment_flags_and_invalid_time_windows(self):
         employee_id = self._create_employee()
@@ -468,6 +483,20 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(direct_read["coverage_shortage_gain_weight"], 180)
         self.assertEqual(direct_read["balance_target_distance_weight"], 95)
         self.assertEqual(direct_read["after_night_evening_penalty"], 1600)
+
+        color_position_id = self._create_position(name="Color Test", color="#fde68a")
+        reset_response = self.client.post("/api/app-settings/reset-colors")
+        self.assertEqual(reset_response.status_code, 200)
+        reset_payload = reset_response.json()
+        self.assertEqual(reset_payload["settings"]["schedule_morning_color"], "#ecfeff")
+        self.assertEqual(reset_payload["settings"]["schedule_evening_color"], "#fff7ed")
+        self.assertEqual(reset_payload["settings"]["schedule_night_color"], "#eef2ff")
+        self.assertEqual(reset_payload["settings"]["schedule_status_color"], "#f5f3ff")
+        self.assertEqual(reset_payload["default_position_color"], "#eff6ff")
+
+        positions = self.client.get("/api/positions").json()
+        color_position = next(position for position in positions if position["id"] == color_position_id)
+        self.assertEqual(color_position["color"], "#eff6ff")
 
     def test_schedule_rejects_template_from_another_position(self):
         employee_id = self._create_employee()
@@ -833,7 +862,7 @@ class ApiRegressionTests(unittest.TestCase):
         worksheet = workbook.active
         self.assertEqual(worksheet["A1"].value, "Schedule export - Nurse - week starting 2026-04-20")
         self.assertEqual(worksheet["A3"].value, "Employee")
-        self.assertEqual(worksheet["I5"].value, 0)
+        self.assertEqual(worksheet["I5"].value, "0 / 0h")
 
     def test_export_excel_includes_shift_no_show_and_day_off_labels(self):
         employee_id = self._create_employee(full_name="Employee A")
@@ -846,6 +875,17 @@ class ApiRegressionTests(unittest.TestCase):
             start_time="14:00",
             end_time="20:00",
         )
+        night_id = self._create_shift_template(
+            position_id=position_id,
+            name="Night",
+            category="night",
+            start_time="20:00",
+            end_time="07:00",
+            is_overnight=True,
+        )
+
+        response = self.client.put("/api/app-settings", json={"allow_multiple_positions_per_day": True})
+        self.assertEqual(response.status_code, 200)
 
         response = self.client.post(
             "/api/employee-positions",
@@ -896,6 +936,60 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+        other_position_id = self._create_position(name="Reception", color="#fde68a")
+        other_template_id = self._create_shift_template(position_id=other_position_id, name="Other Morning")
+        response = self.client.post(
+            "/api/employee-positions",
+            json={
+                "employee_id": employee_id,
+                "position_id": other_position_id,
+                "is_primary": False,
+                "priority_score": 50,
+                "is_fallback_only": False,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": other_position_id,
+                "date": "2026-04-23",
+                "shift_template_id": other_template_id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-04-23",
+                "shift_template_id": night_id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-04-24",
+                "shift_template_id": morning_id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            "/api/employee-day-statuses",
+            json={
+                "employee_id": employee_id,
+                "date": "2026-04-24",
+                "status_type": "sick",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
         export_response = self.client.get(
             "/api/schedule/export-excel",
             params={"week_start_date": "2026-04-20", "position_id": position_id, "lang": "ru"},
@@ -905,14 +999,31 @@ class ApiRegressionTests(unittest.TestCase):
         workbook = load_workbook(filename=main.BytesIO(export_response.content))
         worksheet = workbook.active
         self.assertEqual(worksheet["B5"].value, "Morning")
-        self.assertEqual(worksheet["C5"].value, "Неявка")
+        self.assertIn("B5:B6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
+        self.assertEqual(worksheet["C5"].value, "Evening - Неявка")
+        self.assertIn("C5:C6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
         self.assertEqual(worksheet["D5"].value, "Выходной")
-        self.assertEqual(worksheet["I5"].value, 1)
-        summary_sheet = workbook["Summary"]
-        self.assertEqual(summary_sheet["A1"].value, "Coordinator summary")
+        self.assertIn("D5:D6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
+        self.assertEqual(worksheet["E5"].value, "Reception: Other Morning")
+        self.assertEqual(worksheet["E6"].value, "Night")
+        self.assertEqual(worksheet["E5"].font.color.rgb, "FF000000")
+        self.assertEqual(worksheet["E5"].fill.fgColor.rgb, "FFFDE68A")
+        self.assertEqual(worksheet["E6"].fill.fill_type, None)
+        self.assertEqual(worksheet["F5"].value, "Morning")
+        self.assertEqual(worksheet["F6"].value, "Больничный")
+        self.assertEqual(worksheet["I5"].value, "3 / 27ч")
+        self.assertIn("A5:A6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
+        self.assertIn("I5:I6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
+        self.assertEqual(worksheet["A5"].border.left.style, "medium")
+        self.assertEqual(worksheet["A5"].border.top.style, "medium")
+        self.assertEqual(worksheet["I5"].border.right.style, "medium")
+        self.assertEqual(worksheet["E6"].border.bottom.style, "medium")
+        summary_sheet = workbook["Сводка координатора"]
+        self.assertEqual(summary_sheet["A1"].value, "Сводка координатора")
         self.assertEqual(summary_sheet["B3"].value, "Nurse")
-        self.assertEqual(summary_sheet["B6"].value, 2)
+        self.assertEqual(summary_sheet["B6"].value, 5)
         self.assertEqual(summary_sheet["B8"].value, 1)
+        self.assertEqual(summary_sheet["B9"].value, 1)
         self.assertEqual(summary_sheet["B10"].value, 1)
 
     def test_delete_impact_endpoints_report_related_records(self):

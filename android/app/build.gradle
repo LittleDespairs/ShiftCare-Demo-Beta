@@ -12,7 +12,7 @@ android {
         minSdk 26
         targetSdk 35
         versionCode 1
-        versionName "0.13.2-beta-standalone"
+        versionName "0.13.4-beta-standalone"
 
         ndk {
             abiFilters "arm64-v8a"

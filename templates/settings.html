@@ -15,7 +15,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v=0.13.3_beta">
+<link rel="stylesheet" href="/static/css/style.css?v=0.13.4_beta">
 
     <style>
         /* =========================================================
@@ -340,6 +340,382 @@
             text-decoration: underline;
         }
 
+        .settings-workspace {
+            display: grid;
+            grid-template-columns: 260px minmax(0, 1fr);
+            gap: 20px;
+            align-items: start;
+        }
+
+        .settings-nav-panel {
+            position: sticky;
+            top: 18px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: var(--shadow);
+            padding: 10px;
+        }
+
+        .settings-nav-item {
+            width: 100%;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            text-align: start;
+            transition: background var(--transition), border-color var(--transition), color var(--transition);
+        }
+
+        .settings-nav-item + .settings-nav-item {
+            margin-top: 4px;
+        }
+
+        .settings-nav-item:hover {
+            background: #f8fafc;
+            color: var(--text);
+        }
+
+        .settings-nav-item.active {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        .settings-nav-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            background: #f1f5f9;
+            color: inherit;
+            font-weight: 900;
+        }
+
+        .settings-nav-title {
+            display: block;
+            font-weight: 900;
+            font-size: 0.92rem;
+            color: inherit;
+        }
+
+        .settings-nav-text {
+            display: block;
+            margin-top: 2px;
+            color: var(--muted);
+            font-size: 0.76rem;
+            line-height: 1.35;
+        }
+
+        .settings-content {
+            min-width: 0;
+        }
+
+        .settings-panel {
+            display: none;
+        }
+
+        .settings-panel.active {
+            display: block;
+        }
+
+        .settings-panel-card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: var(--shadow);
+            padding: 22px;
+        }
+
+        .settings-panel-card + .settings-panel-card {
+            margin-top: 16px;
+        }
+
+        .settings-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .settings-section-title {
+            margin: 0 0 6px;
+            color: var(--text);
+            font-size: 1.12rem;
+            font-weight: 900;
+        }
+
+        .settings-section-text {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.5;
+            font-size: 0.92rem;
+        }
+
+        .settings-form-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .settings-two-column {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+            gap: 18px;
+            align-items: start;
+        }
+
+        .settings-actions {
+            margin-top: 18px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .settings-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .settings-summary-item {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #f8fafc;
+            padding: 14px;
+        }
+
+        .settings-summary-label {
+            color: var(--muted);
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 800;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .settings-summary-value {
+            color: var(--text);
+            display: block;
+            font-weight: 900;
+        }
+
+        .settings-language-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .settings-option-row {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #f8fafc;
+            padding: 14px;
+        }
+
+        .settings-option-row + .settings-option-row {
+            margin-top: 12px;
+        }
+
+        .settings-option-heading {
+            display: block;
+            color: var(--text);
+            font-weight: 900;
+            margin-bottom: 4px;
+        }
+
+        .settings-option-text {
+            display: block;
+            color: var(--muted);
+            font-size: 0.84rem;
+            line-height: 1.45;
+        }
+
+        .settings-module-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .settings-module-row {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            display: grid;
+            grid-template-columns: 42px minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            padding: 14px;
+            text-decoration: none;
+            transition: background var(--transition), border-color var(--transition), transform var(--transition);
+        }
+
+        .settings-module-row:hover {
+            background: #f8fafc;
+            border-color: #bfdbfe;
+            transform: translateY(-1px);
+        }
+
+        .settings-module-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            background: #eff6ff;
+            color: #1d4ed8;
+            font-weight: 900;
+        }
+
+        .settings-module-title {
+            display: block;
+            color: var(--text);
+            font-weight: 900;
+            margin-bottom: 3px;
+        }
+
+        .settings-module-text {
+            display: block;
+            color: var(--muted);
+            font-size: 0.86rem;
+            line-height: 1.4;
+        }
+
+        .settings-module-action {
+            color: var(--primary);
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        .settings-directory-tabs {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .settings-directory-tab {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+            display: grid;
+            grid-template-columns: 38px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+            min-height: 84px;
+            padding: 12px;
+            text-align: start;
+            transition: background var(--transition), border-color var(--transition), transform var(--transition);
+        }
+
+        .settings-directory-tab:hover {
+            background: #f8fafc;
+            border-color: #bfdbfe;
+            transform: translateY(-1px);
+        }
+
+        .settings-directory-tab.active {
+            background: #eff6ff;
+            border-color: #93c5fd;
+            color: #1d4ed8;
+        }
+
+        .settings-directory-frame-shell {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+
+        .settings-directory-frame-status {
+            border-bottom: 1px solid var(--border);
+            background: #f8fafc;
+            color: var(--muted);
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 10px 14px;
+            font-size: 0.82rem;
+            font-weight: 800;
+        }
+
+        .settings-directory-frame {
+            width: 100%;
+            min-height: 760px;
+            border: 0;
+            display: block;
+            background: #fff;
+        }
+
+        .settings-danger-note {
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            background: #fef2f2;
+            color: #991b1b;
+            padding: 12px 14px;
+            line-height: 1.45;
+            margin-top: 14px;
+            font-size: 0.9rem;
+        }
+
+        .coverage-mode-select {
+            max-width: 340px;
+        }
+
+        .preview-schedule-card {
+            display: grid;
+            gap: 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #f8fafc;
+            padding: 14px;
+        }
+
+        .preview-day-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .preview-coverage-strip {
+            border: 1px solid #bae6fd;
+            border-radius: 8px;
+            background: #f0f9ff;
+            color: #075985;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 10px;
+            font-size: 0.78rem;
+            font-weight: 900;
+        }
+
+        body.rtl .settings-nav-item,
+        body.rtl .settings-module-row {
+            text-align: right;
+        }
+
+        body.rtl .settings-section-header,
+        body.rtl .settings-actions,
+        body.rtl .settings-language-row {
+            flex-direction: row-reverse;
+        }
+
         .sidebar-toggle:hover {
             background: #f8fafc;
             transform: translateY(-1px);
@@ -376,14 +752,53 @@
             .settings-grid,
             .generation-form-grid,
             .appearance-layout,
-            .color-form-grid {
+            .color-form-grid,
+            .settings-workspace,
+            .settings-two-column,
+            .settings-form-grid,
+            .settings-summary-grid,
+            .settings-directory-tabs {
                 grid-template-columns: 1fr;
+            }
+
+            .settings-nav-panel {
+                position: static;
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }
+
+            .settings-nav-item + .settings-nav-item {
+                margin-top: 0;
             }
         }
 
         @media (max-width: 920px) {
             body.mobile-sidebar-hidden .sidebar {
                 display: none;
+            }
+        }
+
+        @media (max-width: 680px) {
+            .settings-nav-panel,
+            .color-form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .settings-section-header {
+                display: block;
+            }
+
+            .settings-module-row {
+                grid-template-columns: 42px minmax(0, 1fr);
+            }
+
+            .settings-module-action {
+                grid-column: 2;
+            }
+
+            .settings-directory-tab {
+                min-height: 72px;
             }
         }
     </style>
@@ -454,7 +869,7 @@
                 <div class="page-heading">
                     <h2 class="page-title" data-i18n="settings_page_title">Settings</h2>
                     <p class="page-subtitle" data-i18n="settings_page_subtitle">
-                        Open and manage the administrative sections of the scheduling system.
+                        Manage app behavior, schedule appearance, reference data, and backups from one place.
                     </p>
                 </div>
 
@@ -467,230 +882,421 @@
                 </div>
             </header>
 
-            <!--
-                SETTINGS CARDS / КАРТОЧКИ НАСТРОЕК
-                Main entry points to admin pages.
-                Основные входы в административные страницы.
-            -->
-            <section class="settings-grid">
-                <a href="/positions" class="settings-card">
-                    <div class="settings-card-icon">🏷</div>
-                    <h3 class="settings-card-title" data-i18n="settings_positions_title">Positions</h3>
-                    <p class="settings-card-text" data-i18n="settings_positions_text">
-                        Create and manage department positions used by the scheduling system.
-                    </p>
-                </a>
-
-                <a href="/shift-templates" class="settings-card">
-                    <div class="settings-card-icon">🕒</div>
-                    <h3 class="settings-card-title" data-i18n="settings_templates_title">Shift templates</h3>
-                    <p class="settings-card-text" data-i18n="settings_templates_text">
-                        Create reusable shift templates for morning, evening, night, and split shifts.
-                    </p>
-                </a>
-
-                <a href="/employee-positions" class="settings-card">
-                    <div class="settings-card-icon">🔗</div>
-                    <h3 class="settings-card-title" data-i18n="settings_assignments_title">Assignments</h3>
-                    <p class="settings-card-text" data-i18n="settings_assignments_text">
-                        Assign employees to positions and define their priority and fallback role.
-                    </p>
-                </a>
-
-                <a href="/coverage-requirements" class="settings-card">
-                    <div class="settings-card-icon">▥</div>
-                    <h3 class="settings-card-title" data-i18n="settings_coverage_title">Coverage requirements</h3>
-                    <p class="settings-card-text" data-i18n="settings_coverage_text">
-                        Define how many employees are needed for each time interval.
-                    </p>
-                </a>
-            </section>
-
-            <section class="generation-settings">
-                <div class="generation-settings-header">
-                    <div>
-                        <h3 class="generation-settings-title" data-i18n="settings_generation_title">Generation rules</h3>
-                        <p class="generation-settings-text" data-i18n="settings_generation_text">
-                            Configure emergency limits and cross-position shift behavior for auto-generation.
-                        </p>
-                    </div>
-                </div>
-
-                <div id="message-box"></div>
-
-                <form id="generation-settings-form">
-                    <div class="generation-form-grid">
-                        <div>
-                            <label class="form-label" for="emergency_max_consecutive_nights" data-i18n="settings_emergency_nights">
-                                Emergency night limit
-                            </label>
-                            <input id="emergency_max_consecutive_nights" class="input" type="number" min="1" max="7" required>
-                        </div>
-
-                        <div>
-                            <label class="form-label" for="emergency_max_consecutive_split_days" data-i18n="settings_emergency_splits">
-                                Emergency split limit
-                            </label>
-                            <input id="emergency_max_consecutive_split_days" class="input" type="number" min="1" max="7" required>
-                        </div>
-
-                        <div style="display:flex; align-items:flex-end;">
-                            <label class="check-row" for="allow_multiple_positions_per_day" style="margin:0;">
-                                <input id="allow_multiple_positions_per_day" type="checkbox">
-                                <span data-i18n="settings_allow_multiple_positions_per_day">Allow multiple positions in one day</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="generation-actions">
-                        <button id="reload-generation-settings-btn" class="btn btn-secondary" type="button" data-i18n="common_reload">
-                            Reload
-                        </button>
-                        <button class="btn btn-primary" type="submit" data-i18n="settings_save_generation">
-                            Save generation settings
-                        </button>
-                    </div>
-                </form>
-            </section>
-
-            <section class="appearance-settings">
-                <div class="generation-settings-header">
-                    <div>
-                        <h3 class="generation-settings-title" data-i18n="settings_appearance_title">Appearance</h3>
-                        <p class="generation-settings-text" data-i18n="settings_appearance_text">
-                            Customize the schedule colors so shift cards are easier to recognize for your team.
-                        </p>
-                    </div>
-                </div>
-
-                <div id="appearance-message-box"></div>
-
-                <form id="appearance-settings-form">
-                    <div class="appearance-layout">
-                        <div class="color-form-grid">
-                            <label class="color-control" for="schedule_morning_color">
-                                <input id="schedule_morning_color" class="color-input" type="color">
-                                <span>
-                                    <span class="color-control-title" data-i18n="settings_color_morning">Morning cards</span>
-                                    <span class="color-control-text" data-i18n="settings_color_morning_text">Used for morning shift cards and legend.</span>
-                                </span>
-                            </label>
-
-                            <label class="color-control" for="schedule_evening_color">
-                                <input id="schedule_evening_color" class="color-input" type="color">
-                                <span>
-                                    <span class="color-control-title" data-i18n="settings_color_evening">Evening cards</span>
-                                    <span class="color-control-text" data-i18n="settings_color_evening_text">Used for evening shift cards and legend.</span>
-                                </span>
-                            </label>
-
-                            <label class="color-control" for="schedule_night_color">
-                                <input id="schedule_night_color" class="color-input" type="color">
-                                <span>
-                                    <span class="color-control-title" data-i18n="settings_color_night">Night cards</span>
-                                    <span class="color-control-text" data-i18n="settings_color_night_text">Used for night shift cards and legend.</span>
-                                </span>
-                            </label>
-
-                            <label class="color-control" for="schedule_status_color">
-                                <input id="schedule_status_color" class="color-input" type="color">
-                                <span>
-                                    <span class="color-control-title" data-i18n="settings_color_status">Status cards</span>
-                                    <span class="color-control-text" data-i18n="settings_color_status_text">Used for day-off and special status cards.</span>
-                                </span>
-                            </label>
-                        </div>
-
-                        <div class="appearance-preview">
-                            <h4 class="appearance-preview-title" data-i18n="settings_appearance_preview">Preview</h4>
-                            <div id="preview_morning" class="preview-shift-card">
-                                <div class="preview-shift-title" data-i18n="shift_morning">Morning</div>
-                                <div class="preview-shift-meta">06:00 - 14:00</div>
-                            </div>
-                            <div id="preview_evening" class="preview-shift-card">
-                                <div class="preview-shift-title" data-i18n="shift_evening">Evening</div>
-                                <div class="preview-shift-meta">14:00 - 22:00</div>
-                            </div>
-                            <div id="preview_night" class="preview-shift-card">
-                                <div class="preview-shift-title" data-i18n="shift_night">Night</div>
-                                <div class="preview-shift-meta">22:00 - 06:00</div>
-                            </div>
-                            <div id="preview_status" class="preview-shift-card">
-                                <div class="preview-shift-title" data-i18n="schedule_status_legend">Status</div>
-                                <div class="preview-shift-meta" data-i18n="status_day_off">Day off</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="generation-actions">
-                        <button id="reset-appearance-settings-btn" class="btn btn-secondary" type="button" data-i18n="common_reset">
-                            Reset
-                        </button>
-                        <button class="btn btn-primary" type="submit" data-i18n="settings_save_appearance">
-                            Save appearance
-                        </button>
-                    </div>
-                </form>
-            </section>
-
-            <section class="database-safety">
-                <div class="database-safety-header">
-                    <div>
-                        <h3 class="generation-settings-title" data-i18n="settings_backup_title">Database safety</h3>
-                        <p class="generation-settings-text" data-i18n="settings_backup_text">
-                            Create manual backups and restore a recent backup if a destructive action needs to be rolled back.
-                        </p>
-                    </div>
-                </div>
-
-                <div id="database-message-box"></div>
-
-                <div class="database-backup-actions">
-                    <button id="create-database-backup-btn" class="btn btn-primary" type="button" data-i18n="settings_backup_create">
-                        Create backup
+            <div class="settings-workspace">
+                <nav class="settings-nav-panel" aria-label="Settings sections">
+                    <button class="settings-nav-item active" type="button" data-settings-tab="appearance" aria-selected="true">
+                        <span class="settings-nav-icon">V</span>
+                        <span>
+                            <span class="settings-nav-title" data-i18n="settings_tab_appearance">Appearance</span>
+                            <span class="settings-nav-text" data-i18n="settings_tab_appearance_text">Language, colors and schedule display</span>
+                        </span>
                     </button>
-                    <button id="reload-database-backups-btn" class="btn btn-secondary" type="button" data-i18n="common_reload">
-                        Reload
+
+                    <button class="settings-nav-item" type="button" data-settings-tab="generation" aria-selected="false">
+                        <span class="settings-nav-icon">A</span>
+                        <span>
+                            <span class="settings-nav-title" data-i18n="settings_tab_generation">Generation</span>
+                            <span class="settings-nav-text" data-i18n="settings_tab_generation_text">Automatic scheduling rules</span>
+                        </span>
                     </button>
-                </div>
 
-                <div class="database-backup-list">
-                    <table class="database-backup-table">
-                        <thead>
-                            <tr>
-                                <th data-i18n="settings_backup_name">Backup</th>
-                                <th data-i18n="settings_backup_modified">Modified</th>
-                                <th data-i18n="settings_backup_size">Size</th>
-                                <th data-i18n="settings_backup_actions">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="database-backups-table-body">
-                            <tr>
-                                <td colspan="4" data-i18n="settings_backup_empty">No backups yet</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+                    <button class="settings-nav-item" type="button" data-settings-tab="directories" aria-selected="false">
+                        <span class="settings-nav-icon">D</span>
+                        <span>
+                            <span class="settings-nav-title" data-i18n="settings_tab_directories">Directories</span>
+                            <span class="settings-nav-text" data-i18n="settings_tab_directories_text">Positions, templates and requirements</span>
+                        </span>
+                    </button>
 
-            <div class="settings-notes">
-                <h3 class="settings-notes-title" data-i18n="settings_notes_title">Notes</h3>
-                <ul>
-                    <li data-i18n="settings_note_1">
-                        These sections are administrative and are usually configured less often than the weekly
-                        schedule.
-                    </li>
-                    <li data-i18n="settings_note_2">
-                        The main weekly workflow still starts from the schedule page.
-                    </li>
-                    <li data-i18n="settings_note_3">
-                        If needed later, this page can also include shift requirements and export settings.
-                    </li>
-                </ul>
+                    <button class="settings-nav-item" type="button" data-settings-tab="data" aria-selected="false">
+                        <span class="settings-nav-icon">B</span>
+                        <span>
+                            <span class="settings-nav-title" data-i18n="settings_tab_data">Data safety</span>
+                            <span class="settings-nav-text" data-i18n="settings_tab_data_text">Backups and restore</span>
+                        </span>
+                    </button>
+
+                    <button class="settings-nav-item" type="button" data-settings-tab="about" aria-selected="false">
+                        <span class="settings-nav-icon">i</span>
+                        <span>
+                            <span class="settings-nav-title" data-i18n="settings_tab_about">About</span>
+                            <span class="settings-nav-text" data-i18n="settings_tab_about_text">Version, guide and docs</span>
+                        </span>
+                    </button>
+                </nav>
+
+                <div class="settings-content">
+                    <section class="settings-panel active" data-settings-panel="appearance">
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_appearance_title">Appearance</h3>
+                                    <p class="settings-section-text" data-i18n="settings_appearance_text">
+                                        Customize language, schedule colors and display behavior.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="settings-option-row">
+                                <span class="settings-option-heading" data-i18n="settings_language_title">Interface language</span>
+                                <span class="settings-option-text" data-i18n="settings_language_text">
+                                    The selected language is saved on this device.
+                                </span>
+                                <div class="settings-language-row" style="margin-top:12px;">
+                                    <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+                                    <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+                                    <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+                                </div>
+                            </div>
+
+                            <div class="settings-summary-grid" style="margin-top:14px;">
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_summary_version">Version</span>
+                                    <span class="settings-summary-value">0.13.4_beta</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_summary_layout">Settings layout</span>
+                                    <span class="settings-summary-value" data-i18n="settings_summary_layout_value">Section based</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_summary_storage">Storage</span>
+                                    <span class="settings-summary-value" data-i18n="settings_summary_storage_value">Local database</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_schedule_view_title">Schedule view</h3>
+                                    <p class="settings-section-text" data-i18n="settings_schedule_view_text">
+                                        Customize the schedule colors so shift cards are easier to recognize for your team.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div id="appearance-message-box"></div>
+
+                            <form id="appearance-settings-form">
+                                <div class="settings-two-column">
+                                    <div>
+                                        <div class="settings-option-row">
+                                            <label class="form-label" for="schedule_coverage_display_mode" data-i18n="coverage_display_mode">
+                                                Schedule coverage display
+                                            </label>
+                                            <select id="schedule_coverage_display_mode" class="select coverage-mode-select">
+                                                <option value="interval" data-i18n="coverage_display_interval">By time intervals</option>
+                                                <option value="category" data-i18n="coverage_display_category">By shift categories</option>
+                                            </select>
+                                            <span class="settings-option-text" style="margin-top:8px;" data-i18n="settings_coverage_display_hint">
+                                                The interval mode uses real coverage requirements and is recommended for accuracy.
+                                            </span>
+                                        </div>
+
+                                        <div class="color-form-grid" style="margin-top:14px;">
+                                            <label class="color-control" for="schedule_morning_color">
+                                                <input id="schedule_morning_color" class="color-input" type="color">
+                                                <span>
+                                                    <span class="color-control-title" data-i18n="settings_color_morning">Morning cards</span>
+                                                    <span class="color-control-text" data-i18n="settings_color_morning_text">Used for morning shift cards and legend.</span>
+                                                </span>
+                                            </label>
+
+                                            <label class="color-control" for="schedule_evening_color">
+                                                <input id="schedule_evening_color" class="color-input" type="color">
+                                                <span>
+                                                    <span class="color-control-title" data-i18n="settings_color_evening">Evening cards</span>
+                                                    <span class="color-control-text" data-i18n="settings_color_evening_text">Used for evening shift cards and legend.</span>
+                                                </span>
+                                            </label>
+
+                                            <label class="color-control" for="schedule_night_color">
+                                                <input id="schedule_night_color" class="color-input" type="color">
+                                                <span>
+                                                    <span class="color-control-title" data-i18n="settings_color_night">Night cards</span>
+                                                    <span class="color-control-text" data-i18n="settings_color_night_text">Used for night shift cards and legend.</span>
+                                                </span>
+                                            </label>
+
+                                            <label class="color-control" for="schedule_status_color">
+                                                <input id="schedule_status_color" class="color-input" type="color">
+                                                <span>
+                                                    <span class="color-control-title" data-i18n="settings_color_status">Status cards</span>
+                                                    <span class="color-control-text" data-i18n="settings_color_status_text">Used for day-off and special status cards.</span>
+                                                </span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="preview-schedule-card">
+                                        <div class="preview-day-header">
+                                            <span data-i18n="settings_appearance_preview">Preview</span>
+                                            <span data-i18n="weekday_monday">Monday</span>
+                                        </div>
+                                        <div class="preview-coverage-strip">
+                                            <span data-i18n="schedule_coverage_header">Coverage</span>
+                                            <span>3 / 4</span>
+                                        </div>
+                                        <div id="preview_morning" class="preview-shift-card">
+                                            <div class="preview-shift-title" data-i18n="shift_morning">Morning</div>
+                                            <div class="preview-shift-meta">06:00 - 14:00</div>
+                                        </div>
+                                        <div id="preview_evening" class="preview-shift-card">
+                                            <div class="preview-shift-title" data-i18n="shift_evening">Evening</div>
+                                            <div class="preview-shift-meta">14:00 - 22:00</div>
+                                        </div>
+                                        <div id="preview_night" class="preview-shift-card">
+                                            <div class="preview-shift-title" data-i18n="shift_night">Night</div>
+                                            <div class="preview-shift-meta">22:00 - 06:00</div>
+                                        </div>
+                                        <div id="preview_status" class="preview-shift-card">
+                                            <div class="preview-shift-title" data-i18n="schedule_status_legend">Status</div>
+                                            <div class="preview-shift-meta" data-i18n="status_day_off">Day off</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="settings-actions">
+                                    <button id="reset-appearance-settings-btn" class="btn btn-secondary" type="button" data-i18n="common_reset">
+                                        Reset
+                                    </button>
+                                    <button class="btn btn-primary" type="submit" data-i18n="settings_save_schedule_view">
+                                        Save schedule view
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="settings-panel" data-settings-panel="generation">
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_generation_title">Generation rules</h3>
+                                    <p class="settings-section-text" data-i18n="settings_generation_text">
+                                        Configure emergency limits and cross-position shift behavior for auto-generation.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div id="message-box"></div>
+
+                            <form id="generation-settings-form">
+                                <div class="settings-form-grid">
+                                    <div>
+                                        <label class="form-label" for="max_consecutive_nights" data-i18n="settings_max_nights">
+                                            Max consecutive nights
+                                        </label>
+                                        <input id="max_consecutive_nights" class="input" type="number" min="1" max="7" required>
+                                    </div>
+
+                                    <div>
+                                        <label class="form-label" for="emergency_max_consecutive_nights" data-i18n="settings_emergency_nights">
+                                            Emergency night limit
+                                        </label>
+                                        <input id="emergency_max_consecutive_nights" class="input" type="number" min="1" max="7" required>
+                                    </div>
+
+                                    <div>
+                                        <label class="form-label" for="max_consecutive_split_days" data-i18n="settings_max_splits">
+                                            Max consecutive split days
+                                        </label>
+                                        <input id="max_consecutive_split_days" class="input" type="number" min="1" max="7" required>
+                                    </div>
+
+                                    <div>
+                                        <label class="form-label" for="emergency_max_consecutive_split_days" data-i18n="settings_emergency_splits">
+                                            Emergency split limit
+                                        </label>
+                                        <input id="emergency_max_consecutive_split_days" class="input" type="number" min="1" max="7" required>
+                                    </div>
+
+                                    <div style="display:flex; align-items:flex-end;">
+                                        <label class="check-row" for="allow_multiple_positions_per_day" style="margin:0;">
+                                            <input id="allow_multiple_positions_per_day" type="checkbox">
+                                            <span data-i18n="settings_allow_multiple_positions_per_day">Allow multiple positions in one day</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="settings-actions">
+                                    <button id="reload-generation-settings-btn" class="btn btn-secondary" type="button" data-i18n="common_reload">
+                                        Reload
+                                    </button>
+                                    <button class="btn btn-primary" type="submit" data-i18n="settings_save_generation">
+                                        Save generation settings
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="settings-panel" data-settings-panel="directories">
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_directories_title">Directories</h3>
+                                    <p class="settings-section-text" data-i18n="settings_directories_text">
+                                        Administrative data that defines how the schedule is built.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="settings-directory-tabs" role="tablist" aria-label="Directory sections">
+                                <button class="settings-directory-tab active" type="button" data-directory-module="positions"
+                                    data-directory-src="/positions?embedded=1" aria-selected="true">
+                                    <span class="settings-module-icon">P</span>
+                                    <span>
+                                        <span class="settings-module-title" data-i18n="settings_positions_title">Positions</span>
+                                        <span class="settings-module-text" data-i18n="settings_positions_text">
+                                            Create and manage department positions used by the scheduling system.
+                                        </span>
+                                    </span>
+                                </button>
+
+                                <button class="settings-directory-tab" type="button" data-directory-module="shift-templates"
+                                    data-directory-src="/shift-templates?embedded=1" aria-selected="false">
+                                    <span class="settings-module-icon">T</span>
+                                    <span>
+                                        <span class="settings-module-title" data-i18n="settings_templates_title">Shift templates</span>
+                                        <span class="settings-module-text" data-i18n="settings_templates_text">
+                                            Create reusable shift templates for morning, evening, night, and split shifts.
+                                        </span>
+                                    </span>
+                                </button>
+
+                                <button class="settings-directory-tab" type="button" data-directory-module="employee-positions"
+                                    data-directory-src="/employee-positions?embedded=1" aria-selected="false">
+                                    <span class="settings-module-icon">L</span>
+                                    <span>
+                                        <span class="settings-module-title" data-i18n="settings_assignments_title">Assignments</span>
+                                        <span class="settings-module-text" data-i18n="settings_assignments_text">
+                                            Assign employees to positions and define their priority and fallback role.
+                                        </span>
+                                    </span>
+                                </button>
+
+                                <button class="settings-directory-tab" type="button" data-directory-module="coverage-requirements"
+                                    data-directory-src="/coverage-requirements?embedded=1" aria-selected="false">
+                                    <span class="settings-module-icon">C</span>
+                                    <span>
+                                        <span class="settings-module-title" data-i18n="settings_coverage_title">Coverage requirements</span>
+                                        <span class="settings-module-text" data-i18n="settings_coverage_text">
+                                            Define how many employees are needed for each time interval.
+                                        </span>
+                                    </span>
+                                </button>
+                            </div>
+
+                            <div class="settings-directory-frame-shell">
+                                <div class="settings-directory-frame-status">
+                                    <span id="directory-frame-title" data-i18n="settings_positions_title">Positions</span>
+                                    <span data-i18n="settings_directory_inline_hint">Displayed inside Settings</span>
+                                </div>
+                                <iframe id="directory-frame" class="settings-directory-frame" title="Directory editor"
+                                    src="/positions?embedded=1"></iframe>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="settings-panel" data-settings-panel="data">
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_backup_title">Database safety</h3>
+                                    <p class="settings-section-text" data-i18n="settings_backup_text">
+                                        Create manual backups and restore a recent backup if a destructive action needs to be rolled back.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div id="database-message-box"></div>
+
+                            <div class="database-backup-actions">
+                                <button id="create-database-backup-btn" class="btn btn-primary" type="button" data-i18n="settings_backup_create">
+                                    Create backup
+                                </button>
+                                <button id="reload-database-backups-btn" class="btn btn-secondary" type="button" data-i18n="common_reload">
+                                    Reload
+                                </button>
+                            </div>
+
+                            <div class="settings-danger-note" data-i18n="settings_backup_restore_warning">
+                                Restoring a backup replaces the current database. A recovery copy is created first.
+                            </div>
+
+                            <div class="database-backup-list">
+                                <table class="database-backup-table">
+                                    <thead>
+                                        <tr>
+                                            <th data-i18n="settings_backup_name">Backup</th>
+                                            <th data-i18n="settings_backup_modified">Modified</th>
+                                            <th data-i18n="settings_backup_size">Size</th>
+                                            <th data-i18n="settings_backup_actions">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="database-backups-table-body">
+                                        <tr>
+                                            <td colspan="4" data-i18n="settings_backup_empty">No backups yet</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="settings-panel" data-settings-panel="about">
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_about_title">About Schedule App</h3>
+                                    <p class="settings-section-text" data-i18n="settings_about_text">
+                                        Current beta information and links for help.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="settings-summary-grid">
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_summary_version">Version</span>
+                                    <span class="settings-summary-value">0.13.4_beta</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_summary_channel">Channel</span>
+                                    <span class="settings-summary-value" data-i18n="settings_summary_channel_value">Beta testing</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_summary_focus">Current focus</span>
+                                    <span class="settings-summary-value" data-i18n="settings_summary_focus_value">Frontend polish</span>
+                                </div>
+                            </div>
+
+                            <div class="settings-module-list" style="margin-top:16px;">
+                                <a href="/guide" class="settings-module-row">
+                                    <span class="settings-module-icon">?</span>
+                                    <span>
+                                        <span class="settings-module-title" data-i18n="footer_guide">User Guide</span>
+                                        <span class="settings-module-text" data-i18n="settings_guide_text">Open the step-by-step guide for preparing and publishing a schedule.</span>
+                                    </span>
+                                    <span class="settings-module-action" data-i18n="settings_open_module">Open</span>
+                                </a>
+
+                                <a href="/docs" class="settings-module-row">
+                                    <span class="settings-module-icon">D</span>
+                                    <span>
+                                        <span class="settings-module-title" data-i18n="footer_docs">Documentation</span>
+                                        <span class="settings-module-text" data-i18n="settings_docs_text">Open technical notes and app documentation.</span>
+                                    </span>
+                                    <span class="settings-module-action" data-i18n="settings_open_module">Open</span>
+                                </a>
+                            </div>
+                        </div>
+                    </section>
+                </div>
             </div>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    Schedule App v0.13.3_beta
+                    Schedule App v0.13.4_beta
                 </div>
 
                 <div class="footer-right">
@@ -701,7 +1307,7 @@
         </main>
     </div>
 
-<script src="/static/js/i18n.js?v=0.13.3_beta"></script>
+<script src="/static/js/i18n.js?v=0.13.4_beta"></script>
 
     <script>
         function getSavedSidebarState() {
@@ -749,8 +1355,140 @@
             });
         }
 
+        function getSavedSettingsTab() {
+            const hashTab = window.location.hash.replace("#", "");
+            if (hashTab === "general" || hashTab === "schedule") {
+                return "appearance";
+            }
+            if (document.querySelector(`[data-settings-panel="${hashTab}"]`)) {
+                return hashTab;
+            }
+            const savedTab = localStorage.getItem("scheduleAppSettingsTab");
+            if (savedTab === "general" || savedTab === "schedule") {
+                return "appearance";
+            }
+            return savedTab || "appearance";
+        }
+
+        function activateSettingsTab(tab) {
+            if (!document.querySelector(`[data-settings-panel="${tab}"]`)) {
+                tab = "appearance";
+            }
+
+            document.querySelectorAll("[data-settings-tab]").forEach((button) => {
+                const isActive = button.dataset.settingsTab === tab;
+                button.classList.toggle("active", isActive);
+                button.setAttribute("aria-selected", isActive ? "true" : "false");
+            });
+
+            document.querySelectorAll("[data-settings-panel]").forEach((panel) => {
+                const isActive = panel.dataset.settingsPanel === tab;
+                panel.classList.toggle("active", isActive);
+                panel.hidden = !isActive;
+            });
+
+            localStorage.setItem("scheduleAppSettingsTab", tab);
+            if (window.location.hash.replace("#", "") !== tab) {
+                history.replaceState(null, "", `#${tab}`);
+            }
+        }
+
+        function bindSettingsNavigation() {
+            document.querySelectorAll("[data-settings-tab]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    activateSettingsTab(button.dataset.settingsTab);
+                });
+            });
+
+            window.addEventListener("hashchange", () => {
+                activateSettingsTab(getSavedSettingsTab());
+            });
+        }
+
+        function getSavedDirectoryModule() {
+            const saved = localStorage.getItem("scheduleAppDirectoryModule") || "positions";
+            return document.querySelector(`[data-directory-module="${saved}"]`) ? saved : "positions";
+        }
+
+        function syncDirectoryFrameLanguage() {
+            const frame = document.getElementById("directory-frame");
+            if (!frame || !frame.contentWindow) return;
+
+            try {
+                if (typeof frame.contentWindow.setLanguage === "function") {
+                    frame.contentWindow.setLanguage(localStorage.getItem("scheduleAppLanguage") || "en");
+                }
+            } catch (error) {
+                // Same-origin frames are expected here; this guard keeps the parent page stable if that changes later.
+            }
+        }
+
+        function activateDirectoryModule(moduleId) {
+            const selectedButton = document.querySelector(`[data-directory-module="${moduleId}"]`)
+                || document.querySelector('[data-directory-module="positions"]');
+            if (!selectedButton) return;
+
+            const frame = document.getElementById("directory-frame");
+            const title = document.getElementById("directory-frame-title");
+            document.querySelectorAll("[data-directory-module]").forEach((button) => {
+                const isActive = button === selectedButton;
+                button.classList.toggle("active", isActive);
+                button.setAttribute("aria-selected", isActive ? "true" : "false");
+            });
+
+            if (title) {
+                const titleElement = selectedButton.querySelector(".settings-module-title");
+                title.dataset.i18n = titleElement?.dataset.i18n || "settings_directories_title";
+                title.textContent = titleElement?.textContent || selectedButton.dataset.directoryModule;
+                if (typeof applyTranslations === "function") {
+                    applyTranslations(localStorage.getItem("scheduleAppLanguage") || "en");
+                }
+            }
+
+            if (frame && frame.getAttribute("src") !== selectedButton.dataset.directorySrc) {
+                frame.style.height = "760px";
+                frame.setAttribute("src", selectedButton.dataset.directorySrc);
+            }
+
+            localStorage.setItem("scheduleAppDirectoryModule", selectedButton.dataset.directoryModule);
+        }
+
+        function bindDirectoryNavigation() {
+            document.querySelectorAll("[data-directory-module]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    activateDirectoryModule(button.dataset.directoryModule);
+                });
+            });
+
+            const frame = document.getElementById("directory-frame");
+            if (frame) {
+                frame.addEventListener("load", () => {
+                    syncDirectoryFrameLanguage();
+                });
+            }
+
+            document.querySelectorAll(".lang-btn").forEach((button) => {
+                button.addEventListener("click", () => {
+                    window.setTimeout(syncDirectoryFrameLanguage, 0);
+                });
+            });
+
+            window.addEventListener("message", (event) => {
+                if (event.origin !== window.location.origin) return;
+                if (event.data?.type !== "schedule-app:embedded-height") return;
+
+                const directoryFrame = document.getElementById("directory-frame");
+                if (!directoryFrame) return;
+
+                const height = Number(event.data.height) || 760;
+                directoryFrame.style.height = `${Math.max(760, height + 8)}px`;
+            });
+        }
+
         const generationSettingFields = [
+            { id: "max_consecutive_nights", type: "number" },
             { id: "emergency_max_consecutive_nights", type: "number" },
+            { id: "max_consecutive_split_days", type: "number" },
             { id: "emergency_max_consecutive_split_days", type: "number" },
             { id: "allow_multiple_positions_per_day", type: "checkbox" }
         ];
@@ -766,6 +1504,9 @@
             { id: "schedule_night_color", previewId: "preview_night" },
             { id: "schedule_status_color", previewId: "preview_status" }
         ];
+        const scheduleViewDefaults = {
+            schedule_coverage_display_mode: "interval"
+        };
         let databaseBackups = [];
 
         function t(key, fallback = "") {
@@ -939,6 +1680,10 @@
                     input.value = normalizeColor(settings[field.id], defaultAppearanceSettings[field.id]);
                 }
             });
+            const coverageModeSelect = document.getElementById("schedule_coverage_display_mode");
+            if (coverageModeSelect) {
+                coverageModeSelect.value = settings.schedule_coverage_display_mode || scheduleViewDefaults.schedule_coverage_display_mode;
+            }
             updateAppearancePreview();
         }
 
@@ -987,6 +1732,10 @@
                 const input = document.getElementById(field.id);
                 payload[field.id] = normalizeColor(input.value, defaultAppearanceSettings[field.id]);
             });
+            const coverageModeSelect = document.getElementById("schedule_coverage_display_mode");
+            if (coverageModeSelect) {
+                payload.schedule_coverage_display_mode = coverageModeSelect.value || scheduleViewDefaults.schedule_coverage_display_mode;
+            }
 
             const response = await fetch("/api/app-settings", {
                 method: "PUT",
@@ -1007,23 +1756,53 @@
                     input.value = normalizeColor(result.settings[field.id], defaultAppearanceSettings[field.id]);
                 }
             });
+            const savedCoverageModeSelect = document.getElementById("schedule_coverage_display_mode");
+            if (savedCoverageModeSelect) {
+                savedCoverageModeSelect.value = result.settings.schedule_coverage_display_mode || scheduleViewDefaults.schedule_coverage_display_mode;
+            }
             updateAppearancePreview();
             showAppearanceMessage(t("settings_msg_appearance_saved", "Appearance settings saved."), "success");
         }
 
-        function resetAppearanceSettings() {
+        async function resetAppearanceSettings() {
+            const response = await fetch("/api/app-settings/reset-colors", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" }
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                showAppearanceMessage(error.detail || t("settings_msg_failed_reset_colors", "Failed to reset colors."), "danger");
+                return;
+            }
+
+            const result = await response.json();
             appearanceSettingFields.forEach((field) => {
                 const input = document.getElementById(field.id);
                 if (input) {
-                    input.value = defaultAppearanceSettings[field.id];
+                    input.value = normalizeColor(result.settings[field.id], defaultAppearanceSettings[field.id]);
                 }
             });
             updateAppearancePreview();
+            showAppearanceMessage(t("settings_msg_colors_reset", "Colors were reset to defaults."), "success");
+
+            const frame = document.getElementById("directory-frame");
+            if (frame && frame.contentWindow) {
+                try {
+                    frame.contentWindow.location.reload();
+                } catch (error) {
+                    frame.setAttribute("src", frame.getAttribute("src"));
+                }
+            }
         }
 
         document.addEventListener("DOMContentLoaded", () => {
             bindSidebarToggle();
             applySidebarState(getSavedSidebarState());
+            bindSettingsNavigation();
+            activateSettingsTab(getSavedSettingsTab());
+            bindDirectoryNavigation();
+            activateDirectoryModule(getSavedDirectoryModule());
             document.getElementById("generation-settings-form").addEventListener("submit", saveGenerationSettings);
             document.getElementById("appearance-settings-form").addEventListener("submit", saveAppearanceSettings);
             document.getElementById("reload-generation-settings-btn").addEventListener("click", loadGenerationSettings);
@@ -1040,7 +1819,7 @@
             loadDatabaseBackups();
         });
     </script>
-<script src="/static/js/pwa.js?v=0.13.3_beta"></script>
+<script src="/static/js/pwa.js?v=0.13.4_beta"></script>
 </body>
 
 </html>

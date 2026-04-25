@@ -15,7 +15,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v=0.13.3_beta">
+<link rel="stylesheet" href="/static/css/style.css?v=0.13.4_beta">
 
     <style>
         /* =========================================================
@@ -61,6 +61,12 @@
             padding: 14px;
         }
 
+        .limit-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
         .rules-title {
             margin: 0 0 10px;
             font-size: 0.9rem;
@@ -94,7 +100,7 @@
         .positions-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 760px;
+            min-width: 980px;
         }
 
         .positions-table th,
@@ -434,6 +440,16 @@
                                     required>
                             </div>
 
+                            <div>
+                                <label class="form-label" for="position_color" data-i18n="positions_color">
+                                    Position color
+                                </label>
+                                <input type="color" id="position_color" class="input" value="#eff6ff">
+                                <div class="helper-text" data-i18n="positions_color_hint">
+                                    Used for Excel export and cross-position shifts.
+                                </div>
+                            </div>
+
                             <!-- Coverage options / Опции покрытия -->
                             <div class="rules-box">
                                 <h4 class="rules-title" data-i18n="positions_coverage_title">
@@ -456,6 +472,45 @@
                                         value="0">
                                     <div class="helper-text" data-i18n="positions_minimum_staff_presence_hint">
                                         Set this only if continuous coverage is required.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rules-box">
+                                <h4 class="rules-title" data-i18n="positions_generation_limits_title">
+                                    Generation limits
+                                </h4>
+                                <p class="helper-text" style="margin-top:0;" data-i18n="positions_generation_limits_hint">
+                                    Leave a field empty to use the general setting from Settings.
+                                </p>
+
+                                <div class="limit-grid">
+                                    <div>
+                                        <label class="form-label" for="position_max_consecutive_nights" data-i18n="settings_max_nights">
+                                            Max consecutive nights
+                                        </label>
+                                        <input type="number" id="position_max_consecutive_nights" class="input" min="1" max="7">
+                                    </div>
+
+                                    <div>
+                                        <label class="form-label" for="position_emergency_max_consecutive_nights" data-i18n="settings_emergency_nights">
+                                            Emergency night limit
+                                        </label>
+                                        <input type="number" id="position_emergency_max_consecutive_nights" class="input" min="1" max="7">
+                                    </div>
+
+                                    <div>
+                                        <label class="form-label" for="position_max_consecutive_split_days" data-i18n="settings_max_splits">
+                                            Max consecutive split days
+                                        </label>
+                                        <input type="number" id="position_max_consecutive_split_days" class="input" min="1" max="7">
+                                    </div>
+
+                                    <div>
+                                        <label class="form-label" for="position_emergency_max_consecutive_split_days" data-i18n="settings_emergency_splits">
+                                            Emergency split limit
+                                        </label>
+                                        <input type="number" id="position_emergency_max_consecutive_split_days" class="input" min="1" max="7">
                                     </div>
                                 </div>
                             </div>
@@ -504,12 +559,13 @@
                                             <th data-i18n="positions_table_name">Name</th>
                                             <th data-i18n="positions_table_continuous">Continuous coverage</th>
                                             <th data-i18n="positions_table_min_presence">Minimum presence</th>
+                                            <th data-i18n="positions_table_generation_limits">Generation limits</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="positions-table-body">
                                         <tr>
-                                            <td colspan="5" class="muted-cell" data-i18n="positions_empty_list">
+                                            <td colspan="6" class="muted-cell" data-i18n="positions_empty_list">
                                                 No positions yet
                                             </td>
                                         </tr>
@@ -541,7 +597,7 @@
         </main>
     </div>
 
-<script src="/static/js/i18n.js?v=0.13.3_beta"></script>
+<script src="/static/js/i18n.js?v=0.13.4_beta"></script>
 
     <script>
         /* =========================================================
@@ -628,6 +684,32 @@
                 : `<span class="mini-badge no">${noText}</span>`;
         }
 
+        function readOptionalLimit(inputId) {
+            const value = document.getElementById(inputId).value;
+            return value === "" ? null : Number(value);
+        }
+
+        function setOptionalLimit(inputId, value) {
+            document.getElementById(inputId).value = value === null || value === undefined ? "" : value;
+        }
+
+        function renderLimitValue(value) {
+            return value === null || value === undefined || value === ""
+                ? t("positions_limit_general", "General")
+                : Number(value);
+        }
+
+        function renderPositionLimits(position) {
+            return `
+                <div class="muted-cell">
+                    ${t("settings_max_nights", "Max consecutive nights")}: ${renderLimitValue(position.max_consecutive_nights)}<br>
+                    ${t("settings_emergency_nights", "Emergency night limit")}: ${renderLimitValue(position.emergency_max_consecutive_nights)}<br>
+                    ${t("settings_max_splits", "Max consecutive split days")}: ${renderLimitValue(position.max_consecutive_split_days)}<br>
+                    ${t("settings_emergency_splits", "Emergency split limit")}: ${renderLimitValue(position.emergency_max_consecutive_split_days)}
+                </div>
+            `;
+        }
+
         /* =========================================================
            INIT / ИНИЦИАЛИЗАЦИЯ
            ========================================================= */
@@ -667,8 +749,13 @@
 
                 const payload = {
                     name: positionName,
+                    color: document.getElementById("position_color").value || "#eff6ff",
                     requires_continuous_coverage: requiresContinuousCoverage,
-                    minimum_staff_presence: minimumStaffPresence
+                    minimum_staff_presence: minimumStaffPresence,
+                    max_consecutive_nights: readOptionalLimit("position_max_consecutive_nights"),
+                    emergency_max_consecutive_nights: readOptionalLimit("position_emergency_max_consecutive_nights"),
+                    max_consecutive_split_days: readOptionalLimit("position_max_consecutive_split_days"),
+                    emergency_max_consecutive_split_days: readOptionalLimit("position_emergency_max_consecutive_split_days")
                 };
 
                 const url = editingPositionId === null
@@ -730,8 +817,13 @@
         function editPosition(position) {
             editingPositionId = position.id;
             document.getElementById("position_name").value = position.name;
+            document.getElementById("position_color").value = position.color || "#eff6ff";
             document.getElementById("requires_continuous_coverage").checked = position.requires_continuous_coverage;
             document.getElementById("minimum_staff_presence").value = position.minimum_staff_presence;
+            setOptionalLimit("position_max_consecutive_nights", position.max_consecutive_nights);
+            setOptionalLimit("position_emergency_max_consecutive_nights", position.emergency_max_consecutive_nights);
+            setOptionalLimit("position_max_consecutive_split_days", position.max_consecutive_split_days);
+            setOptionalLimit("position_emergency_max_consecutive_split_days", position.emergency_max_consecutive_split_days);
             document.getElementById("position-submit-button").textContent = t("positions_update_button", "Update position");
             showMessage(`${t("msg_editing_position", "Editing position")}: ${position.name}`, "info");
         }
@@ -796,7 +888,12 @@
 
         function resetPositionForm() {
             document.getElementById("position-form").reset();
+            document.getElementById("position_color").value = "#eff6ff";
             document.getElementById("minimum_staff_presence").value = 0;
+            setOptionalLimit("position_max_consecutive_nights", null);
+            setOptionalLimit("position_emergency_max_consecutive_nights", null);
+            setOptionalLimit("position_max_consecutive_split_days", null);
+            setOptionalLimit("position_emergency_max_consecutive_split_days", null);
             editingPositionId = null;
             document.getElementById("position-submit-button").textContent = t("positions_add_button", "Add position");
         }
@@ -807,7 +904,7 @@
             if (positions.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="5" class="muted-cell">
+                        <td colspan="6" class="muted-cell">
                             ${typeof renderEmptyState === "function"
                                 ? renderEmptyState({
                                     title: t("positions_empty_state_title", "No positions yet"),
@@ -823,9 +920,13 @@
             tableBody.innerHTML = positions.map(position => `
                 <tr data-position-id="${Number(position.id)}">
                     <td>${Number(position.id)}</td>
-                    <td class="position-name-cell">${escapeHtml(position.name)}</td>
+                    <td class="position-name-cell">
+                        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid var(--border);background:${escapeHtml(position.color || "#eff6ff")};margin-inline-end:6px;"></span>
+                        ${escapeHtml(position.name)}
+                    </td>
                     <td>${boolBadge(position.requires_continuous_coverage)}</td>
                     <td>${Number(position.minimum_staff_presence)}</td>
+                    <td>${renderPositionLimits(position)}</td>
                     <td>
                         <div class="table-actions">
                             <button class="table-btn edit" type="button" data-action="edit" data-id="${Number(position.id)}">
@@ -856,7 +957,7 @@
     </script>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    Schedule App v0.13.3_beta
+                    Schedule App v0.13.4_beta
                 </div>
 
                 <div class="footer-right">
@@ -864,7 +965,7 @@
                     <a href="/guide" data-i18n="footer_guide">Guide</a>
                 </div>
             </footer>
-<script src="/static/js/pwa.js?v=0.13.3_beta"></script>
+<script src="/static/js/pwa.js?v=0.13.4_beta"></script>
 </body>
 
 </html>

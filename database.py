@@ -153,10 +153,28 @@ def init_db():
     CREATE TABLE IF NOT EXISTS positions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
+        color TEXT NOT NULL DEFAULT '#eff6ff',
         requires_continuous_coverage INTEGER NOT NULL DEFAULT 0,
-        minimum_staff_presence INTEGER NOT NULL DEFAULT 0
+        minimum_staff_presence INTEGER NOT NULL DEFAULT 0,
+        max_consecutive_nights INTEGER,
+        emergency_max_consecutive_nights INTEGER,
+        max_consecutive_split_days INTEGER,
+        emergency_max_consecutive_split_days INTEGER
     )
 """)
+
+    cursor.execute("PRAGMA table_info(positions)")
+    position_columns = {row["name"] for row in cursor.fetchall()}
+    if "color" not in position_columns:
+        cursor.execute("ALTER TABLE positions ADD COLUMN color TEXT NOT NULL DEFAULT '#eff6ff'")
+    for column_name in (
+        "max_consecutive_nights",
+        "emergency_max_consecutive_nights",
+        "max_consecutive_split_days",
+        "emergency_max_consecutive_split_days",
+    ):
+        if column_name not in position_columns:
+            cursor.execute(f"ALTER TABLE positions ADD COLUMN {column_name} INTEGER")
 
     # ==========================================
     # Employee-position assignments / Связи

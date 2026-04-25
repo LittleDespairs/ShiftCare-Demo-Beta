@@ -20,7 +20,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Preferences",
         nav_settings: "Settings",
 
-        sidebar_footer_title: "Version 0.13.3_beta",
+        sidebar_footer_title: "Version 0.13.4_beta",
         sidebar_footer_text: "Interface redesign in progress. The current goal is a simpler and clearer workflow.",
 
         page_title: "Dashboard",
@@ -66,7 +66,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Documentation",
         footer_guide: "User Guide",
-        footer_version: "Schedule App v0.13.3_beta",
+        footer_version: "Schedule App v0.13.4_beta",
 
         quick_actions_title: "Quick actions",
         quick_action_schedule_title: "Open current week",
@@ -481,11 +481,16 @@ const I18N_TRANSLATIONS = {
 
         positions_name: "Position name",
         positions_name_placeholder: "Example: Nurse",
+        positions_color: "Position color",
+        positions_color_hint: "Used for Excel export and cross-position shifts.",
 
         positions_coverage_title: "Coverage settings",
         positions_requires_continuous_coverage: "Requires continuous coverage",
         positions_minimum_staff_presence: "Minimum staff present at any moment",
         positions_minimum_staff_presence_hint: "Set this only if continuous coverage is required.",
+        positions_generation_limits_title: "Generation limits",
+        positions_generation_limits_hint: "Leave a field empty to use the general setting from Settings.",
+        positions_limit_general: "General",
 
         positions_add_button: "Add position",
 
@@ -497,6 +502,7 @@ const I18N_TRANSLATIONS = {
         positions_table_name: "Name",
         positions_table_continuous: "Continuous coverage",
         positions_table_min_presence: "Minimum presence",
+        positions_table_generation_limits: "Generation limits",
 
         positions_empty_list: "No positions yet",
 
@@ -556,7 +562,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.13.3_beta",
+        footer_version: "Schedule App v0.13.4_beta",
 
         msg_enter_template_name: "Please enter template name.",
         msg_select_shift_category: "Please select shift category.",
@@ -618,7 +624,45 @@ const I18N_TRANSLATIONS = {
         msg_failed_delete_assignment: "Failed to delete assignment.",
         msg_server_error_delete_assignment: "Server error while deleting assignment.",
         settings_page_title: "Settings",
-        settings_page_subtitle: "Open and manage the administrative sections of the scheduling system.",
+        settings_page_subtitle: "Manage app behavior, schedule appearance, reference data, and backups from one place.",
+        settings_tab_general: "General",
+        settings_tab_general_text: "Language and app context",
+        settings_tab_schedule: "Schedule",
+        settings_tab_schedule_text: "Appearance and coverage display",
+        settings_tab_appearance: "Appearance",
+        settings_tab_appearance_text: "Language, colors and schedule display",
+        settings_tab_generation: "Generation",
+        settings_tab_generation_text: "Automatic scheduling rules",
+        settings_tab_directories: "Directories",
+        settings_tab_directories_text: "Positions, templates and requirements",
+        settings_tab_data: "Data safety",
+        settings_tab_data_text: "Backups and restore",
+        settings_tab_about: "About",
+        settings_tab_about_text: "Version, guide and docs",
+        settings_general_title: "General settings",
+        settings_general_text: "Basic application preferences and current workspace information.",
+        settings_language_title: "Interface language",
+        settings_language_text: "The selected language is saved on this device.",
+        settings_summary_version: "Version",
+        settings_summary_layout: "Settings layout",
+        settings_summary_layout_value: "Section based",
+        settings_summary_storage: "Storage",
+        settings_summary_storage_value: "Local database",
+        settings_summary_channel: "Channel",
+        settings_summary_channel_value: "Beta testing",
+        settings_summary_focus: "Current focus",
+        settings_summary_focus_value: "Frontend polish",
+        settings_directories_title: "Directories",
+        settings_directories_text: "Administrative data that defines how the schedule is built.",
+        settings_directory_inline_hint: "Displayed inside Settings",
+        settings_open_module: "Open",
+        settings_coverage_display_hint: "The interval mode uses real coverage requirements and is recommended for accuracy.",
+        settings_save_schedule_view: "Save schedule view",
+        settings_backup_restore_warning: "Restoring a backup replaces the current database. A recovery copy is created first.",
+        settings_about_title: "About Schedule App",
+        settings_about_text: "Current beta information and links for help.",
+        settings_guide_text: "Open the step-by-step guide for preparing and publishing a schedule.",
+        settings_docs_text: "Open technical notes and app documentation.",
 
         settings_positions_title: "Positions",
         settings_positions_text: "Create and manage department positions used by the scheduling system.",
@@ -650,7 +694,9 @@ const I18N_TRANSLATIONS = {
         settings_msg_failed_save_generation: "Failed to save generation settings.",
         settings_msg_generation_saved: "Generation settings saved.",
         settings_appearance_title: "Appearance",
-        settings_appearance_text: "Customize the schedule colors so shift cards are easier to recognize for your team.",
+        settings_appearance_text: "Customize language, schedule colors and display behavior.",
+        settings_schedule_view_title: "Schedule view",
+        settings_schedule_view_text: "Customize the schedule colors so shift cards are easier to recognize for your team.",
         settings_appearance_preview: "Preview",
         settings_color_morning: "Morning cards",
         settings_color_morning_text: "Used for morning shift cards and legend.",
@@ -663,6 +709,8 @@ const I18N_TRANSLATIONS = {
         settings_save_appearance: "Save appearance",
         settings_msg_failed_save_appearance: "Failed to save appearance settings.",
         settings_msg_appearance_saved: "Appearance settings saved.",
+        settings_msg_failed_reset_colors: "Failed to reset colors.",
+        settings_msg_colors_reset: "Colors were reset to defaults.",
 
         settings_notes_title: "Notes",
         settings_note_1: "These sections are administrative and are usually configured less often than the weekly schedule.",
@@ -765,7 +813,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Пожелания",
         nav_settings: "Настройки",
 
-        sidebar_footer_title: "Версия 0.13.3_beta",
+        sidebar_footer_title: "Версия 0.13.4_beta",
         sidebar_footer_text: "Сейчас идёт редизайн интерфейса. Главная цель — сделать рабочий процесс проще и понятнее.",
 
         page_title: "Главная",
@@ -811,7 +859,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.13.3_beta",
+        footer_version: "Schedule App v0.13.4_beta",
 
         quick_actions_title: "Быстрые действия",
         quick_action_schedule_title: "Открыть текущую неделю",
@@ -1225,11 +1273,16 @@ const I18N_TRANSLATIONS = {
 
         positions_name: "Название должности",
         positions_name_placeholder: "Пример: Медсестра",
+        positions_color: "Цвет должности",
+        positions_color_hint: "Используется в Excel-экспорте и сменах из других должностей.",
 
         positions_coverage_title: "Настройки покрытия",
         positions_requires_continuous_coverage: "Требуется непрерывное покрытие",
         positions_minimum_staff_presence: "Минимум сотрудников в любой момент времени",
         positions_minimum_staff_presence_hint: "Указывайте это только если включено непрерывное покрытие.",
+        positions_generation_limits_title: "Лимиты генерации",
+        positions_generation_limits_hint: "Оставьте поле пустым, чтобы использовать общую настройку из раздела Настройки.",
+        positions_limit_general: "Общий",
 
         positions_add_button: "Добавить должность",
 
@@ -1241,6 +1294,7 @@ const I18N_TRANSLATIONS = {
         positions_table_name: "Название",
         positions_table_continuous: "Непрерывное покрытие",
         positions_table_min_presence: "Минимум присутствия",
+        positions_table_generation_limits: "Лимиты генерации",
 
         positions_empty_list: "Должностей пока нет",
 
@@ -1358,7 +1412,45 @@ const I18N_TRANSLATIONS = {
         msg_failed_delete_assignment: "Не удалось удалить назначение.",
         msg_server_error_delete_assignment: "Ошибка сервера при удалении назначения.",
         settings_page_title: "Настройки",
-        settings_page_subtitle: "Открывайте и управляйте административными разделами системы расписания.",
+        settings_page_subtitle: "Управляйте поведением приложения, видом расписания, справочниками и резервными копиями из одного места.",
+        settings_tab_general: "Общие",
+        settings_tab_general_text: "Язык и контекст приложения",
+        settings_tab_schedule: "Расписание",
+        settings_tab_schedule_text: "Внешний вид и покрытие",
+        settings_tab_appearance: "Внешний вид",
+        settings_tab_appearance_text: "Язык, цвета и отображение расписания",
+        settings_tab_generation: "Генерация",
+        settings_tab_generation_text: "Правила автосоставления",
+        settings_tab_directories: "Справочники",
+        settings_tab_directories_text: "Должности, шаблоны и требования",
+        settings_tab_data: "Безопасность данных",
+        settings_tab_data_text: "Резервные копии и восстановление",
+        settings_tab_about: "О приложении",
+        settings_tab_about_text: "Версия, руководство и документация",
+        settings_general_title: "Общие настройки",
+        settings_general_text: "Базовые параметры приложения и информация о текущем рабочем пространстве.",
+        settings_language_title: "Язык интерфейса",
+        settings_language_text: "Выбранный язык сохраняется на этом устройстве.",
+        settings_summary_version: "Версия",
+        settings_summary_layout: "Структура настроек",
+        settings_summary_layout_value: "По разделам",
+        settings_summary_storage: "Хранилище",
+        settings_summary_storage_value: "Локальная база данных",
+        settings_summary_channel: "Канал",
+        settings_summary_channel_value: "Бета-тестирование",
+        settings_summary_focus: "Текущий фокус",
+        settings_summary_focus_value: "Полировка интерфейса",
+        settings_directories_title: "Справочники",
+        settings_directories_text: "Административные данные, на основе которых строится расписание.",
+        settings_directory_inline_hint: "Отображается внутри настроек",
+        settings_open_module: "Открыть",
+        settings_coverage_display_hint: "Режим временных интервалов использует реальные требования покрытия и рекомендован для точности.",
+        settings_save_schedule_view: "Сохранить вид расписания",
+        settings_backup_restore_warning: "Восстановление резервной копии заменяет текущую базу данных. Перед этим создаётся копия для отката.",
+        settings_about_title: "О Schedule App",
+        settings_about_text: "Информация о текущей бета-версии и ссылки на помощь.",
+        settings_guide_text: "Открыть пошаговое руководство по подготовке и публикации расписания.",
+        settings_docs_text: "Открыть технические заметки и документацию приложения.",
 
         settings_positions_title: "Должности",
         settings_positions_text: "Создание и управление должностями отдела, используемыми системой расписания.",
@@ -1391,7 +1483,9 @@ const I18N_TRANSLATIONS = {
         settings_msg_failed_save_generation: "Не удалось сохранить настройки генерации.",
         settings_msg_generation_saved: "Настройки генерации сохранены.",
         settings_appearance_title: "Внешний вид",
-        settings_appearance_text: "Настройте цвета расписания, чтобы карточки смен было проще различать.",
+        settings_appearance_text: "Настройте язык, цвета расписания и режим отображения.",
+        settings_schedule_view_title: "Вид расписания",
+        settings_schedule_view_text: "Настройте цвета расписания, чтобы карточки смен было проще различать.",
         settings_appearance_preview: "Предпросмотр",
         settings_color_morning: "Карточки утра",
         settings_color_morning_text: "Используется для утренних смен и легенды.",
@@ -1404,6 +1498,8 @@ const I18N_TRANSLATIONS = {
         settings_save_appearance: "Сохранить внешний вид",
         settings_msg_failed_save_appearance: "Не удалось сохранить настройки внешнего вида.",
         settings_msg_appearance_saved: "Настройки внешнего вида сохранены.",
+        settings_msg_failed_reset_colors: "Не удалось сбросить цвета.",
+        settings_msg_colors_reset: "Цвета сброшены к значениям по умолчанию.",
 
         settings_notes_title: "Заметки",
         settings_note_1: "Эти разделы административные и обычно настраиваются реже, чем недельное расписание.",
@@ -1506,7 +1602,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "העדפות",
         nav_settings: "הגדרות",
 
-        sidebar_footer_title: "גרסה 0.13.3_beta",
+        sidebar_footer_title: "גרסה 0.13.4_beta",
         sidebar_footer_text: "כעת מתבצע עיצוב מחדש של הממשק. המטרה היא להפוך את תהליך העבודה לפשוט וברור יותר.",
 
         page_title: "דף הבית",
@@ -1832,7 +1928,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "תיעוד",
         footer_guide: "מדריך",
-        footer_version: "Schedule App v0.13.3_beta",
+        footer_version: "Schedule App v0.13.4_beta",
 
         employees_table_id: "מזהה",
         employees_table_name: "שם מלא",
@@ -1966,11 +2062,16 @@ const I18N_TRANSLATIONS = {
 
         positions_name: "שם התפקיד",
         positions_name_placeholder: "לדוגמה: אחות",
+        positions_color: "צבע תפקיד",
+        positions_color_hint: "משמש בייצוא Excel ובמשמרות מתפקידים אחרים.",
 
         positions_coverage_title: "הגדרות כיסוי",
         positions_requires_continuous_coverage: "דורש כיסוי רציף",
         positions_minimum_staff_presence: "מינימום עובדים נוכחים בכל רגע",
         positions_minimum_staff_presence_hint: "הגדר זאת רק אם נדרש כיסוי רציף.",
+        positions_generation_limits_title: "מגבלות יצירה",
+        positions_generation_limits_hint: "השאר שדה ריק כדי להשתמש בהגדרה הכללית מהגדרות.",
+        positions_limit_general: "כללי",
 
         positions_add_button: "הוסף תפקיד",
 
@@ -1982,6 +2083,7 @@ const I18N_TRANSLATIONS = {
         positions_table_name: "שם",
         positions_table_continuous: "כיסוי רציף",
         positions_table_min_presence: "מינימום נוכחות",
+        positions_table_generation_limits: "מגבלות יצירה",
 
         positions_empty_list: "אין עדיין תפקידים",
 
@@ -2099,7 +2201,45 @@ const I18N_TRANSLATIONS = {
         msg_failed_delete_assignment: "מחיקת השיוך נכשלה.",
         msg_server_error_delete_assignment: "שגיאת שרת בזמן מחיקת השיוך.",
         settings_page_title: "הגדרות",
-        settings_page_subtitle: "פתח ונהל את החלקים הניהוליים של מערכת סידור העבודה.",
+        settings_page_subtitle: "נהל את התנהגות האפליקציה, מראה הסידור, נתוני הבסיס והגיבויים ממקום אחד.",
+        settings_tab_general: "כללי",
+        settings_tab_general_text: "שפה והקשר האפליקציה",
+        settings_tab_schedule: "סידור עבודה",
+        settings_tab_schedule_text: "מראה ותצוגת כיסוי",
+        settings_tab_appearance: "מראה",
+        settings_tab_appearance_text: "שפה, צבעים ותצוגת סידור",
+        settings_tab_generation: "יצירה",
+        settings_tab_generation_text: "כללי סידור אוטומטי",
+        settings_tab_directories: "נתוני בסיס",
+        settings_tab_directories_text: "תפקידים, תבניות ודרישות",
+        settings_tab_data: "בטיחות נתונים",
+        settings_tab_data_text: "גיבויים ושחזור",
+        settings_tab_about: "אודות",
+        settings_tab_about_text: "גרסה, מדריך ותיעוד",
+        settings_general_title: "הגדרות כלליות",
+        settings_general_text: "העדפות בסיסיות של האפליקציה ומידע על סביבת העבודה הנוכחית.",
+        settings_language_title: "שפת הממשק",
+        settings_language_text: "השפה שנבחרה נשמרת במכשיר הזה.",
+        settings_summary_version: "גרסה",
+        settings_summary_layout: "מבנה ההגדרות",
+        settings_summary_layout_value: "לפי חלקים",
+        settings_summary_storage: "אחסון",
+        settings_summary_storage_value: "מסד נתונים מקומי",
+        settings_summary_channel: "ערוץ",
+        settings_summary_channel_value: "בדיקות בטא",
+        settings_summary_focus: "מיקוד נוכחי",
+        settings_summary_focus_value: "ליטוש הממשק",
+        settings_directories_title: "נתוני בסיס",
+        settings_directories_text: "נתונים ניהוליים שמגדירים כיצד הסידור נבנה.",
+        settings_directory_inline_hint: "מוצג בתוך ההגדרות",
+        settings_open_module: "פתח",
+        settings_coverage_display_hint: "מצב טווחי הזמן משתמש בדרישות הכיסוי האמיתיות ומומלץ לדיוק.",
+        settings_save_schedule_view: "שמור תצוגת סידור",
+        settings_backup_restore_warning: "שחזור גיבוי מחליף את מסד הנתונים הנוכחי. קודם נוצרת עותק לשחזור.",
+        settings_about_title: "אודות Schedule App",
+        settings_about_text: "מידע על גרסת הבטא הנוכחית וקישורי עזרה.",
+        settings_guide_text: "פתח מדריך שלב אחר שלב להכנה ופרסום של סידור עבודה.",
+        settings_docs_text: "פתח הערות טכניות ותיעוד של האפליקציה.",
 
         settings_positions_title: "תפקידים",
         settings_positions_text: "יצירה וניהול תפקידי מחלקה המשמשים את מערכת סידור העבודה.",
@@ -2132,7 +2272,9 @@ const I18N_TRANSLATIONS = {
         settings_msg_failed_save_generation: "שמירת הגדרות היצירה נכשלה.",
         settings_msg_generation_saved: "הגדרות היצירה נשמרו.",
         settings_appearance_title: "מראה",
-        settings_appearance_text: "התאם את צבעי הסידור כדי לזהות משמרות בקלות רבה יותר.",
+        settings_appearance_text: "התאם שפה, צבעי סידור ואופן תצוגה.",
+        settings_schedule_view_title: "תצוגת סידור",
+        settings_schedule_view_text: "התאם את צבעי הסידור כדי לזהות משמרות בקלות רבה יותר.",
         settings_appearance_preview: "תצוגה מקדימה",
         settings_color_morning: "כרטיסי בוקר",
         settings_color_morning_text: "משמש לכרטיסי משמרת בוקר ולמקרא.",
@@ -2145,6 +2287,8 @@ const I18N_TRANSLATIONS = {
         settings_save_appearance: "שמור מראה",
         settings_msg_failed_save_appearance: "שמירת הגדרות המראה נכשלה.",
         settings_msg_appearance_saved: "הגדרות המראה נשמרו.",
+        settings_msg_failed_reset_colors: "איפוס הצבעים נכשל.",
+        settings_msg_colors_reset: "הצבעים אופסו לברירת המחדל.",
 
         settings_notes_title: "הערות",
         settings_note_1: "החלקים האלה ניהוליים ובדרך כלל מוגדרים בתדירות נמוכה יותר מאשר סידור העבודה השבועי.",
@@ -2424,7 +2568,60 @@ window.appConfirm = appConfirm;
 window.renderPageMessage = renderPageMessage;
 window.renderEmptyState = renderEmptyState;
 
+function isEmbeddedAdminMode() {
+    try {
+        return new URLSearchParams(window.location.search).get("embedded") === "1";
+    } catch (error) {
+        return false;
+    }
+}
+
+function notifyEmbeddedAdminHeight() {
+    if (!isEmbeddedAdminMode() || !window.parent || window.parent === window) {
+        return;
+    }
+
+    const height = Math.max(
+        document.body?.scrollHeight || 0,
+        document.documentElement?.scrollHeight || 0,
+        document.body?.offsetHeight || 0,
+        document.documentElement?.offsetHeight || 0
+    );
+
+    if (!height) return;
+
+    window.parent.postMessage(
+        {
+            type: "schedule-app:embedded-height",
+            path: window.location.pathname,
+            height
+        },
+        window.location.origin
+    );
+}
+
+function applyEmbeddedAdminMode() {
+    if (!isEmbeddedAdminMode()) {
+        return;
+    }
+
+    document.documentElement.classList.add("embedded-admin-root");
+    document.body.classList.add("embedded-admin");
+    notifyEmbeddedAdminHeight();
+
+    window.addEventListener("load", notifyEmbeddedAdminHeight);
+    [80, 250, 600, 1200].forEach(delay => {
+        window.setTimeout(notifyEmbeddedAdminHeight, delay);
+    });
+
+    if ("ResizeObserver" in window) {
+        const observer = new ResizeObserver(notifyEmbeddedAdminHeight);
+        observer.observe(document.body);
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+    applyEmbeddedAdminMode();
     bindLanguageSwitcher();
     setLanguage(getSavedLanguage());
     bindSidebarToggle();

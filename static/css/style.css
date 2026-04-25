@@ -56,6 +56,42 @@ body.ltr {
     direction: ltr;
 }
 
+html.embedded-admin-root,
+body.embedded-admin {
+    background: transparent;
+}
+
+body.embedded-admin.app-shell {
+    min-height: auto;
+}
+
+body.embedded-admin .app-layout {
+    display: block;
+    min-height: auto;
+}
+
+body.embedded-admin .sidebar,
+body.embedded-admin .topbar,
+body.embedded-admin .app-footer {
+    display: none;
+}
+
+body.embedded-admin .main-area {
+    min-height: auto;
+    padding: 0;
+}
+
+body.embedded-admin .panel {
+    border-radius: 8px;
+    box-shadow: none;
+}
+
+body.embedded-admin .position-form-panel,
+body.embedded-admin .template-form-panel,
+body.embedded-admin .assignment-form-panel {
+    top: 0;
+}
+
 a {
     color: inherit;
     text-decoration: none;
