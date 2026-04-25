@@ -423,6 +423,10 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(initial_response.status_code, 200)
         initial_settings = initial_response.json()
         self.assertEqual(initial_settings["schedule_coverage_display_mode"], "interval")
+        self.assertEqual(initial_settings["schedule_morning_color"], "#ecfeff")
+        self.assertEqual(initial_settings["schedule_evening_color"], "#fff7ed")
+        self.assertEqual(initial_settings["schedule_night_color"], "#eef2ff")
+        self.assertEqual(initial_settings["schedule_status_color"], "#f5f3ff")
         self.assertFalse(initial_settings["allow_multiple_positions_per_day"])
         self.assertEqual(initial_settings["coverage_shortage_gain_weight"], 100)
         self.assertEqual(initial_settings["balance_target_distance_weight"], 70)
@@ -431,6 +435,10 @@ class ApiRegressionTests(unittest.TestCase):
             "/api/app-settings",
             json={
                 "schedule_coverage_display_mode": "category",
+                "schedule_morning_color": "#d1fae5",
+                "schedule_evening_color": "#ffedd5",
+                "schedule_night_color": "#e0e7ff",
+                "schedule_status_color": "#ede9fe",
                 "allow_multiple_positions_per_day": True,
                 "coverage_shortage_gain_weight": 180,
                 "balance_target_distance_weight": 95,
@@ -441,6 +449,10 @@ class ApiRegressionTests(unittest.TestCase):
 
         stored_settings = update_response.json()["settings"]
         self.assertEqual(stored_settings["schedule_coverage_display_mode"], "category")
+        self.assertEqual(stored_settings["schedule_morning_color"], "#d1fae5")
+        self.assertEqual(stored_settings["schedule_evening_color"], "#ffedd5")
+        self.assertEqual(stored_settings["schedule_night_color"], "#e0e7ff")
+        self.assertEqual(stored_settings["schedule_status_color"], "#ede9fe")
         self.assertTrue(stored_settings["allow_multiple_positions_per_day"])
         self.assertEqual(stored_settings["coverage_shortage_gain_weight"], 180)
         self.assertEqual(stored_settings["balance_target_distance_weight"], 95)
@@ -448,6 +460,10 @@ class ApiRegressionTests(unittest.TestCase):
 
         direct_read = main.get_app_settings(self.connection)
         self.assertEqual(direct_read["schedule_coverage_display_mode"], "category")
+        self.assertEqual(direct_read["schedule_morning_color"], "#d1fae5")
+        self.assertEqual(direct_read["schedule_evening_color"], "#ffedd5")
+        self.assertEqual(direct_read["schedule_night_color"], "#e0e7ff")
+        self.assertEqual(direct_read["schedule_status_color"], "#ede9fe")
         self.assertTrue(direct_read["allow_multiple_positions_per_day"])
         self.assertEqual(direct_read["coverage_shortage_gain_weight"], 180)
         self.assertEqual(direct_read["balance_target_distance_weight"], 95)

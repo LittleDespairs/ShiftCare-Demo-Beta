@@ -810,6 +810,22 @@
             }
         }
 
+        function applyScheduleAppearanceSettings() {
+            const panel = document.querySelector(".schedule-panel");
+            if (!panel) return;
+
+            const colorMap = {
+                "--shift-morning-bg": appSettings.schedule_morning_color || "#ecfeff",
+                "--shift-evening-bg": appSettings.schedule_evening_color || "#fff7ed",
+                "--shift-night-bg": appSettings.schedule_night_color || "#eef2ff",
+                "--shift-status-bg": appSettings.schedule_status_color || "#f5f3ff"
+            };
+
+            Object.entries(colorMap).forEach(([property, value]) => {
+                panel.style.setProperty(property, value);
+            });
+        }
+
         async function loadScheduleDisplaySetting() {
             try {
                 const response = await fetch("/api/app-settings");
@@ -819,6 +835,7 @@
 
                 appSettings = await response.json();
                 syncScheduleDisplaySelect();
+                applyScheduleAppearanceSettings();
             } catch (error) {
                 console.error(error);
             }
@@ -859,6 +876,7 @@
                 const result = await response.json();
                 appSettings = result.settings;
                 syncScheduleDisplaySelect();
+                applyScheduleAppearanceSettings();
             } catch (error) {
                 console.error(error);
                 appSettings.schedule_coverage_display_mode = previousMode;
@@ -936,6 +954,7 @@
                 allCoverageRequirements = await coverageRequirementsResponse.json();
                 appSettings = await appSettingsResponse.json();
                 syncScheduleDisplaySelect();
+                applyScheduleAppearanceSettings();
                 allShiftTemplates = await shiftTemplatesResponse.json();
                 allDayStatuses = await dayStatusesResponse.json();
                 scheduleDataLoaded = true;

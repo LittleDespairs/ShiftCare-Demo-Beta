@@ -3,6 +3,13 @@
            ========================================================= */
 
         /* Toolbar container / Контейнер верхней панели управления */
+        .schedule-panel {
+            --shift-morning-bg: #ecfeff;
+            --shift-evening-bg: #fff7ed;
+            --shift-night-bg: #eef2ff;
+            --shift-status-bg: #f5f3ff;
+        }
+
         .schedule-command-panel {
             border-color: var(--border-strong);
         }
@@ -118,19 +125,23 @@
         }
 
         .legend-chip.morning::before {
-            background: #0f766e;
+            background: var(--shift-morning-bg);
+            border: 1px solid #0f766e;
         }
 
         .legend-chip.evening::before {
-            background: #c2410c;
+            background: var(--shift-evening-bg);
+            border: 1px solid #c2410c;
         }
 
         .legend-chip.night::before {
-            background: #4338ca;
+            background: var(--shift-night-bg);
+            border: 1px solid #4338ca;
         }
 
         .legend-chip.status::before {
-            background: #7c3aed;
+            background: var(--shift-status-bg);
+            border: 1px solid #7c3aed;
         }
 
         .schedule-display-control {
@@ -686,24 +697,24 @@
         /* Morning shift / Утренняя смена */
         .entry-card.morning {
             --entry-accent: #0f766e;
-            background: #ecfeff;
-            border-color: #99f6e4;
+            background: var(--shift-morning-bg);
+            border-color: color-mix(in srgb, var(--shift-morning-bg) 58%, #0f766e);
             color: #134e4a;
         }
 
         /* Evening shift / Вечерняя смена */
         .entry-card.evening {
             --entry-accent: #c2410c;
-            background: #fff7ed;
-            border-color: #fdba74;
+            background: var(--shift-evening-bg);
+            border-color: color-mix(in srgb, var(--shift-evening-bg) 58%, #c2410c);
             color: #9a3412;
         }
 
         /* Night shift / Ночная смена */
         .entry-card.night {
             --entry-accent: #4338ca;
-            background: #eef2ff;
-            border-color: #a5b4fc;
+            background: var(--shift-night-bg);
+            border-color: color-mix(in srgb, var(--shift-night-bg) 58%, #4338ca);
             color: #312e81;
         }
 
@@ -726,7 +737,7 @@
 
         /* Special status card / Карточка особого статуса */
         .entry-card.status {
-            background: #f8fafc;
+            background: var(--shift-status-bg);
             border-style: dashed;
         }
 

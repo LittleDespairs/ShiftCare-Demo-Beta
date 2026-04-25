@@ -132,6 +132,103 @@
             box-shadow: var(--shadow);
         }
 
+        .appearance-settings {
+            margin-top: 22px;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 20px;
+            background: #fff;
+            box-shadow: var(--shadow);
+        }
+
+        .appearance-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(280px, 0.75fr);
+            gap: 18px;
+            align-items: start;
+        }
+
+        .color-form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .color-control {
+            display: grid;
+            grid-template-columns: 52px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px;
+            background: #f8fafc;
+        }
+
+        .color-input {
+            width: 52px;
+            height: 42px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 3px;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        .color-control-title {
+            display: block;
+            color: var(--text);
+            font-weight: 800;
+            font-size: 0.9rem;
+            margin-bottom: 3px;
+        }
+
+        .color-control-text {
+            display: block;
+            color: var(--muted);
+            font-size: 0.78rem;
+            line-height: 1.35;
+        }
+
+        .appearance-preview {
+            display: grid;
+            gap: 10px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: #f8fafc;
+            padding: 14px;
+        }
+
+        .appearance-preview-title {
+            margin: 0;
+            font-size: 0.88rem;
+            font-weight: 900;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .preview-shift-card {
+            --preview-color: #f8fafc;
+            border: 1px solid color-mix(in srgb, var(--preview-color) 58%, #475569);
+            border-inline-start: 5px solid color-mix(in srgb, var(--preview-color) 35%, #172033);
+            border-radius: 10px;
+            background: var(--preview-color);
+            padding: 10px 12px;
+        }
+
+        .preview-shift-title {
+            font-weight: 900;
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        .preview-shift-meta {
+            margin-top: 3px;
+            color: var(--muted);
+            font-size: 0.78rem;
+        }
+
         .database-safety-header {
             display: flex;
             justify-content: space-between;
@@ -277,7 +374,9 @@
 
         @media (max-width: 1100px) {
             .settings-grid,
-            .generation-form-grid {
+            .generation-form-grid,
+            .appearance-layout,
+            .color-form-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -454,6 +553,86 @@
                 </form>
             </section>
 
+            <section class="appearance-settings">
+                <div class="generation-settings-header">
+                    <div>
+                        <h3 class="generation-settings-title" data-i18n="settings_appearance_title">Appearance</h3>
+                        <p class="generation-settings-text" data-i18n="settings_appearance_text">
+                            Customize the schedule colors so shift cards are easier to recognize for your team.
+                        </p>
+                    </div>
+                </div>
+
+                <div id="appearance-message-box"></div>
+
+                <form id="appearance-settings-form">
+                    <div class="appearance-layout">
+                        <div class="color-form-grid">
+                            <label class="color-control" for="schedule_morning_color">
+                                <input id="schedule_morning_color" class="color-input" type="color">
+                                <span>
+                                    <span class="color-control-title" data-i18n="settings_color_morning">Morning cards</span>
+                                    <span class="color-control-text" data-i18n="settings_color_morning_text">Used for morning shift cards and legend.</span>
+                                </span>
+                            </label>
+
+                            <label class="color-control" for="schedule_evening_color">
+                                <input id="schedule_evening_color" class="color-input" type="color">
+                                <span>
+                                    <span class="color-control-title" data-i18n="settings_color_evening">Evening cards</span>
+                                    <span class="color-control-text" data-i18n="settings_color_evening_text">Used for evening shift cards and legend.</span>
+                                </span>
+                            </label>
+
+                            <label class="color-control" for="schedule_night_color">
+                                <input id="schedule_night_color" class="color-input" type="color">
+                                <span>
+                                    <span class="color-control-title" data-i18n="settings_color_night">Night cards</span>
+                                    <span class="color-control-text" data-i18n="settings_color_night_text">Used for night shift cards and legend.</span>
+                                </span>
+                            </label>
+
+                            <label class="color-control" for="schedule_status_color">
+                                <input id="schedule_status_color" class="color-input" type="color">
+                                <span>
+                                    <span class="color-control-title" data-i18n="settings_color_status">Status cards</span>
+                                    <span class="color-control-text" data-i18n="settings_color_status_text">Used for day-off and special status cards.</span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div class="appearance-preview">
+                            <h4 class="appearance-preview-title" data-i18n="settings_appearance_preview">Preview</h4>
+                            <div id="preview_morning" class="preview-shift-card">
+                                <div class="preview-shift-title" data-i18n="shift_morning">Morning</div>
+                                <div class="preview-shift-meta">06:00 - 14:00</div>
+                            </div>
+                            <div id="preview_evening" class="preview-shift-card">
+                                <div class="preview-shift-title" data-i18n="shift_evening">Evening</div>
+                                <div class="preview-shift-meta">14:00 - 22:00</div>
+                            </div>
+                            <div id="preview_night" class="preview-shift-card">
+                                <div class="preview-shift-title" data-i18n="shift_night">Night</div>
+                                <div class="preview-shift-meta">22:00 - 06:00</div>
+                            </div>
+                            <div id="preview_status" class="preview-shift-card">
+                                <div class="preview-shift-title" data-i18n="schedule_status_legend">Status</div>
+                                <div class="preview-shift-meta" data-i18n="status_day_off">Day off</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="generation-actions">
+                        <button id="reset-appearance-settings-btn" class="btn btn-secondary" type="button" data-i18n="common_reset">
+                            Reset
+                        </button>
+                        <button class="btn btn-primary" type="submit" data-i18n="settings_save_appearance">
+                            Save appearance
+                        </button>
+                    </div>
+                </form>
+            </section>
+
             <section class="database-safety">
                 <div class="database-safety-header">
                     <div>
@@ -575,6 +754,18 @@
             { id: "emergency_max_consecutive_split_days", type: "number" },
             { id: "allow_multiple_positions_per_day", type: "checkbox" }
         ];
+        const defaultAppearanceSettings = {
+            schedule_morning_color: "#ecfeff",
+            schedule_evening_color: "#fff7ed",
+            schedule_night_color: "#eef2ff",
+            schedule_status_color: "#f5f3ff"
+        };
+        const appearanceSettingFields = [
+            { id: "schedule_morning_color", previewId: "preview_morning" },
+            { id: "schedule_evening_color", previewId: "preview_evening" },
+            { id: "schedule_night_color", previewId: "preview_night" },
+            { id: "schedule_status_color", previewId: "preview_status" }
+        ];
         let databaseBackups = [];
 
         function t(key, fallback = "") {
@@ -600,6 +791,24 @@
 
         function showDatabaseMessage(text, type = "info") {
             renderPageMessage("database-message-box", text, type);
+        }
+
+        function showAppearanceMessage(text, type = "info") {
+            renderPageMessage("appearance-message-box", text, type);
+        }
+
+        function normalizeColor(value, fallback) {
+            return /^#[0-9A-Fa-f]{6}$/.test(String(value || "")) ? value : fallback;
+        }
+
+        function updateAppearancePreview() {
+            appearanceSettingFields.forEach((field) => {
+                const input = document.getElementById(field.id);
+                const preview = document.getElementById(field.previewId);
+                if (!input || !preview) return;
+                const color = normalizeColor(input.value, defaultAppearanceSettings[field.id]);
+                preview.style.setProperty("--preview-color", color);
+            });
         }
 
         function formatBytes(value) {
@@ -724,6 +933,13 @@
                     }
                 }
             });
+            appearanceSettingFields.forEach((field) => {
+                const input = document.getElementById(field.id);
+                if (input) {
+                    input.value = normalizeColor(settings[field.id], defaultAppearanceSettings[field.id]);
+                }
+            });
+            updateAppearancePreview();
         }
 
         async function saveGenerationSettings(event) {
@@ -763,11 +979,61 @@
             showMessage(t("settings_msg_generation_saved", "Generation settings saved."), "success");
         }
 
+        async function saveAppearanceSettings(event) {
+            event.preventDefault();
+
+            const payload = {};
+            appearanceSettingFields.forEach((field) => {
+                const input = document.getElementById(field.id);
+                payload[field.id] = normalizeColor(input.value, defaultAppearanceSettings[field.id]);
+            });
+
+            const response = await fetch("/api/app-settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                showAppearanceMessage(error.detail || t("settings_msg_failed_save_appearance", "Failed to save appearance settings."), "danger");
+                return;
+            }
+
+            const result = await response.json();
+            appearanceSettingFields.forEach((field) => {
+                const input = document.getElementById(field.id);
+                if (input) {
+                    input.value = normalizeColor(result.settings[field.id], defaultAppearanceSettings[field.id]);
+                }
+            });
+            updateAppearancePreview();
+            showAppearanceMessage(t("settings_msg_appearance_saved", "Appearance settings saved."), "success");
+        }
+
+        function resetAppearanceSettings() {
+            appearanceSettingFields.forEach((field) => {
+                const input = document.getElementById(field.id);
+                if (input) {
+                    input.value = defaultAppearanceSettings[field.id];
+                }
+            });
+            updateAppearancePreview();
+        }
+
         document.addEventListener("DOMContentLoaded", () => {
             bindSidebarToggle();
             applySidebarState(getSavedSidebarState());
             document.getElementById("generation-settings-form").addEventListener("submit", saveGenerationSettings);
+            document.getElementById("appearance-settings-form").addEventListener("submit", saveAppearanceSettings);
             document.getElementById("reload-generation-settings-btn").addEventListener("click", loadGenerationSettings);
+            document.getElementById("reset-appearance-settings-btn").addEventListener("click", resetAppearanceSettings);
+            appearanceSettingFields.forEach((field) => {
+                const input = document.getElementById(field.id);
+                if (input) {
+                    input.addEventListener("input", updateAppearancePreview);
+                }
+            });
             document.getElementById("create-database-backup-btn").addEventListener("click", createDatabaseBackup);
             document.getElementById("reload-database-backups-btn").addEventListener("click", loadDatabaseBackups);
             loadGenerationSettings();

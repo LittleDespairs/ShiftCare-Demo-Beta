@@ -271,6 +271,10 @@ class AppSettingsUpdate(BaseModel):
         le=24 * 60,
     )
     schedule_coverage_display_mode: Literal["category", "interval"] | None = None
+    schedule_morning_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    schedule_evening_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    schedule_night_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    schedule_status_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     allow_multiple_positions_per_day: bool | None = None
     max_work_days_per_week: int | None = Field(default=None, ge=1, le=7)
     max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
@@ -369,6 +373,14 @@ def get_app_settings(connection) -> dict:
             return raw_value
         return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
 
+    def read_color(key: str, default: str) -> str:
+        raw_value = str(raw_settings.get(key, default)).strip()
+        if len(raw_value) == 7 and raw_value.startswith("#"):
+            hex_part = raw_value[1:]
+            if all(character in "0123456789abcdefABCDEF" for character in hex_part):
+                return raw_value
+        return default
+
     return {
         "min_rest_minutes_between_morning_and_evening": read_int(
             "min_rest_minutes_between_morning_and_evening",
@@ -383,6 +395,10 @@ def get_app_settings(connection) -> dict:
             if raw_settings.get("schedule_coverage_display_mode") in {"category", "interval"}
             else "interval"
         ),
+        "schedule_morning_color": read_color("schedule_morning_color", "#ecfeff"),
+        "schedule_evening_color": read_color("schedule_evening_color", "#fff7ed"),
+        "schedule_night_color": read_color("schedule_night_color", "#eef2ff"),
+        "schedule_status_color": read_color("schedule_status_color", "#f5f3ff"),
         "allow_multiple_positions_per_day": read_bool("allow_multiple_positions_per_day", False),
         "max_work_days_per_week": read_int("max_work_days_per_week", MAX_WORK_DAYS_PER_WEEK),
         "max_consecutive_nights": read_int("max_consecutive_nights", MAX_CONSECUTIVE_NIGHTS),
