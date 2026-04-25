@@ -283,14 +283,14 @@ function renderEmployeesTable(employees) {
             <td>${employee.can_work_mornings_and_evenings ? employeeText("common_yes", "Yes") : employeeText("common_no", "No")}</td>
             <td>
                 <button
-                    class="btn btn-sm btn-warning me-1"
+                    class="table-btn edit"
                     data-action="edit"
                     data-employee-id="${Number(employee.id)}"
                 >
                     ${employeeText("employees_edit_button", "Edit")}
                 </button>
                 <button
-                    class="btn btn-sm btn-danger"
+                    class="table-btn delete"
                     data-action="delete"
                     data-employee-id="${Number(employee.id)}"
                 >

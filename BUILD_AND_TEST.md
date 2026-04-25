@@ -45,6 +45,14 @@ Desktop launcher path:
 .\.venv\Scripts\python.exe launcher.py
 ```
 
+This starts the FastAPI backend on localhost and opens the app in a native desktop window.
+If port `8000` is busy, the launcher automatically uses the next free local port. You can also request a port:
+
+```powershell
+$env:SCHEDULE_APP_PORT = "8010"
+.\.venv\Scripts\python.exe launcher.py
+```
+
 ## Android Standalone APK
 
 The standalone Android wrapper is in `android/`.
@@ -72,13 +80,36 @@ See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
 Current spec:
 
 ```text
-ScheduleApp_0.13.3_beta.spec
+ScheduleApp_0.13.6_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.13.3_beta.spec
+.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.13.6_beta.spec
+```
+
+## Windows Installer
+
+The installer is built with Inno Setup 6 and creates a normal Windows installation:
+Program Files app folder, Start Menu shortcut, Desktop shortcut, uninstall entry, and post-install launch option.
+
+One-command build:
+
+```powershell
+.\tools\build_windows_installer.ps1
+```
+
+If Inno Setup is not installed locally:
+
+```powershell
+.\tools\build_windows_installer.ps1 -InstallInnoSetup
+```
+
+Expected installer output:
+
+```text
+dist\installer\ScheduleApp_Setup_0.13.6-beta.exe
 ```
 
 ## Before Committing

@@ -409,7 +409,11 @@ body.rtl .topbar-actions {
 
 .btn:disabled,
 .cell-btn:disabled,
-.table-btn:disabled {
+.table-btn:disabled,
+.shift-picker-option:disabled,
+.entry-delete:disabled,
+.entry-status-remove-btn:disabled,
+.status-remove-btn:disabled {
     cursor: not-allowed;
     opacity: 0.52;
     transform: none;
@@ -453,6 +457,68 @@ body.rtl .topbar-actions {
 
 .btn-danger:hover {
     background: #ffdede;
+}
+
+.table-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.table-btn {
+    min-height: 36px !important;
+    padding: 8px 12px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    color: var(--text) !important;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 0.82rem !important;
+    font-weight: 800 !important;
+    line-height: 1.1;
+    white-space: nowrap;
+    transition: transform var(--transition), background var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
+}
+
+.table-btn:hover {
+    transform: translateY(-1px);
+}
+
+.table-btn.edit {
+    background: var(--primary-soft) !important;
+    border-color: #bfdbfe !important;
+    color: var(--primary) !important;
+}
+
+.table-btn.edit:hover {
+    background: #dbeafe !important;
+}
+
+.table-btn.delete {
+    background: var(--danger-soft) !important;
+    border-color: #fecaca !important;
+    color: var(--danger) !important;
+}
+
+.table-btn.delete:hover {
+    background: #fee2e2 !important;
+}
+
+.table-btn:focus-visible,
+.settings-nav-item:focus-visible,
+.settings-directory-tab:focus-visible,
+.cell-btn:focus-visible,
+.shift-picker-close:focus-visible,
+.shift-picker-option:focus-visible,
+.entry-delete:focus-visible,
+.entry-status-remove-btn:focus-visible,
+.status-remove-btn:focus-visible {
+    outline: 3px solid rgba(35, 87, 214, 0.22);
+    outline-offset: 2px;
 }
 
 .section-title-row {
@@ -939,6 +1005,27 @@ body.sidebar-collapsed .sidebar {
     border-radius: 12px;
     background: #f3f5f9;
     cursor: pointer;
+}
+
+.sidebar-toggle {
+    width: 42px !important;
+    height: 42px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    color: var(--text) !important;
+    cursor: pointer;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--transition), background var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+
+.sidebar-toggle:hover {
+    background: #f8fafc !important;
+    border-color: #bfdbfe !important;
+    transform: translateY(-1px);
 }
 
 .app-footer {

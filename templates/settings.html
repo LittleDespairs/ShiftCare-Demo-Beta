@@ -15,7 +15,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v=0.13.4_beta">
+<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
 
     <style>
         /* =========================================================
@@ -804,7 +804,7 @@
     </style>
 </head>
 
-<body class="app-shell ltr">
+<body class="app-shell ltr" data-app-version="{{ app_version }}">
     <div class="app-layout">
         <!--
             SIDEBAR / БОКОВОЕ МЕНЮ
@@ -952,7 +952,7 @@
                             <div class="settings-summary-grid" style="margin-top:14px;">
                                 <div class="settings-summary-item">
                                     <span class="settings-summary-label" data-i18n="settings_summary_version">Version</span>
-                                    <span class="settings-summary-value">0.13.4_beta</span>
+                                    <span class="settings-summary-value">{{ app_version }}</span>
                                 </div>
                                 <div class="settings-summary-item">
                                     <span class="settings-summary-label" data-i18n="settings_summary_layout">Settings layout</span>
@@ -1259,7 +1259,7 @@
                             <div class="settings-summary-grid">
                                 <div class="settings-summary-item">
                                     <span class="settings-summary-label" data-i18n="settings_summary_version">Version</span>
-                                    <span class="settings-summary-value">0.13.4_beta</span>
+                                    <span class="settings-summary-value">{{ app_version }}</span>
                                 </div>
                                 <div class="settings-summary-item">
                                     <span class="settings-summary-label" data-i18n="settings_summary_channel">Channel</span>
@@ -1268,6 +1268,28 @@
                                 <div class="settings-summary-item">
                                     <span class="settings-summary-label" data-i18n="settings_summary_focus">Current focus</span>
                                     <span class="settings-summary-value" data-i18n="settings_summary_focus_value">Frontend polish</span>
+                                </div>
+                            </div>
+
+                            <div class="settings-option-row" style="margin-top:16px;">
+                                <div class="settings-section-header">
+                                    <div>
+                                        <h3 class="settings-section-title" data-i18n="settings_updates_title">Updates</h3>
+                                        <p class="settings-section-text" data-i18n="settings_updates_text">
+                                            Check GitHub Releases for a newer Windows installer and start the update from inside the app.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div id="updates-message-box"></div>
+
+                                <div class="settings-actions">
+                                    <button id="check-updates-btn" class="btn btn-secondary" type="button" data-i18n="settings_updates_check">
+                                        Check for updates
+                                    </button>
+                                    <button id="install-update-btn" class="btn btn-primary" type="button" data-i18n="settings_updates_install" disabled>
+                                        Install update
+                                    </button>
                                 </div>
                             </div>
 
@@ -1296,7 +1318,7 @@
             </div>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    Schedule App v0.13.4_beta
+                    Schedule App v{{ app_version }}
                 </div>
 
                 <div class="footer-right">
@@ -1307,7 +1329,7 @@
         </main>
     </div>
 
-<script src="/static/js/i18n.js?v=0.13.4_beta"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}"></script>
 
     <script>
         function getSavedSidebarState() {
@@ -1508,6 +1530,7 @@
             schedule_coverage_display_mode: "interval"
         };
         let databaseBackups = [];
+        let latestUpdate = null;
 
         function t(key, fallback = "") {
             if (typeof translate === "function") {
@@ -1536,6 +1559,10 @@
 
         function showAppearanceMessage(text, type = "info") {
             renderPageMessage("appearance-message-box", text, type);
+        }
+
+        function showUpdatesMessage(text, type = "info") {
+            renderPageMessage("updates-message-box", text, type);
         }
 
         function normalizeColor(value, fallback) {
@@ -1796,6 +1823,80 @@
             }
         }
 
+        function setInstallUpdateEnabled(isEnabled) {
+            const button = document.getElementById("install-update-btn");
+            if (button) {
+                button.disabled = !isEnabled;
+            }
+        }
+
+        async function checkForUpdates() {
+            latestUpdate = null;
+            setInstallUpdateEnabled(false);
+            showUpdatesMessage(t("settings_updates_checking", "Checking for updates..."), "info");
+
+            const response = await fetch("/api/updates/check");
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                showUpdatesMessage(error.detail || t("settings_updates_check_failed", "Failed to check for updates."), "danger");
+                return;
+            }
+
+            const payload = await response.json();
+            if (!payload.update_available || !payload.latest) {
+                showUpdatesMessage(t("settings_updates_current", "You are running the latest available version."), "success");
+                return;
+            }
+
+            latestUpdate = payload.latest;
+            setInstallUpdateEnabled(true);
+            showUpdatesMessage(
+                `${t("settings_updates_available", "Update available")}: ${escapeHtml(latestUpdate.version)} (${escapeHtml(latestUpdate.asset_name)})`,
+                "success"
+            );
+        }
+
+        async function installLatestUpdate() {
+            if (!latestUpdate) {
+                await checkForUpdates();
+            }
+            if (!latestUpdate) {
+                return;
+            }
+
+            const isConfirmed = await appConfirm(
+                `<p>${escapeHtml(t("settings_updates_confirm", "Download and start the update installer? The app will close after the installer starts."))}</p><p><strong>${escapeHtml(latestUpdate.version)}</strong></p>`,
+                {
+                    title: t("settings_updates_install", "Install update"),
+                    confirmText: t("settings_updates_install", "Install update"),
+                    html: true
+                }
+            );
+            if (!isConfirmed) {
+                return;
+            }
+
+            setInstallUpdateEnabled(false);
+            showUpdatesMessage(t("settings_updates_downloading", "Downloading update installer..."), "info");
+            const response = await fetch("/api/updates/install", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    download_url: latestUpdate.download_url,
+                    asset_name: latestUpdate.asset_name
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                showUpdatesMessage(error.detail || t("settings_updates_install_failed", "Failed to start update installer."), "danger");
+                setInstallUpdateEnabled(true);
+                return;
+            }
+
+            showUpdatesMessage(t("settings_updates_started", "Update installer started. This app will close shortly."), "success");
+        }
+
         document.addEventListener("DOMContentLoaded", () => {
             bindSidebarToggle();
             applySidebarState(getSavedSidebarState());
@@ -1815,11 +1916,13 @@
             });
             document.getElementById("create-database-backup-btn").addEventListener("click", createDatabaseBackup);
             document.getElementById("reload-database-backups-btn").addEventListener("click", loadDatabaseBackups);
+            document.getElementById("check-updates-btn").addEventListener("click", checkForUpdates);
+            document.getElementById("install-update-btn").addEventListener("click", installLatestUpdate);
             loadGenerationSettings();
             loadDatabaseBackups();
         });
     </script>
-<script src="/static/js/pwa.js?v=0.13.4_beta"></script>
+<script src="/static/js/pwa.js?v={{ app_version }}"></script>
 </body>
 
 </html>

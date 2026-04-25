@@ -2,6 +2,57 @@
 
 This file tracks beta builds across the `0.12.x_beta` and `0.13.x_beta` lines.
 
+## 0.13.6_beta - 2026-04-26
+
+### Release Focus
+
+Add in-app update checks and installation through GitHub Releases.
+
+### What Changed
+
+- Added GitHub Releases update discovery for Windows installer assets named `ScheduleApp_Setup_<version>.exe`.
+- Added Settings > About update controls to check for updates and start installation from inside the app.
+- Added an update install endpoint that downloads the selected release asset, launches the installer, and closes the desktop app after the installer starts.
+- Added version comparison and release asset validation so only newer Schedule App installers from GitHub Releases can be installed.
+- Updated runtime, service worker, Android metadata, PyInstaller, installer, and version-info references to `0.13.6_beta`.
+
+### User Impact
+
+- Users can check for a new build from inside the desktop app instead of manually visiting GitHub.
+- A newer GitHub release can be installed by starting the installer directly from Settings.
+
+### Technical Impact
+
+- Regression coverage now verifies update detection for newer installer assets and ignores non-installer release assets.
+- The generated installer for this build is `ScheduleApp_Setup_0.13.6-beta.exe`.
+
+## 0.13.5_beta - 2026-04-26
+
+### Release Focus
+
+Restore the Windows desktop distribution path and add a product-style installer.
+
+### What Changed
+
+- Reworked the desktop launcher to open the app in a native `pywebview` window instead of a browser tab.
+- Added graceful localhost port selection and clean backend shutdown when the desktop window closes.
+- Added a generated Windows `.ico` asset for the desktop window, EXE, installer, and shortcuts.
+- Updated PyInstaller packaging to build `ScheduleApp_0.13.5_beta` with desktop window dependencies.
+- Added an Inno Setup installer that installs to Program Files, creates Start Menu and Desktop shortcuts, registers uninstall, and offers post-install launch.
+- Added a one-command installer build script.
+- Moved installed runtime data, logs, backups, and WebView profile storage to `%LOCALAPPDATA%\Schedule App` so standard users can run the installed app.
+
+### User Impact
+
+- The app now launches like a normal Windows desktop product.
+- Installed users get a desktop icon, Start Menu entry, and normal Windows uninstall flow.
+
+### Technical Impact
+
+- Windows installer output is produced under `dist\installer`.
+- Inno Setup 6 is the installer toolchain; the build helper can install it through `winget` when available.
+- Regression coverage verifies that frozen Windows builds do not write the database into the installation directory.
+
 ## 0.13.4_beta - 2026-04-25
 
 ### Release Focus

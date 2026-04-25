@@ -6,7 +6,13 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('templates', 'templates'), ('static', 'static'), ('schedule_app.db', '.')],
-    hiddenimports=[],
+    hiddenimports=[
+        'webview',
+        'webview.platforms.edgechromium',
+        'webview.platforms.winforms',
+        'clr',
+        'pythonnet',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -21,7 +27,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='ScheduleApp_0.13.4_beta',
+    name='ScheduleApp_0.13.6_beta',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -32,6 +38,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='static/icons/app-icon.ico',
+    version='version_info.txt',
 )
 coll = COLLECT(
     exe,
@@ -40,7 +48,7 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='ScheduleApp_0.13.4_beta',
+    name='ScheduleApp_0.13.6_beta',
 )
 
 

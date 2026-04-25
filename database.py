@@ -9,13 +9,24 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 
 
+def get_windows_app_data_dir() -> Path:
+    app_data_root = os.environ.get("LOCALAPPDATA")
+    if app_data_root:
+        app_data_dir = Path(app_data_root) / "Schedule App"
+    else:
+        app_data_dir = Path.home() / "AppData" / "Local" / "Schedule App"
+
+    app_data_dir.mkdir(parents=True, exist_ok=True)
+    return app_data_dir
+
+
 def get_database_path() -> Path:
     if getattr(sys, "frozen", False):
-        runtime_dir = Path(sys.executable).resolve().parent
+        runtime_dir = get_windows_app_data_dir()
         runtime_path = runtime_dir / "schedule_app.db"
 
         if not runtime_path.exists():
-            bundled_dir = Path(getattr(sys, "_MEIPASS", runtime_dir))
+            bundled_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
             bundled_path = bundled_dir / "schedule_app.db"
             if bundled_path.exists():
                 shutil.copy2(bundled_path, runtime_path)

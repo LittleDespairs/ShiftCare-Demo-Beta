@@ -350,7 +350,7 @@ class GenerationReportTests(unittest.TestCase):
         self.assertEqual(queue[0]["slot"]["start"], 6 * 60)
         self.assertEqual(queue[0]["missing_total"], 2)
 
-    def test_auto_generation_rejects_non_split_morning_evening_combo(self):
+    def test_auto_generation_allows_morning_evening_combo_without_split_flag(self):
         cursor = self.connection.cursor()
         cursor.execute("DELETE FROM schedule_entries")
         cursor.execute("DELETE FROM employee_day_statuses")
@@ -421,7 +421,7 @@ class GenerationReportTests(unittest.TestCase):
             "can_work_mornings_and_evenings": True,
         }
 
-        self.assertFalse(
+        self.assertTrue(
             main.can_employee_take_template(
                 self.connection,
                 employee,
@@ -431,7 +431,7 @@ class GenerationReportTests(unittest.TestCase):
                 WEEK_START_DATE,
             )
         )
-        self.assertEqual(
+        self.assertIsNone(
             main.explain_employee_template_rejection(
                 self.connection,
                 employee,
@@ -439,8 +439,7 @@ class GenerationReportTests(unittest.TestCase):
                 WEEK_DATES[0],
                 template,
                 WEEK_START_DATE,
-            ),
-            "morning-evening combo requires split-only templates",
+            )
         )
 
     def test_allows_morning_and_night_on_same_day_as_separate_combo(self):

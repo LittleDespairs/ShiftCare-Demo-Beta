@@ -10,7 +10,7 @@
     <link rel="manifest" href="/static/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
 
-<link rel="stylesheet" href="/static/css/style.css?v=0.13.4_beta">
+<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
 
     <style>
         .templates-layout {
@@ -325,7 +325,7 @@
     </style>
 </head>
 
-<body class="app-shell ltr">
+<body class="app-shell ltr" data-app-version="{{ app_version }}">
     <div class="app-layout">
         <aside class="sidebar">
             <div class="sidebar-top-row">
@@ -457,10 +457,6 @@
                                         <span data-i18n="templates_is_active">Active template</span>
                                     </label>
 
-                                    <label class="check-row">
-                                        <input type="checkbox" id="is_split_only">
-                                        <span data-i18n="templates_is_split_only">Split-shift only</span>
-                                    </label>
                                 </div>
                             </div>
 
@@ -504,7 +500,6 @@
                                             <th data-i18n="templates_table_end">End</th>
                                             <th data-i18n="templates_table_overnight">Overnight</th>
                                             <th data-i18n="templates_table_active">Active</th>
-                                            <th data-i18n="templates_table_split_only">Split only</th>
                                             <th data-i18n="templates_table_actions">Actions</th>
                                         </tr>
                                     </thead>
@@ -530,9 +525,6 @@
                             <li data-i18n="templates_note_2">
                                 Overnight means the shift ends on the following day.
                             </li>
-                            <li data-i18n="templates_note_3">
-                                Split-only templates are intended for paired split shifts, not standalone usage.
-                            </li>
                         </ul>
                     </div>
                 </section>
@@ -540,7 +532,7 @@
         </main>
     </div>
 
-<script src="/static/js/i18n.js?v=0.13.4_beta"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}"></script>
 
     <script>
         let editingTemplateId = null;
@@ -674,7 +666,7 @@
                 end_time: document.getElementById("end_time").value,
                 is_overnight: document.getElementById("is_overnight").checked,
                 is_active: document.getElementById("is_active").checked,
-                is_split_only: document.getElementById("is_split_only").checked
+                is_split_only: false
             };
 
             if (!payload.name) {
@@ -746,7 +738,6 @@
             document.getElementById("end_time").value = template.end_time;
             document.getElementById("is_overnight").checked = template.is_overnight;
             document.getElementById("is_active").checked = template.is_active;
-            document.getElementById("is_split_only").checked = template.is_split_only;
 
             editingTemplateId = template.id;
             updateSubmitButtonText();
@@ -816,7 +807,6 @@
         function resetShiftTemplateForm() {
             document.getElementById("shift-template-form").reset();
             document.getElementById("is_active").checked = true;
-            document.getElementById("is_split_only").checked = false;
             document.getElementById("position_id").value = "";
             editingTemplateId = null;
             updateSubmitButtonText();
@@ -900,7 +890,6 @@
                     <td>${escapeHtml(template.end_time)}</td>
                     <td>${boolBadge(template.is_overnight)}</td>
                     <td>${boolBadge(template.is_active)}</td>
-                    <td>${boolBadge(template.is_split_only)}</td>
                     <td>
                         <div class="table-actions">
                             <button
@@ -942,7 +931,7 @@
     </script>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    Schedule App v0.13.4_beta
+                    Schedule App v{{ app_version }}
                 </div>
 
                 <div class="footer-right">
@@ -950,7 +939,7 @@
                     <a href="/guide" data-i18n="footer_guide">Guide</a>
                 </div>
             </footer>
-<script src="/static/js/pwa.js?v=0.13.4_beta"></script>
+<script src="/static/js/pwa.js?v={{ app_version }}"></script>
 </body>
 
 </html>

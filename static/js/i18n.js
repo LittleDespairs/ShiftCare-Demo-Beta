@@ -20,7 +20,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Preferences",
         nav_settings: "Settings",
 
-        sidebar_footer_title: "Version 0.13.4_beta",
+        sidebar_footer_title: "Version {version}",
         sidebar_footer_text: "Interface redesign in progress. The current goal is a simpler and clearer workflow.",
 
         page_title: "Dashboard",
@@ -66,7 +66,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Documentation",
         footer_guide: "User Guide",
-        footer_version: "Schedule App v0.13.4_beta",
+        footer_version: "Schedule App v{version}",
 
         quick_actions_title: "Quick actions",
         quick_action_schedule_title: "Open current week",
@@ -107,7 +107,9 @@ const I18N_TRANSLATIONS = {
         schedule_generating_title: "Generating schedule",
         schedule_generating_text: "The algorithm is checking coverage, rest rules, and employee limits.",
         schedule_clear_btn: "Clear week",
+        schedule_clear_all_btn: "Clear all week",
         schedule_export_btn: "Export Excel",
+        schedule_export_all_btn: "Export all Excel",
         schedule_clear_message_btn: "Clear message",
         schedule_toolbar_generate: "Generate",
         schedule_toolbar_output: "Output",
@@ -214,10 +216,15 @@ const I18N_TRANSLATIONS = {
 
         msg_confirm_clear_week: "Are you sure you want to delete the schedule for this week and this position?",
         msg_confirm_clear_week_title: "Clear week schedule",
+        msg_confirm_clear_all_week: "Are you sure you want to delete the schedule for this week across all positions?",
+        msg_confirm_clear_all_week_title: "Clear all week schedules",
         msg_failed_clear_week: "Failed to clear week schedule.",
+        msg_failed_clear_all_week: "Failed to clear all week schedules.",
         msg_week_cleared: "Week schedule cleared.",
+        msg_all_week_cleared: "All week schedules cleared.",
         msg_deleted_count: "Deleted",
         confirm_impact_position: "Position",
+        confirm_impact_positions: "Positions",
         confirm_impact_employee: "Employee",
         confirm_impact_template: "Template",
         confirm_impact_assignment: "Assignment",
@@ -234,6 +241,7 @@ const I18N_TRANSLATIONS = {
         confirm_impact_in_use_warning: "This template is still used in the schedule and deletion will be blocked.",
         confirm_impact_fetch_failed: "Could not load related records. Review carefully before deleting.",
         msg_server_error_clear_week: "Server error while clearing week schedule.",
+        msg_server_error_clear_all_week: "Server error while clearing all week schedules.",
 
         msg_select_shift_template_first: "Please select a shift template first.",
         msg_status_selector_not_found: "Status selector not found.",
@@ -264,7 +272,6 @@ const I18N_TRANSLATIONS = {
         generation_warning_consecutive_splits: "consecutive split days",
         generation_reason_not_enough_female: "not enough female employees available",
         generation_reason_not_enough_male: "not enough male employees available",
-        generation_reason_split_pair: "split-only template has no valid pair",
         generation_reason_day_status: "day status blocks employee",
         generation_reason_not_assigned: "employee is not assigned to this position",
         generation_reason_max_shifts: "employee reached max shifts",
@@ -274,7 +281,6 @@ const I18N_TRANSLATIONS = {
         generation_reason_overlapping_shift: "employee already has an overlapping shift",
         generation_reason_cannot_split_day: "employee cannot work morning and evening on the same day",
         generation_reason_unpairable_shift_type: "employee already has another shift type that cannot be paired",
-        generation_reason_split_only_combo: "morning-evening combo requires split-only templates",
         generation_reason_weekly_preference_split: "weekly preference blocks morning-evening combo",
         generation_reason_two_shifts_day: "employee already has two shifts that day",
         generation_reason_off_or_vacation: "employee requested off or vacation",
@@ -292,7 +298,7 @@ const I18N_TRANSLATIONS = {
         generation_precheck_warning: "Pre-check warning:",
         generation_precheck_no_slots: "No active coverage slots can be built from coverage requirements.",
         generation_precheck_no_template: "No active shift template covers this required interval.",
-        generation_precheck_no_legacy_template: "No active non-split template exists for this legacy shift requirement.",
+        generation_precheck_no_legacy_template: "No active template exists for this legacy shift requirement.",
         generation_precheck_staff_shortage: "Required staff is greater than employees assigned to the position.",
         generation_precheck_female_shortage: "Required female staff is greater than available female employees.",
         generation_precheck_male_shortage: "Required male staff is greater than available male employees.",
@@ -531,7 +537,6 @@ const I18N_TRANSLATIONS = {
         templates_flags_title: "Template options",
         templates_is_overnight: "Overnight shift",
         templates_is_active: "Active template",
-        templates_is_split_only: "Split-shift only",
 
         templates_add_button: "Add shift template",
         templates_update_button: "Update shift template",
@@ -547,7 +552,6 @@ const I18N_TRANSLATIONS = {
         templates_table_end: "End",
         templates_table_overnight: "Overnight",
         templates_table_active: "Active",
-        templates_table_split_only: "Split only",
         templates_table_actions: "Actions",
 
         templates_empty_list: "No shift templates yet",
@@ -558,11 +562,10 @@ const I18N_TRANSLATIONS = {
         templates_notes_title: "Notes",
         templates_note_1: "Category defines the logical role of the shift: morning, evening, or night.",
         templates_note_2: "Overnight means the shift ends on the following day.",
-        templates_note_3: "Split-only templates are intended for paired split shifts, not standalone usage.",
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.13.4_beta",
+        footer_version: "Schedule App v{version}",
 
         msg_enter_template_name: "Please enter template name.",
         msg_select_shift_category: "Please select shift category.",
@@ -663,6 +666,18 @@ const I18N_TRANSLATIONS = {
         settings_about_text: "Current beta information and links for help.",
         settings_guide_text: "Open the step-by-step guide for preparing and publishing a schedule.",
         settings_docs_text: "Open technical notes and app documentation.",
+        settings_updates_title: "Updates",
+        settings_updates_text: "Check GitHub Releases for a newer Windows installer and start the update from inside the app.",
+        settings_updates_check: "Check for updates",
+        settings_updates_install: "Install update",
+        settings_updates_checking: "Checking for updates...",
+        settings_updates_check_failed: "Failed to check for updates.",
+        settings_updates_current: "You are running the latest available version.",
+        settings_updates_available: "Update available",
+        settings_updates_confirm: "Download and start the update installer? The app will close after the installer starts.",
+        settings_updates_downloading: "Downloading update installer...",
+        settings_updates_install_failed: "Failed to start update installer.",
+        settings_updates_started: "Update installer started. This app will close shortly.",
 
         settings_positions_title: "Positions",
         settings_positions_text: "Create and manage department positions used by the scheduling system.",
@@ -813,7 +828,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "Пожелания",
         nav_settings: "Настройки",
 
-        sidebar_footer_title: "Версия 0.13.4_beta",
+        sidebar_footer_title: "Версия {version}",
         sidebar_footer_text: "Сейчас идёт редизайн интерфейса. Главная цель — сделать рабочий процесс проще и понятнее.",
 
         page_title: "Главная",
@@ -859,7 +874,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v0.13.4_beta",
+        footer_version: "Schedule App v{version}",
 
         quick_actions_title: "Быстрые действия",
         quick_action_schedule_title: "Открыть текущую неделю",
@@ -954,7 +969,9 @@ const I18N_TRANSLATIONS = {
         schedule_generating_title: "Составляем расписание",
         schedule_generating_text: "Алгоритм проверяет покрытие, правила отдыха и лимиты сотрудников.",
         schedule_clear_btn: "Очистить неделю",
+        schedule_clear_all_btn: "Очистить всю неделю",
         schedule_export_btn: "Экспорт Excel",
+        schedule_export_all_btn: "Экспорт всех в Excel",
         schedule_clear_message_btn: "Очистить сообщение",
         schedule_toolbar_generate: "Генерация",
         schedule_toolbar_output: "Вывод",
@@ -1061,10 +1078,15 @@ const I18N_TRANSLATIONS = {
 
         msg_confirm_clear_week: "Вы уверены, что хотите удалить расписание за эту неделю для этой должности?",
         msg_confirm_clear_week_title: "Очистка расписания недели",
+        msg_confirm_clear_all_week: "Вы уверены, что хотите удалить расписание за эту неделю по всем должностям?",
+        msg_confirm_clear_all_week_title: "Очистка всей недели",
         msg_failed_clear_week: "Не удалось очистить расписание за неделю.",
+        msg_failed_clear_all_week: "Не удалось очистить расписание всей недели.",
         msg_week_cleared: "Расписание за неделю очищено.",
+        msg_all_week_cleared: "Расписание всей недели очищено.",
         msg_deleted_count: "Удалено",
         confirm_impact_position: "Должность",
+        confirm_impact_positions: "Должности",
         confirm_impact_employee: "Сотрудник",
         confirm_impact_template: "Шаблон",
         confirm_impact_assignment: "Назначение",
@@ -1081,6 +1103,7 @@ const I18N_TRANSLATIONS = {
         confirm_impact_in_use_warning: "Этот шаблон уже используется в расписании, и удаление будет заблокировано.",
         confirm_impact_fetch_failed: "Не удалось загрузить связанные записи. Проверьте последствия перед удалением.",
         msg_server_error_clear_week: "Ошибка сервера при очистке недели.",
+        msg_server_error_clear_all_week: "Ошибка сервера при очистке всей недели.",
 
         msg_select_shift_template_first: "Сначала выберите шаблон смены.",
         msg_status_selector_not_found: "Селектор статуса не найден.",
@@ -1111,7 +1134,6 @@ const I18N_TRANSLATIONS = {
         generation_warning_consecutive_splits: "сплит-смен подряд",
         generation_reason_not_enough_female: "недостаточно доступных сотрудниц",
         generation_reason_not_enough_male: "недостаточно доступных сотрудников-мужчин",
-        generation_reason_split_pair: "для сплит-шаблона нет допустимой пары",
         generation_reason_day_status: "статус дня блокирует сотрудника",
         generation_reason_not_assigned: "сотрудник не привязан к этой должности",
         generation_reason_max_shifts: "сотрудник достиг максимума смен",
@@ -1121,7 +1143,6 @@ const I18N_TRANSLATIONS = {
         generation_reason_overlapping_shift: "у сотрудника уже есть пересекающаяся смена",
         generation_reason_cannot_split_day: "сотрудник не может работать утро и вечер в один день",
         generation_reason_unpairable_shift_type: "у сотрудника уже есть другой тип смены, который нельзя сочетать",
-        generation_reason_split_only_combo: "комбинация утро-вечер требует только split-шаблоны",
         generation_reason_weekly_preference_split: "недельное пожелание блокирует комбинацию утро-вечер",
         generation_reason_two_shifts_day: "у сотрудника уже две смены в этот день",
         generation_reason_off_or_vacation: "у сотрудника выходной или отпуск",
@@ -1139,7 +1160,7 @@ const I18N_TRANSLATIONS = {
         generation_precheck_warning: "Предварительная проверка, предупреждение:",
         generation_precheck_no_slots: "Не удалось построить активные интервалы покрытия из требований.",
         generation_precheck_no_template: "Нет активного шаблона смены, который закрывает этот обязательный интервал.",
-        generation_precheck_no_legacy_template: "Нет активного не-сплит шаблона для этого требования к смене.",
+        generation_precheck_no_legacy_template: "Нет активного шаблона для этого требования к смене.",
         generation_precheck_staff_shortage: "Требуется больше сотрудников, чем назначено на эту должность.",
         generation_precheck_female_shortage: "Требуется больше женщин, чем доступно среди сотрудников.",
         generation_precheck_male_shortage: "Требуется больше мужчин, чем доступно среди сотрудников.",
@@ -1323,7 +1344,6 @@ const I18N_TRANSLATIONS = {
         templates_flags_title: "Параметры шаблона",
         templates_is_overnight: "Ночная переходящая смена",
         templates_is_active: "Активный шаблон",
-        templates_is_split_only: "Только для сплит-смен",
 
         templates_add_button: "Добавить шаблон смены",
         templates_update_button: "Обновить шаблон смены",
@@ -1339,7 +1359,6 @@ const I18N_TRANSLATIONS = {
         templates_table_end: "Конец",
         templates_table_overnight: "Переходящая",
         templates_table_active: "Активна",
-        templates_table_split_only: "Только сплит",
         templates_table_actions: "Действия",
 
         templates_empty_list: "Шаблонов смен пока нет",
@@ -1350,7 +1369,6 @@ const I18N_TRANSLATIONS = {
         templates_notes_title: "Заметки",
         templates_note_1: "Категория определяет логическую роль смены: утро, вечер или ночь.",
         templates_note_2: "Переходящая смена означает, что она заканчивается на следующий день.",
-        templates_note_3: "Шаблоны только для сплит-смен предназначены для парных сплит-смен, а не для одиночного использования.",
 
         msg_enter_template_name: "Пожалуйста, введите название шаблона.",
         msg_select_shift_category: "Пожалуйста, выберите категорию смены.",
@@ -1451,6 +1469,18 @@ const I18N_TRANSLATIONS = {
         settings_about_text: "Информация о текущей бета-версии и ссылки на помощь.",
         settings_guide_text: "Открыть пошаговое руководство по подготовке и публикации расписания.",
         settings_docs_text: "Открыть технические заметки и документацию приложения.",
+        settings_updates_title: "Обновления",
+        settings_updates_text: "Проверяйте GitHub Releases на наличие нового Windows-инсталлятора и запускайте обновление прямо из приложения.",
+        settings_updates_check: "Проверить обновления",
+        settings_updates_install: "Установить обновление",
+        settings_updates_checking: "Проверяем обновления...",
+        settings_updates_check_failed: "Не удалось проверить обновления.",
+        settings_updates_current: "Установлена последняя доступная версия.",
+        settings_updates_available: "Доступно обновление",
+        settings_updates_confirm: "Скачать и запустить инсталлятор обновления? Приложение закроется после запуска инсталлятора.",
+        settings_updates_downloading: "Скачиваем инсталлятор обновления...",
+        settings_updates_install_failed: "Не удалось запустить инсталлятор обновления.",
+        settings_updates_started: "Инсталлятор обновления запущен. Приложение скоро закроется.",
 
         settings_positions_title: "Должности",
         settings_positions_text: "Создание и управление должностями отдела, используемыми системой расписания.",
@@ -1602,7 +1632,7 @@ const I18N_TRANSLATIONS = {
         nav_requests: "העדפות",
         nav_settings: "הגדרות",
 
-        sidebar_footer_title: "גרסה 0.13.4_beta",
+        sidebar_footer_title: "גרסה {version}",
         sidebar_footer_text: "כעת מתבצע עיצוב מחדש של הממשק. המטרה היא להפוך את תהליך העבודה לפשוט וברור יותר.",
 
         page_title: "דף הבית",
@@ -1695,7 +1725,9 @@ const I18N_TRANSLATIONS = {
         schedule_generating_title: "יוצר סידור עבודה",
         schedule_generating_text: "האלגוריתם בודק כיסוי, כללי מנוחה ומגבלות עובדים.",
         schedule_clear_btn: "נקה שבוע",
+        schedule_clear_all_btn: "נקה את כל השבוע",
         schedule_export_btn: "ייצוא לאקסל",
+        schedule_export_all_btn: "ייצוא כללי לאקסל",
         schedule_clear_message_btn: "נקה הודעה",
         schedule_toolbar_generate: "יצירה",
         schedule_toolbar_output: "פלט",
@@ -1802,10 +1834,15 @@ const I18N_TRANSLATIONS = {
 
         msg_confirm_clear_week: "האם אתה בטוח שברצונך למחוק את סידור העבודה של השבוע הזה עבור התפקיד הזה?",
         msg_confirm_clear_week_title: "ניקוי סידור עבודה שבועי",
+        msg_confirm_clear_all_week: "האם אתה בטוח שברצונך למחוק את סידור העבודה של השבוע הזה עבור כל התפקידים?",
+        msg_confirm_clear_all_week_title: "ניקוי כל סידורי השבוע",
         msg_failed_clear_week: "ניקוי סידור העבודה השבועי נכשל.",
+        msg_failed_clear_all_week: "ניקוי כל סידורי השבוע נכשל.",
         msg_week_cleared: "סידור העבודה השבועי נוקה.",
+        msg_all_week_cleared: "כל סידורי השבוע נוקו.",
         msg_deleted_count: "נמחקו",
         confirm_impact_position: "תפקיד",
+        confirm_impact_positions: "תפקידים",
         confirm_impact_employee: "עובד",
         confirm_impact_template: "תבנית",
         confirm_impact_assignment: "שיוך",
@@ -1822,6 +1859,7 @@ const I18N_TRANSLATIONS = {
         confirm_impact_in_use_warning: "התבנית הזו כבר נמצאת בשימוש בסידור העבודה, ולכן המחיקה תיחסם.",
         confirm_impact_fetch_failed: "לא ניתן היה לטעון את הרשומות הקשורות. בדוק את ההשפעה לפני המחיקה.",
         msg_server_error_clear_week: "שגיאת שרת בזמן ניקוי השבוע.",
+        msg_server_error_clear_all_week: "שגיאת שרת בזמן ניקוי כל השבוע.",
 
         msg_select_shift_template_first: "אנא בחר קודם תבנית משמרת.",
         msg_status_selector_not_found: "בורר הסטטוס לא נמצא.",
@@ -1852,7 +1890,6 @@ const I18N_TRANSLATIONS = {
         generation_warning_consecutive_splits: "ימי משמרות מפוצלות רצופים",
         generation_reason_not_enough_female: "אין מספיק עובדות זמינות",
         generation_reason_not_enough_male: "אין מספיק עובדים זמינים",
-        generation_reason_split_pair: "לתבנית מפוצלת אין זוג תקין",
         generation_reason_day_status: "סטטוס היום חוסם את העובד",
         generation_reason_not_assigned: "העובד אינו משויך לתפקיד הזה",
         generation_reason_max_shifts: "העובד הגיע למקסימום המשמרות",
@@ -1862,7 +1899,6 @@ const I18N_TRANSLATIONS = {
         generation_reason_overlapping_shift: "לעובד כבר יש משמרת חופפת",
         generation_reason_cannot_split_day: "העובד אינו יכול לעבוד בוקר וערב באותו יום",
         generation_reason_unpairable_shift_type: "לעובד כבר יש סוג משמרת אחר שלא ניתן לשלב",
-        generation_reason_split_only_combo: "שילוב בוקר-ערב דורש תבניות מפוצלות בלבד",
         generation_reason_weekly_preference_split: "העדפה שבועית חוסמת שילוב בוקר-ערב",
         generation_reason_two_shifts_day: "לעובד כבר יש שתי משמרות באותו יום",
         generation_reason_off_or_vacation: "לעובד יש יום חופשי או חופשה",
@@ -1880,7 +1916,7 @@ const I18N_TRANSLATIONS = {
         generation_precheck_warning: "בדיקה מוקדמת, אזהרה:",
         generation_precheck_no_slots: "לא ניתן לבנות מקטעי כיסוי פעילים מדרישות הכיסוי.",
         generation_precheck_no_template: "אין תבנית משמרת פעילה שמכסה את המקטע הנדרש הזה.",
-        generation_precheck_no_legacy_template: "אין תבנית פעילה שאינה מפוצלת עבור דרישת המשמרת הזו.",
+        generation_precheck_no_legacy_template: "אין תבנית פעילה עבור דרישת המשמרת הזו.",
         generation_precheck_staff_shortage: "נדרשים יותר עובדים ממספר העובדים המשויכים לתפקיד.",
         generation_precheck_female_shortage: "נדרשות יותר נשים ממספר העובדות הזמינות.",
         generation_precheck_male_shortage: "נדרשים יותר גברים ממספר העובדים הזמינים.",
@@ -1928,7 +1964,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "תיעוד",
         footer_guide: "מדריך",
-        footer_version: "Schedule App v0.13.4_beta",
+        footer_version: "Schedule App v{version}",
 
         employees_table_id: "מזהה",
         employees_table_name: "שם מלא",
@@ -2112,7 +2148,6 @@ const I18N_TRANSLATIONS = {
         templates_flags_title: "אפשרויות תבנית",
         templates_is_overnight: "משמרת שחוצה ליום הבא",
         templates_is_active: "תבנית פעילה",
-        templates_is_split_only: "רק למשמרות מפוצלות",
 
         templates_add_button: "הוסף תבנית משמרת",
         templates_update_button: "עדכן תבנית משמרת",
@@ -2128,7 +2163,6 @@ const I18N_TRANSLATIONS = {
         templates_table_end: "סיום",
         templates_table_overnight: "חוצה לילה",
         templates_table_active: "פעילה",
-        templates_table_split_only: "רק מפוצלת",
         templates_table_actions: "פעולות",
 
         templates_empty_list: "אין עדיין תבניות משמרת",
@@ -2139,7 +2173,6 @@ const I18N_TRANSLATIONS = {
         templates_notes_title: "הערות",
         templates_note_1: "הקטגוריה מגדירה את התפקיד הלוגי של המשמרת: בוקר, ערב או לילה.",
         templates_note_2: "משמרת שחוצה ליום הבא מסתיימת ביום שלאחר מכן.",
-        templates_note_3: "תבניות שמיועדות רק למשמרות מפוצלות נועדו לזוגות של משמרות מפוצלות ולא לשימוש בודד.",
 
         msg_enter_template_name: "אנא הזן שם תבנית.",
         msg_select_shift_category: "אנא בחר קטגוריית משמרת.",
@@ -2240,6 +2273,18 @@ const I18N_TRANSLATIONS = {
         settings_about_text: "מידע על גרסת הבטא הנוכחית וקישורי עזרה.",
         settings_guide_text: "פתח מדריך שלב אחר שלב להכנה ופרסום של סידור עבודה.",
         settings_docs_text: "פתח הערות טכניות ותיעוד של האפליקציה.",
+        settings_updates_title: "עדכונים",
+        settings_updates_text: "בדיקת GitHub Releases עבור מתקין Windows חדש והפעלת העדכון מתוך האפליקציה.",
+        settings_updates_check: "בדוק עדכונים",
+        settings_updates_install: "התקן עדכון",
+        settings_updates_checking: "בודק עדכונים...",
+        settings_updates_check_failed: "בדיקת העדכונים נכשלה.",
+        settings_updates_current: "מותקנת הגרסה האחרונה הזמינה.",
+        settings_updates_available: "עדכון זמין",
+        settings_updates_confirm: "להוריד ולהפעיל את מתקין העדכון? האפליקציה תיסגר לאחר הפעלת המתקין.",
+        settings_updates_downloading: "מוריד את מתקין העדכון...",
+        settings_updates_install_failed: "הפעלת מתקין העדכון נכשלה.",
+        settings_updates_started: "מתקין העדכון הופעל. האפליקציה תיסגר בקרוב.",
 
         settings_positions_title: "תפקידים",
         settings_positions_text: "יצירה וניהול תפקידי מחלקה המשמשים את מערכת סידור העבודה.",
@@ -2428,7 +2473,15 @@ function setLanguage(lang) {
 function translate(key, lang = null) {
     const currentLang = lang || localStorage.getItem("scheduleAppLanguage") || "en";
     const dictionary = I18N_TRANSLATIONS[currentLang] || I18N_TRANSLATIONS.en;
-    return dictionary[key] ?? key;
+    return interpolateTranslation(dictionary[key] ?? key);
+}
+
+function getAppVersion() {
+    return document.body?.dataset?.appVersion || "";
+}
+
+function interpolateTranslation(value) {
+    return String(value).replaceAll("{version}", getAppVersion());
 }
 
 function applyTranslations(lang) {
@@ -2436,17 +2489,17 @@ function applyTranslations(lang) {
 
     document.querySelectorAll("[data-i18n]").forEach(element => {
         const key = element.dataset.i18n;
-        element.textContent = dictionary[key] ?? key;
+        element.textContent = interpolateTranslation(dictionary[key] ?? key);
     });
 
     document.querySelectorAll("[data-i18n-placeholder]").forEach(element => {
         const key = element.dataset.i18nPlaceholder;
-        element.setAttribute("placeholder", dictionary[key] ?? key);
+        element.setAttribute("placeholder", interpolateTranslation(dictionary[key] ?? key));
     });
 
     document.querySelectorAll("[data-i18n-title]").forEach(element => {
         const key = element.dataset.i18nTitle;
-        element.setAttribute("title", dictionary[key] ?? key);
+        element.setAttribute("title", interpolateTranslation(dictionary[key] ?? key));
     });
 }
 

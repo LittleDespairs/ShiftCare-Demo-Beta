@@ -13,6 +13,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.webkit.DownloadListener;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -56,6 +57,7 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient());
         webView.setWebChromeClient(new WebChromeClient());
         webView.setDownloadListener(createDownloadListener());
+        webView.addJavascriptInterface(new ScheduleAndroidBridge(), "ScheduleAndroid");
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -114,21 +116,41 @@ public class MainActivity extends Activity {
                             .trim();
                 }
 
-                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                request.setMimeType(mimetype);
-                request.addRequestHeader("User-Agent", userAgent);
-                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
-
-                DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                if (downloadManager != null) {
-                    downloadManager.enqueue(request);
-                    Toast.makeText(this, "Export saved to Downloads", Toast.LENGTH_LONG).show();
-                }
+                enqueueDownload(url, filename, mimetype, userAgent);
+                Toast.makeText(this, "Export saved to Downloads", Toast.LENGTH_LONG).show();
             } catch (Exception error) {
                 Toast.makeText(this, "Export failed: " + error.getMessage(), Toast.LENGTH_LONG).show();
             }
         };
+    }
+
+    private class ScheduleAndroidBridge {
+        @JavascriptInterface
+        public void downloadFile(String url, String filename, String mimeType) {
+            mainHandler.post(() -> {
+                try {
+                    enqueueDownload(url, filename, mimeType, null);
+                    Toast.makeText(MainActivity.this, "Export saved to Downloads", Toast.LENGTH_LONG).show();
+                } catch (Exception error) {
+                    Toast.makeText(MainActivity.this, "Export failed: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+    }
+
+    private void enqueueDownload(String url, String filename, String mimeType, String userAgent) {
+        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+        request.setMimeType(mimeType);
+        if (userAgent != null) {
+            request.addRequestHeader("User-Agent", userAgent);
+        }
+        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
+
+        DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+        if (downloadManager != null) {
+            downloadManager.enqueue(request);
+        }
     }
 
     private void startBackendAndLoad() {

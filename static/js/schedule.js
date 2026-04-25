@@ -246,7 +246,7 @@
                 [/Pre-check warning:/g, t("generation_precheck_warning", "Pre-check warning:")],
                 [/No active coverage slots can be built from coverage requirements\./g, t("generation_precheck_no_slots", "No active coverage slots can be built from coverage requirements.")],
                 [/No active shift template covers this required interval\./g, t("generation_precheck_no_template", "No active shift template covers this required interval.")],
-                [/No active non-split template exists for this legacy shift requirement\./g, t("generation_precheck_no_legacy_template", "No active non-split template exists for this legacy shift requirement.")],
+                [/No active template exists for this legacy shift requirement\./g, t("generation_precheck_no_legacy_template", "No active template exists for this legacy shift requirement.")],
                 [/Required staff is greater than employees assigned to the position\./g, t("generation_precheck_staff_shortage", "Required staff is greater than employees assigned to the position.")],
                 [/Required female staff is greater than available female employees\./g, t("generation_precheck_female_shortage", "Required female staff is greater than available female employees.")],
                 [/Required male staff is greater than available male employees\./g, t("generation_precheck_male_shortage", "Required male staff is greater than available male employees.")],
@@ -257,7 +257,6 @@
                 [/Reasons:/g, t("generation_warning_reasons", "Reasons:")],
                 [/not enough female employees available/g, t("generation_reason_not_enough_female", "not enough female employees available")],
                 [/not enough male employees available/g, t("generation_reason_not_enough_male", "not enough male employees available")],
-                [/split-only template has no valid pair/g, t("generation_reason_split_pair", "split-only template has no valid pair")],
                 [/day status blocks employee/g, t("generation_reason_day_status", "day status blocks employee")],
                 [/employee is not assigned to this position/g, t("generation_reason_not_assigned", "employee is not assigned to this position")],
                 [/employee reached max shifts/g, t("generation_reason_max_shifts", "employee reached max shifts")],
@@ -267,7 +266,6 @@
                 [/employee already has an overlapping shift/g, t("generation_reason_overlapping_shift", "employee already has an overlapping shift")],
                 [/employee cannot work morning and evening on the same day/g, t("generation_reason_cannot_split_day", "employee cannot work morning and evening on the same day")],
                 [/employee already has another shift type that cannot be paired/g, t("generation_reason_unpairable_shift_type", "employee already has another shift type that cannot be paired")],
-                [/morning-evening combo requires split-only templates/g, t("generation_reason_split_only_combo", "morning-evening combo requires split-only templates")],
                 [/weekly preference blocks morning-evening combo/g, t("generation_reason_weekly_preference_split", "weekly preference blocks morning-evening combo")],
                 [/employee already has two shifts that day/g, t("generation_reason_two_shifts_day", "employee already has two shifts that day")],
                 [/employee requested off or vacation/g, t("generation_reason_off_or_vacation", "employee requested off or vacation")],
@@ -589,7 +587,9 @@
             document.getElementById("auto-generate-btn").addEventListener("click", autoGenerateSchedule);
             document.getElementById("auto-generate-all-btn").addEventListener("click", autoGenerateAllSchedules);
             document.getElementById("clear-week-btn").addEventListener("click", clearWeekSchedule);
+            document.getElementById("clear-all-week-btn").addEventListener("click", clearAllWeekSchedules);
             document.getElementById("export-excel-btn").addEventListener("click", exportScheduleExcel);
+            document.getElementById("export-all-excel-btn").addEventListener("click", exportAllSchedulesExcel);
             document.getElementById("clear-message-btn").addEventListener("click", clearMessage);
             document.getElementById("schedule_coverage_display_mode").addEventListener("change", saveScheduleDisplayMode);
             document.getElementById("generation-summary-clear-btn").addEventListener("click", clearGenerationSummary);
@@ -752,19 +752,25 @@
             const generateButton = document.getElementById("auto-generate-btn");
             const generateAllButton = document.getElementById("auto-generate-all-btn");
             const clearButton = document.getElementById("clear-week-btn");
+            const clearAllButton = document.getElementById("clear-all-week-btn");
             const exportButton = document.getElementById("export-excel-btn");
+            const exportAllButton = document.getElementById("export-all-excel-btn");
 
             loadButton.disabled = !hasPositions || !hasContext;
             generateButton.disabled = !scheduleDataLoaded || !hasContext;
             generateAllButton.disabled = !hasPositions || !hasWeek;
             clearButton.disabled = !scheduleDataLoaded || !hasContext;
+            clearAllButton.disabled = !hasPositions || !hasWeek;
             exportButton.disabled = !scheduleDataLoaded || !hasContext;
+            exportAllButton.disabled = !hasPositions || !hasWeek;
 
             loadButton.title = hasPositions ? "" : t("schedule_no_positions_text", "Create at least one position before loading or generating a weekly schedule.");
             generateButton.title = scheduleDataLoaded ? "" : t("schedule_action_generation_hint", "Generation is available after the selected week is loaded.");
             generateAllButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
             clearButton.title = scheduleDataLoaded ? "" : t("schedule_action_clear_hint", "Clear week becomes available after the selected week is loaded.");
+            clearAllButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
             exportButton.title = scheduleDataLoaded ? "" : t("schedule_action_export_hint", "Export becomes available after the selected week is loaded.");
+            exportAllButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
         }
 
         /* =========================================================
@@ -995,6 +1001,20 @@
             const lang = localStorage.getItem("scheduleAppLanguage") || "en";
             const url = `/api/schedule/export-excel?week_start_date=${encodeURIComponent(weekStart)}&position_id=${positionId}&lang=${encodeURIComponent(lang)}`;
             const button = document.getElementById("export-excel-btn");
+            await downloadExcelExport(url, `schedule_${weekStart}.xlsx`, button);
+        }
+
+        async function downloadExcelExport(url, fallbackFilename, button) {
+            if (window.ScheduleAndroid && typeof window.ScheduleAndroid.downloadFile === "function") {
+                const absoluteUrl = new URL(url, window.location.href).href;
+                window.ScheduleAndroid.downloadFile(
+                    absoluteUrl,
+                    fallbackFilename,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                );
+                return;
+            }
+
             button.disabled = true;
 
             try {
@@ -1007,7 +1027,7 @@
                 const blob = await response.blob();
                 const disposition = response.headers.get("Content-Disposition") || "";
                 const filenameMatch = disposition.match(/filename="([^"]+)"/);
-                const filename = filenameMatch ? filenameMatch[1] : `schedule_${weekStart}.xlsx`;
+                const filename = filenameMatch ? filenameMatch[1] : fallbackFilename;
                 const downloadUrl = URL.createObjectURL(blob);
                 const link = document.createElement("a");
                 link.href = downloadUrl;
@@ -1023,6 +1043,20 @@
                 button.disabled = false;
                 updateScheduleActionAvailability();
             }
+        }
+
+        async function exportAllSchedulesExcel() {
+            const weekStart = document.getElementById("week_start").value;
+
+            if (!weekStart) {
+                showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
+                return;
+            }
+
+            const lang = localStorage.getItem("scheduleAppLanguage") || "en";
+            const url = `/api/schedule/export-excel-all?week_start_date=${encodeURIComponent(weekStart)}&lang=${encodeURIComponent(lang)}`;
+            const button = document.getElementById("export-all-excel-btn");
+            await downloadExcelExport(url, `schedule_all_${weekStart}.xlsx`, button);
         }
 
         /* =========================================================
@@ -1193,7 +1227,9 @@
                 document.getElementById("auto-generate-btn"),
                 document.getElementById("auto-generate-all-btn"),
                 document.getElementById("clear-week-btn"),
+                document.getElementById("clear-all-week-btn"),
                 document.getElementById("export-excel-btn"),
+                document.getElementById("export-all-excel-btn"),
                 document.getElementById("schedule_coverage_display_mode")
             ];
 
@@ -1299,6 +1335,87 @@
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_clear_week", "Server error while clearing week schedule."), "danger");
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function clearAllWeekSchedules() {
+            const weekStart = document.getElementById("week_start").value;
+            const button = document.getElementById("clear-all-week-btn");
+
+            if (!weekStart) {
+                showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
+                return;
+            }
+
+            let confirmMessage = `<p>${escapeHtml(t("msg_confirm_clear_all_week", "Are you sure you want to delete the schedule for this week across all positions?"))}</p>`;
+
+            try {
+                const previewResponse = await fetch(
+                    `/api/schedule/clear-week-all-preview?week_start_date=${encodeURIComponent(weekStart)}`
+                );
+                if (previewResponse.ok) {
+                    const preview = await previewResponse.json();
+                    confirmMessage += formatConfirmImpactList([
+                        { label: t("confirm_impact_week", "Week"), value: preview.week_start_date },
+                        { label: t("confirm_impact_positions", "Positions"), value: preview.positions },
+                        { label: t("confirm_impact_schedule_entries", "Schedule entries"), value: preview.schedule_entries },
+                        { label: t("confirm_impact_day_off_statuses", "Day-off statuses"), value: preview.day_off_statuses }
+                    ]);
+                } else {
+                    confirmMessage += `<p>${escapeHtml(t("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+                }
+            } catch (error) {
+                console.error(error);
+                confirmMessage += `<p>${escapeHtml(t("confirm_impact_fetch_failed", "Could not load related records. Review carefully before deleting."))}</p>`;
+            }
+
+            const isConfirmed = await appConfirm(confirmMessage, {
+                title: t("msg_confirm_clear_all_week_title", "Clear all week schedules"),
+                confirmText: t("common_delete", "Delete"),
+                html: true
+            });
+
+            if (!isConfirmed) return;
+
+            button.disabled = true;
+
+            try {
+                const response = await fetch("/api/schedule/clear-week-all", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        week_start_date: weekStart
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    showMessage(result.detail || t("msg_failed_clear_all_week", "Failed to clear all week schedules."), "danger");
+                    return;
+                }
+
+                const backupSuffix = result.backup_name
+                    ? ` ${t("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
+                    : "";
+                showMessage(
+                    `${t("msg_all_week_cleared", "All week schedules cleared.")} ${t("msg_deleted_count", "Deleted")}: ${result.deleted_count}${backupSuffix}`,
+                    "success"
+                );
+                if (document.getElementById("position_select").value) {
+                    await loadSchedulePageData({ showLoadedMessage: false });
+                } else {
+                    allScheduleEntries = allScheduleEntries.filter(entry => !buildWeekDates(weekStart).includes(entry.date));
+                    renderScheduleInitialState();
+                    updateScheduleActionAvailability();
+                }
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_clear_all_week", "Server error while clearing all week schedules."), "danger");
             } finally {
                 button.disabled = false;
             }

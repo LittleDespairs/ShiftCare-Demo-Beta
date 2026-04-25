@@ -14,11 +14,11 @@
         Main shared stylesheet / Основной общий CSS-файл
         Он уже используется новой главной страницей
     -->
-    <link rel="stylesheet" href="/static/css/style.css?v=0.13.4_beta">
-    <link rel="stylesheet" href="/static/css/schedule.css?v=0.13.4_beta">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+    <link rel="stylesheet" href="/static/css/schedule.css?v={{ app_version }}">
 </head>
 
-<body class="app-shell ltr">
+<body class="app-shell ltr" data-app-version="{{ app_version }}">
     <div class="app-layout">
         <!--
             SIDEBAR / БОКОВОЕ МЕНЮ
@@ -179,6 +179,11 @@
                                         Export Excel
                                     </button>
 
+                                    <button id="export-all-excel-btn" class="btn btn-soft" type="button"
+                                        data-i18n="schedule_export_all_btn">
+                                        Export all Excel
+                                    </button>
+
                                     <button id="clear-message-btn" class="btn btn-secondary" type="button"
                                         data-i18n="schedule_clear_message_btn">
                                         Clear message
@@ -192,6 +197,11 @@
                                     <button id="clear-week-btn" class="btn btn-danger" type="button"
                                         data-i18n="schedule_clear_btn">
                                         Clear week
+                                    </button>
+
+                                    <button id="clear-all-week-btn" class="btn btn-danger" type="button"
+                                        data-i18n="schedule_clear_all_btn">
+                                        Clear all week
                                     </button>
                                 </div>
                             </div>
@@ -305,7 +315,7 @@
             </div>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    Schedule App v0.13.4_beta
+                    Schedule App v{{ app_version }}
                 </div>
 
                 <div class="footer-right">
@@ -321,9 +331,9 @@
         It controls language switching and RTL/LTR direction.
         Он управляет языком и направлением интерфейса RTL/LTR.
     -->
-    <script src="/static/js/i18n.js?v=0.13.4_beta"></script>
-    <script src="/static/js/pwa.js?v=0.13.4_beta"></script>
-    <script src="/static/js/schedule.js?v=0.13.4_beta"></script>
+    <script src="/static/js/i18n.js?v={{ app_version }}"></script>
+    <script src="/static/js/pwa.js?v={{ app_version }}"></script>
+    <script src="/static/js/schedule.js?v={{ app_version }}"></script>
 </body>
 
 </html>

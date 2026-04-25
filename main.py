@@ -1,10 +1,19 @@
 import database as database_module
+import json
+import os
+import re
 import sqlite3
+import subprocess
 import sys
+import tempfile
+import threading
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import date as Date, datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,10 +23,14 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, model_validator
 
 from database import get_connection, init_db
-from excel_export import build_schedule_export_workbook
+from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 
-APP_VERSION = "0.13.4_beta"
+APP_VERSION = "0.13.6_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
+GITHUB_REPO_OWNER = "LittleDespairs"
+GITHUB_REPO_NAME = "Schedule_app"
+GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases"
+GITHUB_RELEASE_ASSET_PATTERN = re.compile(r"^ScheduleApp_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$")
 
 tags_metadata = [
     {"name": "Pages", "description": "Frontend pages / HTML страницы"},
@@ -50,6 +63,7 @@ init_db()
 
 app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
+templates.env.globals["app_version"] = APP_VERSION
 
 MAX_WORK_DAYS_PER_WEEK = 6
 MAX_CONSECUTIVE_NIGHTS = 2
@@ -263,12 +277,26 @@ class ClearWeekScheduleRequest(BaseModel):
         return self
 
 
+class ClearAllWeekScheduleRequest(BaseModel):
+    week_start_date: str
+
+    @model_validator(mode="after")
+    def validate_week_start_date(self):
+        parse_date_string(self.week_start_date)
+        return self
+
+
 class DatabaseBackupCreateRequest(BaseModel):
     label: str = Field(default="manual", min_length=1, max_length=50)
 
 
 class DatabaseRestoreRequest(BaseModel):
     backup_name: str = Field(min_length=1, max_length=255)
+
+
+class UpdateInstallRequest(BaseModel):
+    download_url: str = Field(min_length=1, max_length=2048)
+    asset_name: str = Field(min_length=1, max_length=255)
 
 
 class AppSettingsUpdate(BaseModel):
@@ -587,6 +615,150 @@ def create_recovery_backup(label: str) -> str:
         raise HTTPException(status_code=500, detail=f"Failed to create safety backup: {exc}") from exc
 
 
+def normalize_version(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized.startswith("v"):
+        normalized = normalized[1:]
+    return normalized.replace("_", "-")
+
+
+def version_sort_key(value: str) -> tuple[int, int, int, int]:
+    normalized = normalize_version(value)
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", normalized)
+    if not match:
+        return 0, 0, 0, 0
+
+    major, minor, patch = (int(part) for part in match.groups())
+    stability = 0 if any(label in normalized for label in ("alpha", "beta", "rc")) else 1
+    return major, minor, patch, stability
+
+
+def is_newer_version(candidate: str, current: str | None = None) -> bool:
+    return version_sort_key(candidate) > version_sort_key(current or APP_VERSION)
+
+
+def request_github_releases() -> list[dict]:
+    request = urllib.request.Request(
+        GITHUB_RELEASES_API_URL,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"ScheduleApp/{APP_VERSION}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"Could not contact GitHub Releases: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="GitHub Releases returned invalid JSON") from exc
+
+
+def release_asset_version(asset_name: str) -> str | None:
+    match = GITHUB_RELEASE_ASSET_PATTERN.match(asset_name or "")
+    if not match:
+        return None
+    return normalize_version(match.group("version"))
+
+
+def find_latest_installable_release(releases: list[dict]) -> dict | None:
+    candidates: list[dict] = []
+    for release in releases:
+        if release.get("draft"):
+            continue
+
+        release_version = normalize_version(release.get("tag_name") or release.get("name") or "")
+        for asset in release.get("assets") or []:
+            asset_version = release_asset_version(asset.get("name", ""))
+            if not asset_version:
+                continue
+
+            candidates.append(
+                {
+                    "version": asset_version or release_version,
+                    "release_name": release.get("name") or release.get("tag_name") or asset_version,
+                    "tag_name": release.get("tag_name") or "",
+                    "body": release.get("body") or "",
+                    "published_at": release.get("published_at") or "",
+                    "asset_name": asset.get("name") or "",
+                    "download_url": asset.get("browser_download_url") or "",
+                    "size_bytes": asset.get("size") or 0,
+                    "html_url": release.get("html_url") or "",
+                    "prerelease": bool(release.get("prerelease")),
+                }
+            )
+
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda candidate: version_sort_key(candidate["version"]))
+
+
+def get_update_status() -> dict:
+    latest_release = find_latest_installable_release(request_github_releases())
+    if latest_release is None:
+        return {
+            "current_version": APP_VERSION,
+            "update_available": False,
+            "message": "No installable Windows release asset was found.",
+        }
+
+    return {
+        "current_version": APP_VERSION,
+        "update_available": is_newer_version(latest_release["version"]),
+        "latest": latest_release,
+    }
+
+
+def validate_release_download_url(download_url: str) -> None:
+    parsed = urlparse(download_url)
+    if parsed.scheme != "https":
+        raise HTTPException(status_code=400, detail="Update download URL must use HTTPS")
+
+    if parsed.netloc.lower() not in {"github.com", "objects.githubusercontent.com"}:
+        raise HTTPException(status_code=400, detail="Update download URL is not a GitHub release asset")
+
+
+def download_update_installer(download_url: str, asset_name: str) -> Path:
+    validate_release_download_url(download_url)
+    safe_asset_name = Path(asset_name).name
+    if not release_asset_version(safe_asset_name):
+        raise HTTPException(status_code=400, detail="Release asset is not a Schedule App installer")
+
+    target_dir = Path(tempfile.gettempdir()) / "Schedule App" / "updates"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / safe_asset_name
+
+    request = urllib.request.Request(
+        download_url,
+        headers={"User-Agent": f"ScheduleApp/{APP_VERSION}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response, target_path.open("wb") as output_file:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                output_file.write(chunk)
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"Could not download update: {exc}") from exc
+
+    return target_path
+
+
+def schedule_desktop_shutdown(delay_seconds: float = 2.0) -> None:
+    if not getattr(sys, "frozen", False):
+        return
+
+    def delayed_exit() -> None:
+        import time as time_module
+
+        time_module.sleep(delay_seconds)
+        os._exit(0)
+
+    threading.Thread(target=delayed_exit, daemon=True).start()
+
+
 def get_employee_week_shift_count(connection, employee_id: int, week_start_date: str) -> int:
     cursor = connection.cursor()
     cursor.execute(
@@ -785,8 +957,6 @@ def explain_same_day_pairing_rejection(
     if projected_categories == {"morning", "evening"}:
         if not employee["can_work_mornings_and_evenings"]:
             return "employee cannot work morning and evening on the same day"
-        if not template["is_split_only"] or not all(bool(entry["is_split_only"]) for entry in existing_entries):
-            return "morning-evening combo requires split-only templates"
         if get_week_preference(connection, employee["id"], date_string) == "no_morning_evening_combo":
             return "weekly preference blocks morning-evening combo"
 
@@ -1262,6 +1432,36 @@ def restore_database_backup_endpoint(request_data: DatabaseRestoreRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"message": "Database restored successfully", **result}
+
+
+@app.get("/api/updates/check", tags=["Settings"])
+def check_for_updates():
+    return get_update_status()
+
+
+@app.post("/api/updates/install", tags=["Settings"])
+def install_update(request_data: UpdateInstallRequest):
+    status = get_update_status()
+    latest = status.get("latest")
+    if not latest or not status.get("update_available"):
+        return {
+            "message": "No newer update is available.",
+            "current_version": APP_VERSION,
+            "update_available": False,
+        }
+
+    if request_data.download_url != latest["download_url"] or request_data.asset_name != latest["asset_name"]:
+        raise HTTPException(status_code=400, detail="Requested update does not match the latest release")
+
+    installer_path = download_update_installer(latest["download_url"], latest["asset_name"])
+    subprocess.Popen([str(installer_path), "/CLOSEAPPLICATIONS"], close_fds=True)
+    schedule_desktop_shutdown()
+
+    return {
+        "message": "Update installer started.",
+        "installer_path": str(installer_path),
+        "latest": latest,
+    }
 
 
 @app.get("/", tags=["Pages"])
@@ -2509,6 +2709,74 @@ def get_clear_week_schedule_preview(position_id: int, week_start_date: str):
         connection.close()
 
 
+@app.post("/api/schedule/clear-week-all", tags=["Schedule"])
+def clear_all_week_schedules(request_data: ClearAllWeekScheduleRequest):
+    connection = get_connection()
+    try:
+        week_dates = build_week_dates(request_data.week_start_date)
+        cursor = connection.cursor()
+        backup_name = create_recovery_backup("clear_week_all")
+        cursor.execute(
+            f"""
+            DELETE FROM schedule_entries
+            WHERE date IN ({','.join(['?'] * len(week_dates))})
+            """,
+            week_dates,
+        )
+        deleted_count = cursor.rowcount
+        cursor.execute(
+            f"""
+            DELETE FROM employee_day_statuses
+            WHERE status_type = 'day_off'
+              AND date IN ({','.join(['?'] * len(week_dates))})
+            """,
+            week_dates,
+        )
+        day_off_deleted_count = cursor.rowcount
+        connection.commit()
+        return {
+            "message": "All week schedules cleared successfully",
+            "deleted_count": deleted_count,
+            "day_off_deleted_count": day_off_deleted_count,
+            "backup_name": backup_name,
+        }
+    finally:
+        connection.close()
+
+
+@app.get("/api/schedule/clear-week-all-preview", tags=["Schedule"])
+def get_clear_all_week_schedules_preview(week_start_date: str):
+    connection = get_connection()
+    try:
+        week_dates = build_week_dates(week_start_date)
+        cursor = connection.cursor()
+        return {
+            "week_start_date": week_start_date,
+            "positions": fetch_count(cursor, "SELECT COUNT(*) FROM positions"),
+            "schedule_entries": fetch_count(
+                cursor,
+                f"""
+                SELECT COUNT(*)
+                FROM schedule_entries
+                WHERE date IN ({','.join(['?'] * len(week_dates))})
+                """,
+                tuple(week_dates),
+            ),
+            "day_off_statuses": fetch_count(
+                cursor,
+                f"""
+                SELECT COUNT(*)
+                FROM employee_day_statuses
+                WHERE status_type = 'day_off'
+                  AND date IN ({','.join(['?'] * len(week_dates))})
+                """,
+                tuple(week_dates),
+            ),
+        }
+    finally:
+        connection.close()
+
+
 def load_position_employees(connection, position_id: int) -> list[dict]:
     cursor = connection.cursor()
     cursor.execute(
@@ -2722,26 +2990,7 @@ def template_start_minutes(template: dict) -> int:
 
 
 def build_template_assignment_options(template: dict, templates: list[dict]) -> list[list[dict]]:
-    if not template["is_split_only"]:
-        return [[template]]
-
-    if template["category"] not in {"morning", "evening"}:
-        return []
-
-    partner_category = "evening" if template["category"] == "morning" else "morning"
-    partners = [
-        candidate
-        for candidate in templates
-        if candidate["id"] != template["id"]
-        and candidate["is_split_only"]
-        and candidate["category"] == partner_category
-    ]
-
-    options = []
-    for partner in partners:
-        pair = sorted([template, partner], key=template_start_minutes)
-        options.append(pair)
-    return options
+    return [[template]]
 
 
 def build_valid_assignment_previews(
@@ -2998,12 +3247,7 @@ def explain_unfilled_interval_slot(
 
         employee_had_relevant_template = False
         for template in covering_templates:
-            options = build_template_assignment_options(template, templates)
-            if not options:
-                reason_counts["split-only template has no valid pair"] = reason_counts.get("split-only template has no valid pair", 0) + 1
-                continue
-
-            for assignment_templates in options:
+            for assignment_templates in build_template_assignment_options(template, templates):
                 staged_entries: list[dict] = []
                 option_reason = None
                 for assignment_template in assignment_templates:
@@ -3166,13 +3410,9 @@ def explain_unfilled_legacy_category(
     require_female: bool = False,
     require_male: bool = False,
 ) -> str:
-    category_templates = [
-        template
-        for template in templates
-        if template["category"] == category and not template["is_split_only"]
-    ]
+    category_templates = [template for template in templates if template["category"] == category]
     if not category_templates:
-        return f"no active non-split {category} templates"
+        return f"no active {category} templates"
 
     reason_counts: dict[str, int] = {}
     for employee in employees:
@@ -3365,17 +3605,13 @@ def build_generation_feasibility_report(
                     })
     else:
         for requirement in legacy_requirements:
-            category_templates = [
-                template
-                for template in templates
-                if template["category"] == requirement["shift_category"] and not template["is_split_only"]
-            ]
+            category_templates = [template for template in templates if template["category"] == requirement["shift_category"]]
             if not category_templates:
                 issues.append({
                     "severity": "blocking",
                     "kind": "template",
                     "shift_category": requirement["shift_category"],
-                    "message": "No active non-split template exists for this legacy shift requirement.",
+                    "message": "No active template exists for this legacy shift requirement.",
                 })
             if requirement["required_total"] > employee_count:
                 issues.append({
@@ -3619,7 +3855,7 @@ def fill_day_by_legacy_categories(
     app_settings = get_position_app_settings(connection, position_id)
     for requirement in requirements:
         category = requirement["shift_category"]
-        category_templates = [template for template in templates if template["category"] == category and not template["is_split_only"]]
+        category_templates = [template for template in templates if template["category"] == category]
         while True:
             entries = [
                 entry for entry in get_schedule_entries(connection, position_id=position_id, dates=[date_string])
@@ -3966,14 +4202,13 @@ def build_generated_assignment_groups(connection, created_entries: list[dict], p
         if row["id"] in visited:
             continue
 
-        if row["is_split_only"] and row["category"] in {"morning", "evening"}:
+        if row["category"] in {"morning", "evening"}:
             group = [
                 candidate
                 for candidate in rows
                 if candidate["employee_id"] == row["employee_id"]
                 and candidate["position_id"] == row["position_id"]
                 and candidate["date"] == row["date"]
-                and candidate["is_split_only"]
                 and candidate["category"] in {"morning", "evening"}
             ]
         else:
@@ -4280,6 +4515,46 @@ def export_schedule_excel(week_start_date: str, position_id: int, lang: str = "e
         )
         safe_position_name = position["name"].replace(" ", "_")
         filename = f"schedule_{safe_position_name}_{week_start_date}.xlsx"
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    finally:
+        connection.close()
+
+
+@app.get("/api/schedule/export-excel-all", tags=["Schedule"])
+def export_all_schedules_excel(week_start_date: str, lang: str = "en"):
+    connection = get_connection()
+    try:
+        if lang not in {"en", "ru", "he"}:
+            lang = "en"
+        week_dates = build_week_dates(week_start_date)
+        cursor = connection.cursor()
+        cursor.execute("SELECT * FROM positions ORDER BY id")
+        positions = [row_to_position_dict(row) for row in cursor.fetchall()]
+        employees_by_position = {
+            position["id"]: load_position_employees(connection, position["id"])
+            for position in positions
+        }
+        employee_ids = sorted({
+            employee["id"]
+            for employees in employees_by_position.values()
+            for employee in employees
+        })
+        entries = get_schedule_entries(connection, dates=week_dates)
+        day_status_map = get_employee_day_status_map(connection, employee_ids, week_dates) if employee_ids else {}
+        output = build_all_schedule_export_workbook(
+            positions=positions,
+            week_start_date=week_start_date,
+            week_dates=week_dates,
+            employees_by_position=employees_by_position,
+            entries=entries,
+            day_status_map=day_status_map,
+            lang=lang,
+        )
+        filename = f"schedule_all_{week_start_date}.xlsx"
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

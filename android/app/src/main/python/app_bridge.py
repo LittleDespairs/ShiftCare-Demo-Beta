@@ -8,7 +8,7 @@ import uvicorn
 
 
 SERVER_HOST = "127.0.0.1"
-SERVER_PORT = 8765
+SERVER_PORT = 8766
 _server_thread = None
 _runtime_backend_dir = None
 

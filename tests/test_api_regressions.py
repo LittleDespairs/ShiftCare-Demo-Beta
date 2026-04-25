@@ -1,3 +1,7 @@
+import os
+import sqlite3
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -1214,6 +1218,81 @@ class ApiRegressionTests(unittest.TestCase):
             create=True,
         ):
             self.assertEqual(main.get_base_path(), Path("D:/fake_bundle"))
+
+    def test_frozen_database_path_uses_local_app_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            local_app_data = temp_path / "LocalAppData"
+            bundled_dir = temp_path / "bundle"
+            install_dir = temp_path / "Program Files" / "Schedule App"
+            bundled_dir.mkdir(parents=True)
+            install_dir.mkdir(parents=True)
+
+            bundled_database = bundled_dir / "schedule_app.db"
+            connection = sqlite3.connect(bundled_database)
+            connection.execute("CREATE TABLE marker (id INTEGER PRIMARY KEY)")
+            connection.close()
+
+            with (
+                patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}),
+                patch.object(sys, "frozen", True, create=True),
+                patch.object(sys, "_MEIPASS", str(bundled_dir), create=True),
+                patch.object(sys, "executable", str(install_dir / "ScheduleApp.exe")),
+            ):
+                runtime_path = database.get_database_path()
+
+            expected_path = local_app_data / "Schedule App" / "schedule_app.db"
+            self.assertEqual(runtime_path, expected_path)
+            self.assertTrue(runtime_path.exists())
+            self.assertFalse((install_dir / "schedule_app.db").exists())
+
+    def test_update_check_reports_newer_github_release_asset(self):
+        releases = [
+            {
+                "tag_name": "v0.13.6-beta",
+                "name": "Schedule App 0.13.6-beta",
+                "draft": False,
+                "prerelease": True,
+                "body": "Updater release",
+                "published_at": "2026-04-26T00:00:00Z",
+                "html_url": "https://github.com/LittleDespairs/Schedule_app/releases/tag/v0.13.6-beta",
+                "assets": [
+                    {
+                        "name": "ScheduleApp_Setup_0.13.6-beta.exe",
+                        "browser_download_url": "https://github.com/LittleDespairs/Schedule_app/releases/download/v0.13.6-beta/ScheduleApp_Setup_0.13.6-beta.exe",
+                        "size": 123,
+                    }
+                ],
+            }
+        ]
+
+        with patch.object(main, "APP_VERSION", "0.13.5_beta"), patch.object(main, "request_github_releases", return_value=releases):
+            payload = main.get_update_status()
+
+        self.assertTrue(payload["update_available"])
+        self.assertEqual(payload["latest"]["version"], "0.13.6-beta")
+        self.assertEqual(payload["latest"]["asset_name"], "ScheduleApp_Setup_0.13.6-beta.exe")
+
+    def test_update_check_ignores_non_installer_assets(self):
+        releases = [
+            {
+                "tag_name": "v0.13.7-beta",
+                "draft": False,
+                "assets": [
+                    {
+                        "name": "source.zip",
+                        "browser_download_url": "https://github.com/LittleDespairs/Schedule_app/releases/download/v0.13.7-beta/source.zip",
+                        "size": 123,
+                    }
+                ],
+            }
+        ]
+
+        with patch.object(main, "request_github_releases", return_value=releases):
+            payload = main.get_update_status()
+
+        self.assertFalse(payload["update_available"])
+        self.assertIn("No installable", payload["message"])
 
     def test_database_backup_create_list_restore_round_trip(self):
         employee_id = self._create_employee(full_name="Employee A")
