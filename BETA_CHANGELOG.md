@@ -2,6 +2,25 @@
 
 This file tracks beta builds across the `0.12.x_beta` and `0.13.x_beta` lines.
 
+## 0.13.8_beta - 2026-04-26
+
+### Release Focus
+
+Publish a test update build through the public release channel.
+
+### What Changed
+
+- Bumped runtime and packaging metadata to `0.13.8_beta`.
+- Prepared `ScheduleApp_Setup_0.13.8-beta.exe` as a public release asset for validating in-app updates from `0.13.7_beta`.
+
+### User Impact
+
+- Installed `0.13.7_beta` builds can detect this release as a newer version through Settings > About > Updates.
+
+### Technical Impact
+
+- This release is intended to validate the public release-only update feed.
+
 ## 0.13.7_beta - 2026-04-26
 
 ### Release Focus
