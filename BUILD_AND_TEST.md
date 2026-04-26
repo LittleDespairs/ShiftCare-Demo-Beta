@@ -80,13 +80,13 @@ See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
 Current spec:
 
 ```text
-ScheduleApp_0.13.6_beta.spec
+ScheduleApp_0.13.7_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.13.6_beta.spec
+.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.13.7_beta.spec
 ```
 
 ## Windows Installer
@@ -109,7 +109,7 @@ If Inno Setup is not installed locally:
 Expected installer output:
 
 ```text
-dist\installer\ScheduleApp_Setup_0.13.6-beta.exe
+dist\installer\ScheduleApp_Setup_0.13.7-beta.exe
 ```
 
 ## Before Committing

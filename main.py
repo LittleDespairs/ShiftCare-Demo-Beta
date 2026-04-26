@@ -25,10 +25,10 @@ from pydantic import BaseModel, Field, model_validator
 from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 
-APP_VERSION = "0.13.6_beta"
+APP_VERSION = "0.13.7_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
 GITHUB_REPO_OWNER = "LittleDespairs"
-GITHUB_REPO_NAME = "Schedule_app"
+GITHUB_REPO_NAME = "Schedule_app_releases"
 GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases"
 GITHUB_RELEASE_ASSET_PATTERN = re.compile(r"^ScheduleApp_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$")
 

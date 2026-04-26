@@ -1,8 +1,8 @@
 #define MyAppName "Schedule App"
 #define MyAppPublisher "Schedule App"
-#define MyAppVersion "0.13.6-beta"
-#define MyAppExeName "ScheduleApp_0.13.6_beta.exe"
-#define MyAppDistDir "..\dist\ScheduleApp_0.13.6_beta"
+#define MyAppVersion "0.13.7-beta"
+#define MyAppExeName "ScheduleApp_0.13.7_beta.exe"
+#define MyAppDistDir "..\dist\ScheduleApp_0.13.7_beta"
 #define MyAppIcon "..\static\icons\app-icon.ico"
 
 [Setup]
@@ -14,8 +14,8 @@ AppPublisher={#MyAppPublisher}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Installer
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion=0.13.6.0
-VersionInfoVersion=0.13.6.0
+VersionInfoProductVersion=0.13.7.0
+VersionInfoVersion=0.13.7.0
 DefaultDirName={autopf}\Schedule App
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes

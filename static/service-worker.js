@@ -1,4 +1,4 @@
-const CACHE_NAME = "schedule-app-0.13.6-beta-shell";
+const CACHE_NAME = "schedule-app-0.13.7-beta-shell";
 
 const SHELL_ASSETS = [
   "/",
@@ -6,12 +6,12 @@ const SHELL_ASSETS = [
   "/employees",
   "/weekly-preferences",
   "/settings",
-  "/static/css/style.css?v=0.13.6_beta",
-  "/static/css/schedule.css?v=0.13.6_beta",
-  "/static/js/i18n.js?v=0.13.6_beta",
-  "/static/js/pwa.js?v=0.13.6_beta",
-  "/static/js/schedule.js?v=0.13.6_beta",
-  "/static/js/employees.js?v=0.13.6_beta",
+  "/static/css/style.css?v=0.13.7_beta",
+  "/static/css/schedule.css?v=0.13.7_beta",
+  "/static/js/i18n.js?v=0.13.7_beta",
+  "/static/js/pwa.js?v=0.13.7_beta",
+  "/static/js/schedule.js?v=0.13.7_beta",
+  "/static/js/employees.js?v=0.13.7_beta",
   "/static/manifest.webmanifest",
   "/static/icons/app-icon.svg"
 ];
