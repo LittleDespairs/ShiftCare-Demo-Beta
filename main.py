@@ -938,6 +938,41 @@ def require_preference_access_if_auth_initialized(authorization: str | None = He
     raise HTTPException(status_code=403, detail="Preference permissions are required")
 
 
+def auth_is_initialized() -> bool:
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        return active_user_count(cursor) > 0
+    finally:
+        connection.close()
+
+
+def require_roles_if_auth_initialized(
+    allowed_roles: set[str],
+    authorization: str | None = Header(default=None),
+) -> dict | None:
+    if not auth_is_initialized():
+        return None
+
+    current_user = get_current_user(authorization)
+    membership = find_any_membership_with_role(current_user, allowed_roles)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return {"user": current_user, "membership": membership}
+
+
+def require_schedule_view_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
+    return require_roles_if_auth_initialized({"owner", "admin", "scheduler", "manager", "read_only"}, authorization)
+
+
+def require_schedule_edit_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
+    return require_roles_if_auth_initialized({"owner", "admin", "scheduler"}, authorization)
+
+
+def require_setup_edit_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
+    return require_roles_if_auth_initialized({"owner", "admin", "scheduler"}, authorization)
+
+
 def require_employee_preference_scope(preference_context: dict | None, employee_id: int) -> None:
     if not preference_context or preference_context["scope"] == "all":
         return
@@ -2777,18 +2812,24 @@ def guide_page(request: Request):
 
 
 @app.get("/api/employees", tags=["Employees"])
-def get_employees():
+def get_employees(access_context: dict | None = Depends(require_preference_access_if_auth_initialized)):
+    employee_filter = None
+    if access_context and access_context["scope"] == "own":
+        employee_filter = access_context["membership"]["employee_id"]
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute("SELECT * FROM employees ORDER BY id")
+        if employee_filter:
+            cursor.execute("SELECT * FROM employees WHERE id = ? ORDER BY id", (employee_filter,))
+        else:
+            cursor.execute("SELECT * FROM employees ORDER BY id")
         return [row_to_employee_dict(row) for row in cursor.fetchall()]
     finally:
         connection.close()
 
 
 @app.post("/api/employees", tags=["Employees"])
-def add_employee(employee: EmployeeCreate):
+def add_employee(employee: EmployeeCreate, _access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -2819,7 +2860,11 @@ def add_employee(employee: EmployeeCreate):
 
 
 @app.put("/api/employees/{employee_id}", tags=["Employees"])
-def update_employee(employee_id: int, employee: EmployeeCreate):
+def update_employee(
+    employee_id: int,
+    employee: EmployeeCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -2852,7 +2897,7 @@ def update_employee(employee_id: int, employee: EmployeeCreate):
 
 
 @app.delete("/api/employees/{employee_id}", tags=["Employees"])
-def delete_employee(employee_id: int):
+def delete_employee(employee_id: int, _access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -2866,7 +2911,7 @@ def delete_employee(employee_id: int):
 
 
 @app.get("/api/employees/{employee_id}/delete-impact", tags=["Employees"])
-def get_employee_delete_impact(employee_id: int):
+def get_employee_delete_impact(employee_id: int, _access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -2913,7 +2958,7 @@ def get_positions():
 
 
 @app.post("/api/positions", tags=["Positions"])
-def add_position(position: PositionCreate):
+def add_position(position: PositionCreate, _access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -2947,7 +2992,11 @@ def add_position(position: PositionCreate):
 
 
 @app.put("/api/positions/{position_id}", tags=["Positions"])
-def update_position(position_id: int, position: PositionCreate):
+def update_position(
+    position_id: int,
+    position: PositionCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -2982,7 +3031,7 @@ def update_position(position_id: int, position: PositionCreate):
 
 
 @app.delete("/api/positions/{position_id}", tags=["Positions"])
-def delete_position(position_id: int):
+def delete_position(position_id: int, _access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -2996,7 +3045,10 @@ def delete_position(position_id: int):
 
 
 @app.get("/api/positions/{position_id}/delete-impact", tags=["Positions"])
-def get_position_delete_impact(position_id: int):
+def get_position_delete_impact(
+    position_id: int,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3046,7 +3098,10 @@ def get_employee_positions():
 
 
 @app.post("/api/employee-positions", tags=["Assignments"])
-def assign_employee_to_position(assignment: EmployeePositionCreate):
+def assign_employee_to_position(
+    assignment: EmployeePositionCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3075,7 +3130,10 @@ def assign_employee_to_position(assignment: EmployeePositionCreate):
 
 
 @app.put("/api/employee-positions", tags=["Assignments"])
-def update_employee_position(assignment: EmployeePositionCreate):
+def update_employee_position(
+    assignment: EmployeePositionCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3104,7 +3162,11 @@ def update_employee_position(assignment: EmployeePositionCreate):
 
 
 @app.delete("/api/employee-positions", tags=["Assignments"])
-def delete_employee_position(employee_id: int, position_id: int):
+def delete_employee_position(
+    employee_id: int,
+    position_id: int,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3119,7 +3181,11 @@ def delete_employee_position(employee_id: int, position_id: int):
 
 
 @app.get("/api/employee-positions/delete-impact", tags=["Assignments"])
-def get_employee_position_delete_impact(employee_id: int, position_id: int):
+def get_employee_position_delete_impact(
+    employee_id: int,
+    position_id: int,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3176,7 +3242,10 @@ def get_shift_templates(active_only: bool = False, position_id: int | None = Non
 
 
 @app.post("/api/shift-templates", tags=["Shift Templates"])
-def add_shift_template(template: ShiftTemplateCreate):
+def add_shift_template(
+    template: ShiftTemplateCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     parse_time_string(template.start_time)
     parse_time_string(template.end_time)
     connection = get_connection()
@@ -3209,7 +3278,11 @@ def add_shift_template(template: ShiftTemplateCreate):
 
 
 @app.put("/api/shift-templates/{template_id}", tags=["Shift Templates"])
-def update_shift_template(template_id: int, template: ShiftTemplateCreate):
+def update_shift_template(
+    template_id: int,
+    template: ShiftTemplateCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     parse_time_string(template.start_time)
     parse_time_string(template.end_time)
     connection = get_connection()
@@ -3245,7 +3318,10 @@ def update_shift_template(template_id: int, template: ShiftTemplateCreate):
 
 
 @app.delete("/api/shift-templates/{template_id}", tags=["Shift Templates"])
-def delete_shift_template(template_id: int):
+def delete_shift_template(
+    template_id: int,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3262,7 +3338,10 @@ def delete_shift_template(template_id: int):
 
 
 @app.get("/api/shift-templates/{template_id}/delete-impact", tags=["Shift Templates"])
-def get_shift_template_delete_impact(template_id: int):
+def get_shift_template_delete_impact(
+    template_id: int,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3312,7 +3391,10 @@ def get_shift_requirements():
 
 
 @app.post("/api/shift-requirements", tags=["Requirements"])
-def save_shift_requirement(requirement: ShiftRequirementCreate):
+def save_shift_requirement(
+    requirement: ShiftRequirementCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3380,7 +3462,10 @@ def get_app_settings_api():
 
 
 @app.put("/api/app-settings", tags=["Requirements"])
-def update_app_settings(settings: AppSettingsUpdate):
+def update_app_settings(
+    settings: AppSettingsUpdate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         save_app_settings(connection, settings)
@@ -3394,7 +3479,7 @@ def update_app_settings(settings: AppSettingsUpdate):
 
 
 @app.post("/api/app-settings/reset-colors", tags=["Requirements"])
-def reset_app_visual_colors():
+def reset_app_visual_colors(_access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
     connection = get_connection()
     try:
         updated_positions = reset_visual_color_settings(connection)
@@ -3410,7 +3495,10 @@ def reset_app_visual_colors():
 
 
 @app.post("/api/coverage-requirements", tags=["Requirements"])
-def add_coverage_requirement(requirement: CoverageRequirementCreate):
+def add_coverage_requirement(
+    requirement: CoverageRequirementCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3438,7 +3526,11 @@ def add_coverage_requirement(requirement: CoverageRequirementCreate):
 
 
 @app.put("/api/coverage-requirements/{requirement_id}", tags=["Requirements"])
-def update_coverage_requirement(requirement_id: int, requirement: CoverageRequirementCreate):
+def update_coverage_requirement(
+    requirement_id: int,
+    requirement: CoverageRequirementCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3467,7 +3559,10 @@ def update_coverage_requirement(requirement_id: int, requirement: CoverageRequir
 
 
 @app.delete("/api/coverage-requirements/{requirement_id}", tags=["Requirements"])
-def delete_coverage_requirement(requirement_id: int):
+def delete_coverage_requirement(
+    requirement_id: int,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3877,7 +3972,7 @@ def get_schedule_entries(connection, position_id: int | None = None, dates: list
 
 
 @app.get("/api/schedule", tags=["Schedule"])
-def get_schedule():
+def get_schedule(_access: dict | None = Depends(require_schedule_view_if_auth_initialized)):
     connection = get_connection()
     try:
         return get_schedule_entries(connection)
@@ -3886,7 +3981,7 @@ def get_schedule():
 
 
 @app.post("/api/schedule", tags=["Schedule"])
-def add_schedule_entry(entry: ScheduleEntryCreate):
+def add_schedule_entry(entry: ScheduleEntryCreate, _access: dict | None = Depends(require_schedule_edit_if_auth_initialized)):
     connection = get_connection()
     try:
         validate_manual_schedule_entry_basics(connection, entry)
@@ -3906,7 +4001,10 @@ def add_schedule_entry(entry: ScheduleEntryCreate):
 
 
 @app.delete("/api/schedule/{schedule_entry_id}", tags=["Schedule"])
-def delete_schedule_entry(schedule_entry_id: int):
+def delete_schedule_entry(
+    schedule_entry_id: int,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3925,7 +4023,11 @@ def delete_schedule_entry(schedule_entry_id: int):
 
 
 @app.patch("/api/schedule/{schedule_entry_id}/status", tags=["Schedule"])
-def update_schedule_entry_status(schedule_entry_id: int, status: ScheduleEntryStatusUpdate):
+def update_schedule_entry_status(
+    schedule_entry_id: int,
+    status: ScheduleEntryStatusUpdate,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3942,7 +4044,10 @@ def update_schedule_entry_status(schedule_entry_id: int, status: ScheduleEntrySt
 
 
 @app.post("/api/schedule/clear-week", tags=["Schedule"])
-def clear_week_schedule(request_data: ClearWeekScheduleRequest):
+def clear_week_schedule(
+    request_data: ClearWeekScheduleRequest,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         week_dates = build_week_dates(request_data.week_start_date)
@@ -3979,7 +4084,11 @@ def clear_week_schedule(request_data: ClearWeekScheduleRequest):
 
 
 @app.get("/api/schedule/clear-week-preview", tags=["Schedule"])
-def get_clear_week_schedule_preview(position_id: int, week_start_date: str):
+def get_clear_week_schedule_preview(
+    position_id: int,
+    week_start_date: str,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         week_dates = build_week_dates(week_start_date)
@@ -4028,7 +4137,10 @@ def get_clear_week_schedule_preview(position_id: int, week_start_date: str):
 
 
 @app.post("/api/schedule/clear-week-all", tags=["Schedule"])
-def clear_all_week_schedules(request_data: ClearAllWeekScheduleRequest):
+def clear_all_week_schedules(
+    request_data: ClearAllWeekScheduleRequest,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         week_dates = build_week_dates(request_data.week_start_date)
@@ -4063,7 +4175,10 @@ def clear_all_week_schedules(request_data: ClearAllWeekScheduleRequest):
 
 
 @app.get("/api/schedule/clear-week-all-preview", tags=["Schedule"])
-def get_clear_all_week_schedules_preview(week_start_date: str):
+def get_clear_all_week_schedules_preview(
+    week_start_date: str,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         week_dates = build_week_dates(week_start_date)
@@ -5740,7 +5855,10 @@ def run_auto_generate_for_position(connection, position_id: int, week_start_date
 
 
 @app.post("/api/schedule/auto-generate", tags=["Schedule"])
-def auto_generate_schedule(request_data: AutoGenerateScheduleRequest):
+def auto_generate_schedule(
+    request_data: AutoGenerateScheduleRequest,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         result = run_auto_generate_for_position(connection, request_data.position_id, request_data.week_start_date)
@@ -5751,7 +5869,10 @@ def auto_generate_schedule(request_data: AutoGenerateScheduleRequest):
 
 
 @app.post("/api/schedule/auto-generate-all", tags=["Schedule"])
-def auto_generate_all_schedules(request_data: AutoGenerateAllScheduleRequest):
+def auto_generate_all_schedules(
+    request_data: AutoGenerateAllScheduleRequest,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -5809,6 +5930,7 @@ def export_schedule_excel(
     week_start_date: str,
     position_id: int,
     lang: str = "en",
+    _access: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
     connection = get_connection()
@@ -5865,6 +5987,7 @@ def export_schedule_excel(
 def export_all_schedules_excel(
     week_start_date: str,
     lang: str = "en",
+    _access: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
     connection = get_connection()
@@ -5923,6 +6046,7 @@ def export_schedule_word(
     week_start_date: str,
     position_id: int,
     lang: str = "en",
+    _access: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
     connection = get_connection()
@@ -5979,6 +6103,7 @@ def export_schedule_word(
 def export_all_schedules_word(
     week_start_date: str,
     lang: str = "en",
+    _access: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
     connection = get_connection()

@@ -98,18 +98,18 @@ class ApiRegressionTests(unittest.TestCase):
         payload.update(overrides)
         return payload
 
-    def _create_employee(self, **overrides):
-        response = self.client.post("/api/employees", json=self._employee_payload(**overrides))
+    def _create_employee(self, headers=None, **overrides):
+        response = self.client.post("/api/employees", json=self._employee_payload(**overrides), headers=headers)
         self.assertEqual(response.status_code, 200)
         return response.json()["employee"]["id"]
 
-    def _create_position(self, **overrides):
-        response = self.client.post("/api/positions", json=self._position_payload(**overrides))
+    def _create_position(self, headers=None, **overrides):
+        response = self.client.post("/api/positions", json=self._position_payload(**overrides), headers=headers)
         self.assertEqual(response.status_code, 200)
         return response.json()["position"]["id"]
 
-    def _create_shift_template(self, **overrides):
-        response = self.client.post("/api/shift-templates", json=self._template_payload(**overrides))
+    def _create_shift_template(self, headers=None, **overrides):
+        response = self.client.post("/api/shift-templates", json=self._template_payload(**overrides), headers=headers)
         self.assertEqual(response.status_code, 200)
         return response.json()["shift_template"]["id"]
 
@@ -470,7 +470,8 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(members_response.status_code, 200)
         self.assertEqual(len(members_response.json()["members"]), 1)
 
-        employee_record_id = self._create_employee(full_name="Employee User")
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+        employee_record_id = self._create_employee(headers=owner_headers, full_name="Employee User")
         invitation_response = self.client.post(
             "/api/organizations/1/invitations",
             headers={"Authorization": f"Bearer {owner_token}"},
@@ -888,6 +889,58 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(list_response.status_code, 200)
         self.assertEqual([item["employee_id"] for item in list_response.json()], [employee_a])
+
+        employee_list_response = self.client.get("/api/employees", headers=employee_headers)
+        self.assertEqual(employee_list_response.status_code, 200)
+        self.assertEqual([item["id"] for item in employee_list_response.json()], [employee_a])
+
+        employee_schedule_response = self.client.get("/api/schedule", headers=employee_headers)
+        self.assertEqual(employee_schedule_response.status_code, 403)
+
+        owner_employee_list_response = self.client.get("/api/employees", headers=owner_headers)
+        self.assertEqual(owner_employee_list_response.status_code, 200)
+        self.assertEqual(
+            {item["id"] for item in owner_employee_list_response.json()},
+            {employee_a, employee_b},
+        )
+
+    def test_schedule_edit_permissions_after_auth_bootstrap(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+
+        read_only_invitation = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "viewer@example.com", "role": "read_only", "expires_in_days": 7},
+        )
+        self.assertEqual(read_only_invitation.status_code, 200)
+        read_only_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": read_only_invitation.json()["invitation_token"],
+                "full_name": "Viewer User",
+                "password": "ViewerPass123",
+            },
+        )
+        self.assertEqual(read_only_response.status_code, 200)
+        read_only_headers = {"Authorization": f"Bearer {read_only_response.json()['access_token']}"}
+
+        self.assertEqual(self.client.get("/api/schedule", headers=read_only_headers).status_code, 200)
+        denied_create = self.client.post(
+            "/api/schedule",
+            headers=read_only_headers,
+            json={"employee_id": 1, "position_id": 1, "date": "2026-04-20", "shift_template_id": 1},
+        )
+        self.assertEqual(denied_create.status_code, 403)
 
     def test_schedule_entry_status_and_clear_week_flow(self):
         employee_id = self._create_employee()
@@ -1497,7 +1550,7 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(owner_response.status_code, 200)
         owner_token = owner_response.json()["access_token"]
-        position_id = self._create_position()
+        position_id = self._create_position(headers={"Authorization": f"Bearer {owner_token}"})
 
         export_response = self.client.get(
             "/api/schedule/export-excel",

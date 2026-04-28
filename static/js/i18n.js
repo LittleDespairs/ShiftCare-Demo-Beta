@@ -19,6 +19,7 @@ const I18N_TRANSLATIONS = {
         nav_employees: "Employees",
         nav_requests: "Preferences",
         nav_settings: "Settings",
+        nav_organization: "Organization",
 
         sidebar_footer_title: "Version {version}",
         sidebar_footer_text: "Interface redesign in progress. The current goal is a simpler and clearer workflow.",
@@ -869,6 +870,7 @@ const I18N_TRANSLATIONS = {
         nav_employees: "Сотрудники",
         nav_requests: "Пожелания",
         nav_settings: "Настройки",
+        nav_organization: "Организация",
 
         sidebar_footer_title: "Версия {version}",
         sidebar_footer_text: "Сейчас идёт редизайн интерфейса. Главная цель — сделать рабочий процесс проще и понятнее.",
@@ -1715,6 +1717,7 @@ const I18N_TRANSLATIONS = {
         nav_employees: "עובדים",
         nav_requests: "העדפות",
         nav_settings: "הגדרות",
+        nav_organization: "ארגון",
 
         sidebar_footer_title: "גרסה {version}",
         sidebar_footer_text: "כעת מתבצע עיצוב מחדש של הממשק. המטרה היא להפוך את תהליך העבודה לפשוט וברור יותר.",
