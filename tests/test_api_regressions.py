@@ -386,6 +386,10 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("/static/js/organization.js", organization_response.text)
         self.assertIn("Invite employee", organization_response.text)
 
+        organization_alias_response = self.client.get("/organizations")
+        self.assertEqual(organization_alias_response.status_code, 200)
+        self.assertIn("/static/js/organization.js", organization_alias_response.text)
+
         invitation_response = self.client.get("/accept-invitation")
         self.assertEqual(invitation_response.status_code, 200)
         self.assertIn("/static/js/accept_invitation.js", invitation_response.text)

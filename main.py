@@ -2256,6 +2256,11 @@ def organization_page(request: Request):
     return templates.TemplateResponse(request=request, name="organization.html", context={})
 
 
+@app.get("/organizations", tags=["Pages"], include_in_schema=False)
+def organizations_page_alias(request: Request):
+    return templates.TemplateResponse(request=request, name="organization.html", context={})
+
+
 @app.get("/accept-invitation", tags=["Pages"])
 def accept_invitation_page(request: Request):
     return templates.TemplateResponse(request=request, name="accept_invitation.html", context={})
