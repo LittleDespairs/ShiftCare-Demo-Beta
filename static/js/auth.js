@@ -6,6 +6,9 @@
     const bootstrapForm = document.getElementById("bootstrap-form");
     const message = document.getElementById("auth-message");
     const sessionPanel = document.getElementById("current-session");
+    const apiLocalButton = document.getElementById("api-local-btn");
+    const apiCloudButton = document.getElementById("api-cloud-btn");
+    const apiModeStatus = document.getElementById("api-mode-status");
     const tabs = Array.from(document.querySelectorAll("[data-auth-tab]"));
 
     function escapeHtml(value) {
@@ -79,6 +82,18 @@
         document.getElementById("auth-clear-session").addEventListener("click", clearSession);
     }
 
+    function renderApiMode() {
+        if (!apiModeStatus) return;
+        const apiBaseUrl = window.scheduleAuth?.getApiBaseUrl?.() || "";
+        apiModeStatus.textContent = apiBaseUrl
+            ? `Using cloud beta API: ${apiBaseUrl}`
+            : `Using local API: ${window.location.origin}`;
+        apiLocalButton?.classList.toggle("btn-primary", !apiBaseUrl);
+        apiLocalButton?.classList.toggle("btn-secondary", Boolean(apiBaseUrl));
+        apiCloudButton?.classList.toggle("btn-primary", Boolean(apiBaseUrl));
+        apiCloudButton?.classList.toggle("btn-soft", !apiBaseUrl);
+    }
+
     async function postJson(url, payload) {
         const response = await fetch(url, {
             method: "POST",
@@ -96,6 +111,22 @@
 
     tabs.forEach((tab) => {
         tab.addEventListener("click", () => setActiveTab(tab.dataset.authTab));
+    });
+
+    apiLocalButton?.addEventListener("click", () => {
+        window.scheduleAuth?.useLocalApi?.();
+        clearSession();
+        renderApiMode();
+        document.dispatchEvent(new CustomEvent("schedule-api-mode-changed"));
+        setMessage("Local API selected. Please log in again.", "success");
+    });
+
+    apiCloudButton?.addEventListener("click", () => {
+        window.scheduleAuth?.useCloudApi?.();
+        clearSession();
+        renderApiMode();
+        document.dispatchEvent(new CustomEvent("schedule-api-mode-changed"));
+        setMessage("Cloud beta API selected. Please log in again.", "success");
     });
 
     loginForm.addEventListener("submit", async (event) => {
@@ -134,4 +165,5 @@
     });
 
     renderSession();
+    renderApiMode();
 })();

@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 from typing import Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -33,8 +34,9 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.14.2_beta"
+APP_VERSION = "0.14.3_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
+DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app"
 GITHUB_REPO_OWNER = "LittleDespairs"
 GITHUB_REPO_NAME = "Schedule_app_releases"
 GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases"
@@ -63,6 +65,15 @@ app = FastAPI(
     description="Web application for nursing staff scheduling",
     version=APP_VERSION,
     openapi_tags=tags_metadata,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 
@@ -152,6 +163,16 @@ def health_ready():
     if payload["status"] != "ok":
         raise HTTPException(status_code=503, detail=payload)
     return payload
+
+
+@app.get("/api/client-config", tags=["Health"])
+def client_config():
+    return {
+        "app_version": APP_VERSION,
+        "default_api_base_url": os.environ.get("SCHEDULE_APP_DEFAULT_API_BASE_URL", DEFAULT_CLOUD_API_BASE_URL).strip(),
+        "local_api_base_url": "",
+        "environment": get_app_config().app_env,
+    }
 
 
 # =========================

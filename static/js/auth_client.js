@@ -2,6 +2,76 @@
     const TOKEN_KEY = "schedule_app_auth_token";
     const USER_KEY = "schedule_app_auth_user";
     const ACTIVE_ORGANIZATION_KEY = "schedule_app_active_organization_id";
+    const API_BASE_URL_KEY = "schedule_app_api_base_url";
+    const CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app";
+    const nativeFetch = window.fetch.bind(window);
+
+    function normalizeApiBaseUrl(value) {
+        const trimmed = String(value || "").trim().replace(/\/+$/, "");
+        if (!trimmed || trimmed === window.location.origin) return "";
+        try {
+            const parsed = new URL(trimmed);
+            if (!["http:", "https:"].includes(parsed.protocol)) return "";
+            return parsed.origin;
+        } catch (error) {
+            return "";
+        }
+    }
+
+    function getApiBaseUrl() {
+        return normalizeApiBaseUrl(localStorage.getItem(API_BASE_URL_KEY));
+    }
+
+    function setApiBaseUrl(value) {
+        const normalized = normalizeApiBaseUrl(value);
+        if (!normalized) {
+            localStorage.removeItem(API_BASE_URL_KEY);
+            return "";
+        }
+        localStorage.setItem(API_BASE_URL_KEY, normalized);
+        return normalized;
+    }
+
+    function useLocalApi() {
+        localStorage.removeItem(API_BASE_URL_KEY);
+    }
+
+    function useCloudApi() {
+        return setApiBaseUrl(CLOUD_API_BASE_URL);
+    }
+
+    function resolveApiUrl(input) {
+        const apiBaseUrl = getApiBaseUrl();
+        const rawUrl = typeof input === "string" ? input : input?.url || "";
+        if (!apiBaseUrl || !rawUrl) return input;
+        if (rawUrl.startsWith("/api/")) {
+            return `${apiBaseUrl}${rawUrl}`;
+        }
+        if (rawUrl.startsWith(window.location.origin + "/api/")) {
+            return `${apiBaseUrl}${new URL(rawUrl).pathname}${new URL(rawUrl).search}`;
+        }
+        return input;
+    }
+
+    function isApiRequest(input) {
+        const rawUrl = typeof input === "string" ? input : input?.url || "";
+        if (rawUrl.startsWith("/api/") || rawUrl.startsWith(window.location.origin + "/api/")) return true;
+        const apiBaseUrl = getApiBaseUrl();
+        return Boolean(apiBaseUrl && rawUrl.startsWith(`${apiBaseUrl}/api/`));
+    }
+
+    window.fetch = function scheduleApiFetch(input, options = {}) {
+        const rewrittenInput = resolveApiUrl(input);
+        const headers = new Headers(options.headers || {});
+        const token = getToken();
+        if (isApiRequest(input) && token && !headers.has("Authorization")) {
+            headers.set("Authorization", `Bearer ${token}`);
+        }
+        if (isApiRequest(input) && options.body && !headers.has("Content-Type")) {
+            headers.set("Content-Type", "application/json");
+        }
+        return nativeFetch(rewrittenInput, { ...options, headers });
+    };
 
     function getToken() {
         return localStorage.getItem(TOKEN_KEY) || "";
@@ -96,5 +166,12 @@
         getActiveMembership,
         request,
         requireSession,
+        API_BASE_URL_KEY,
+        CLOUD_API_BASE_URL,
+        getApiBaseUrl,
+        setApiBaseUrl,
+        useLocalApi,
+        useCloudApi,
+        isApiRequest,
     };
 })();

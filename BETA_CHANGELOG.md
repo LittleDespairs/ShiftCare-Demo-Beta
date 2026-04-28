@@ -2,6 +2,21 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
 
+## 0.14.3_beta - 2026-04-29
+
+### What Changed
+
+- Added a login-screen API mode switch for Local API and Cloud beta API.
+- Added a global frontend API resolver so existing `/api/...` calls can route to the selected backend.
+- Added CORS support for local desktop/browser shells calling the Cloud Run API.
+- Added a richer status indicator showing online/offline state plus Local API or Cloud API readiness.
+- Extracted core authorization database helpers into `auth_repository.py` as a first step toward a database adapter layer.
+- Kept Cloud Run explicitly in smoke mode; Cloud SQL/PostgreSQL production traffic is still blocked until the SQLite query layer is migrated.
+
+### Release Artifact
+
+- `dist\installer\ScheduleApp_Setup_0.14.3-beta.exe`
+
 ## 0.14.2_beta - 2026-04-29
 
 ### What Changed

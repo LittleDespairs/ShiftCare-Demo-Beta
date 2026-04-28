@@ -76,6 +76,47 @@ body.ltr {
     color: var(--warning);
 }
 
+.online-status-indicator.cloud-api {
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+
+.api-mode-panel {
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-soft);
+}
+
+.api-mode-title {
+    margin: 0 0 8px;
+    font-size: 0.86rem;
+    font-weight: 800;
+    color: var(--text);
+}
+
+.api-mode-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.api-mode-actions .btn {
+    min-height: 34px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+}
+
+.api-mode-status {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
 html.embedded-admin-root,
 body.embedded-admin {
     background: transparent;

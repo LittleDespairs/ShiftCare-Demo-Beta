@@ -215,7 +215,7 @@
         setText("#bootstrap-form label:nth-of-type(2) span, #accept-form label:nth-of-type(2) span", "auth_your_name");
         setText("#bootstrap-form .auth-submit", "auth_create_owner_account");
         setText(".auth-side h2", document.getElementById("accept-title") ? "auth_join_org" : "auth_foundation");
-        setText(".auth-side p:not(.auth-kicker)", document.getElementById("accept-title") ? "auth_join_text" : "auth_foundation_text");
+        setText(".auth-side-content > p:not(.auth-kicker):not(.api-mode-status):not(.api-mode-title)", document.getElementById("accept-title") ? "auth_join_text" : "auth_foundation_text");
         setText("#accept-title", "auth_accept_title");
         setText("#accept-form label:nth-of-type(1) span", "auth_invitation_token");
         setText("#accept-form .auth-submit", "auth_accept_button");
