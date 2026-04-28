@@ -49,6 +49,14 @@
             org_table_status: "Status",
             org_email_verified: "Email verified",
             org_table_accepted: "Accepted",
+            org_table_actions: "Actions",
+            org_remove_member: "Remove",
+            org_revoke_invitation: "Revoke",
+            org_msg_confirm_remove_member: "Remove this member from the organization?",
+            org_msg_confirm_revoke_invitation: "Revoke this invitation link?",
+            org_msg_member_removed: "Member access removed.",
+            org_msg_invitation_revoked: "Invitation revoked.",
+            common_delete: "Delete",
         },
         ru: {
             app_title: "Schedule App",
@@ -99,6 +107,14 @@
             org_table_status: "Статус",
             org_email_verified: "Email подтверждён",
             org_table_accepted: "Принято",
+            org_table_actions: "Действия",
+            org_remove_member: "Удалить",
+            org_revoke_invitation: "Отозвать",
+            org_msg_confirm_remove_member: "Удалить этого участника из организации?",
+            org_msg_confirm_revoke_invitation: "Отозвать эту ссылку приглашения?",
+            org_msg_member_removed: "Доступ участника удалён.",
+            org_msg_invitation_revoked: "Приглашение отозвано.",
+            common_delete: "Удалить",
         },
         he: {
             app_title: "Schedule App",
@@ -149,6 +165,14 @@
             org_table_status: "סטטוס",
             org_email_verified: "אימייל אומת",
             org_table_accepted: "התקבל",
+            org_table_actions: "פעולות",
+            org_remove_member: "הסר",
+            org_revoke_invitation: "בטל",
+            org_msg_confirm_remove_member: "להסיר את החבר מהארגון?",
+            org_msg_confirm_revoke_invitation: "לבטל את קישור ההזמנה?",
+            org_msg_member_removed: "גישת החבר הוסרה.",
+            org_msg_invitation_revoked: "ההזמנה בוטלה.",
+            common_delete: "מחיקה",
         },
     };
 
@@ -223,9 +247,25 @@
         setText(".organization-table th:nth-child(1)", "org_table_name");
         setText(".organization-table th:nth-child(4)", "org_table_status");
         setText(".organization-table:first-of-type th:nth-child(5)", "org_email_verified");
+        setText(".organization-table:first-of-type th:nth-child(6)", "org_table_actions");
         setText(".organization-panel-wide .organization-table th:nth-child(4)", "org_expires");
         setText(".organization-panel-wide .organization-table th:nth-child(5)", "org_table_accepted");
+        setText(".organization-panel-wide .organization-table th:nth-child(6)", "org_table_actions");
+
+        const membersTable = document.getElementById("members-table-body")?.closest("table");
+        const invitationsTable = document.getElementById("invitations-table-body")?.closest("table");
+        [
+            [membersTable, ["org_table_name", "auth_email", "org_role", "org_table_status", "org_email_verified", "org_table_actions"]],
+            [invitationsTable, ["auth_email", "org_role", "org_table_status", "org_expires", "org_table_accepted", "org_table_actions"]],
+        ].forEach(([table, keys]) => {
+            if (!table) return;
+            table.querySelectorAll("th").forEach((header, index) => {
+                if (keys[index]) header.textContent = t(keys[index]);
+            });
+        });
     }
+
+    window.organizationAuthText = t;
 
     document.addEventListener("DOMContentLoaded", applyAuthTranslations);
     document.addEventListener("app-language-changed", applyAuthTranslations);

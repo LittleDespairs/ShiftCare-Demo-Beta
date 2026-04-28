@@ -24,6 +24,7 @@ Start the `0.14.x_beta` line with the first organization-based authorization fou
 - Added `/login`, `/organization`, and `/accept-invitation` screens for the desktop-hosted web UI.
 - Added local session token storage in the UI and a shared frontend auth client for authenticated API calls.
 - Added organization member and invitation management UI for owner/admin workflows.
+- Added owner/admin organization actions to remove member access and revoke pending invitation links.
 - Added Google Cloud `0.14.x_beta` setup notes and `.env.example` while keeping real secrets out of git.
 - Updated the release metadata, Windows packaging metadata, service worker cache version, and Android beta version name to `0.14.1_beta`.
 - Added Word `.docx` export endpoints for the selected schedule and all schedules.
@@ -44,6 +45,7 @@ Start the `0.14.x_beta` line with the first organization-based authorization fou
 ### Verification
 
 - `.\.venv\Scripts\python.exe -m unittest discover -s tests`
+- Regression test for removing organization members, revoking their active sessions, and revoking pending invitations.
 - FastAPI smoke test for `/login`, `/organization`, and `/accept-invitation`.
 - `.\.venv\Scripts\python.exe -m py_compile main.py excel_export.py word_export.py`
 - `.\.venv\Scripts\python.exe -m unittest discover tests`

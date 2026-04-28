@@ -460,6 +460,7 @@ class ApiRegressionTests(unittest.TestCase):
             },
         )
         self.assertEqual(owner_response.status_code, 200)
+        owner_user_id = owner_response.json()["user"]["id"]
         owner_token = owner_response.json()["access_token"]
 
         members_response = self.client.get(
@@ -487,6 +488,7 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(accept_response.status_code, 200)
         employee_token = accept_response.json()["access_token"]
+        employee_user_id = accept_response.json()["user"]["id"]
         employee_memberships = accept_response.json()["user"]["memberships"]
         self.assertEqual(employee_memberships[0]["role"], "employee")
         self.assertEqual(employee_memberships[0]["organization_id"], 1)
@@ -510,6 +512,74 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(invitations_response.status_code, 200)
         self.assertEqual(invitations_response.json()["invitations"][0]["status"], "accepted")
+
+        remove_self_response = self.client.delete(
+            f"/api/organizations/1/members/{owner_user_id}",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        self.assertEqual(remove_self_response.status_code, 400)
+
+        remove_employee_response = self.client.delete(
+            f"/api/organizations/1/members/{employee_user_id}",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        self.assertEqual(remove_employee_response.status_code, 200)
+
+        revoked_session_response = self.client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {employee_token}"},
+        )
+        self.assertEqual(revoked_session_response.status_code, 401)
+
+        members_after_remove_response = self.client.get(
+            "/api/organizations/1/members",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        self.assertEqual(members_after_remove_response.status_code, 200)
+        self.assertNotIn(
+            "employee@example.com",
+            [member["email"] for member in members_after_remove_response.json()["members"]],
+        )
+        connection = database.get_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT status
+                FROM organization_memberships
+                WHERE organization_id = 1 AND user_id = ?
+                """,
+                (employee_user_id,),
+            )
+            self.assertEqual(cursor.fetchone()["status"], "disabled")
+        finally:
+            connection.close()
+
+        pending_invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers={"Authorization": f"Bearer {owner_token}"},
+            json={"email": "pending@example.com", "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(pending_invitation_response.status_code, 200)
+        pending_invitation_id = pending_invitation_response.json()["invitation"]["id"]
+
+        revoke_invitation_response = self.client.delete(
+            f"/api/organizations/1/invitations/{pending_invitation_id}",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        self.assertEqual(revoke_invitation_response.status_code, 200)
+
+        invitations_after_revoke_response = self.client.get(
+            "/api/organizations/1/invitations",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        self.assertEqual(invitations_after_revoke_response.status_code, 200)
+        revoked_invitation = next(
+            invitation
+            for invitation in invitations_after_revoke_response.json()["invitations"]
+            if invitation["id"] == pending_invitation_id
+        )
+        self.assertEqual(revoked_invitation["status"], "revoked")
 
     def test_login_page_returns_auth_shell(self):
         response = self.client.get("/login")

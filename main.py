@@ -2233,7 +2233,7 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
                    om.role, om.status AS membership_status, om.employee_id, om.created_at, om.updated_at
             FROM organization_memberships om
             JOIN users u ON u.id = om.user_id
-            WHERE om.organization_id = ?
+            WHERE om.organization_id = ? AND om.status = 'active'
             ORDER BY u.full_name, u.email
             """,
             (organization_id,),
@@ -2348,6 +2348,143 @@ def create_organization_invitation(
     except sqlite3.IntegrityError as exc:
         connection.rollback()
         raise HTTPException(status_code=409, detail="Invitation already exists or token collision") from exc
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.delete("/api/organizations/{organization_id}/members/{user_id}", tags=["Auth"])
+def remove_organization_member(
+    organization_id: int,
+    user_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    actor_membership = require_organization_role(current_user, organization_id, {"owner", "admin"})
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="You cannot remove your own organization access")
+
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT om.role, om.status, u.email, u.full_name
+            FROM organization_memberships om
+            JOIN users u ON u.id = om.user_id
+            WHERE om.organization_id = ? AND om.user_id = ?
+            """,
+            (organization_id, user_id),
+        )
+        target = cursor.fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="Organization member not found")
+        if target["status"] != "active":
+            raise HTTPException(status_code=409, detail="Organization member is not active")
+
+        target_role = target["role"]
+        actor_role = actor_membership["role"]
+        if target_role == "owner":
+            if actor_role != "owner":
+                raise HTTPException(status_code=403, detail="Only owners can remove another owner")
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS owner_count
+                FROM organization_memberships
+                WHERE organization_id = ? AND role = 'owner' AND status = 'active'
+                """,
+                (organization_id,),
+            )
+            if cursor.fetchone()["owner_count"] <= 1:
+                raise HTTPException(status_code=409, detail="Cannot remove the last active owner")
+        elif target_role == "admin" and actor_role != "owner":
+            raise HTTPException(status_code=403, detail="Only owners can remove administrators")
+
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            UPDATE organization_memberships
+            SET status = 'disabled', employee_id = NULL, updated_at = ?
+            WHERE organization_id = ? AND user_id = ? AND status = 'active'
+            """,
+            (now, organization_id, user_id),
+        )
+        cursor.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND revoked_at IS NULL
+            """,
+            (now, user_id),
+        )
+        write_auth_audit_event(
+            cursor,
+            "member_removed",
+            user_id=current_user["id"],
+            organization_id=organization_id,
+            metadata={
+                "removed_user_id": user_id,
+                "removed_email": target["email"],
+                "removed_role": target_role,
+            },
+        )
+        connection.commit()
+        return {"message": "Organization member access removed"}
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.delete("/api/organizations/{organization_id}/invitations/{invitation_id}", tags=["Auth"])
+def revoke_organization_invitation(
+    organization_id: int,
+    invitation_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT id, email, role, status
+            FROM organization_invitations
+            WHERE id = ? AND organization_id = ?
+            """,
+            (invitation_id, organization_id),
+        )
+        invitation = cursor.fetchone()
+        if not invitation:
+            raise HTTPException(status_code=404, detail="Invitation not found")
+        if invitation["status"] != "pending":
+            raise HTTPException(status_code=409, detail="Only pending invitations can be revoked")
+
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            UPDATE organization_invitations
+            SET status = 'revoked'
+            WHERE id = ? AND organization_id = ? AND status = 'pending'
+            """,
+            (invitation_id, organization_id),
+        )
+        write_auth_audit_event(
+            cursor,
+            "invitation_revoked",
+            user_id=current_user["id"],
+            organization_id=organization_id,
+            metadata={
+                "invitation_id": invitation_id,
+                "email": invitation["email"],
+                "role": invitation["role"],
+                "revoked_at": now,
+            },
+        )
+        connection.commit()
+        return {"message": "Invitation revoked"}
     except HTTPException:
         connection.rollback()
         raise

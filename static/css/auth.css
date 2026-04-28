@@ -250,6 +250,35 @@
     border-bottom: none;
 }
 
+.organization-table-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-start;
+}
+
+.organization-table-button {
+    border: 1px solid transparent;
+    border-radius: 8px;
+    min-height: 32px;
+    padding: 6px 10px;
+    background: #f8fafc;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.organization-table-button.danger {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #b91c1c;
+}
+
+.organization-table-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
 .organization-message {
     min-height: 24px;
     margin-top: 16px;

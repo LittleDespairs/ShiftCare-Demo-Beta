@@ -14,6 +14,24 @@
         return window.escapeHtml ? window.escapeHtml(value) : String(value ?? "");
     }
 
+    function uiText(key, fallback) {
+        if (typeof window.organizationAuthText === "function") {
+            const translated = window.organizationAuthText(key);
+            return translated === key ? (fallback || key) : translated;
+        }
+        return fallback || key;
+    }
+
+    async function confirmAction(message) {
+        if (typeof window.appConfirm === "function") {
+            return window.appConfirm(text(message), {
+                confirmText: uiText("common_delete", "Delete"),
+                html: true,
+            });
+        }
+        return window.confirm(message);
+    }
+
     function setMessage(value, type = "") {
         elements.message.textContent = value || "";
         elements.message.className = `organization-message ${type}`.trim();
@@ -90,7 +108,7 @@
 
     function renderMembers(members, emptyMessage = "No members found.") {
         if (!members.length) {
-            elements.membersBody.innerHTML = `<tr><td colspan="5">${text(emptyMessage)}</td></tr>`;
+            elements.membersBody.innerHTML = `<tr><td colspan="6">${text(emptyMessage)}</td></tr>`;
             return;
         }
         elements.membersBody.innerHTML = members.map((member) => `
@@ -100,13 +118,26 @@
                 <td>${text(member.role)}</td>
                 <td>${text(member.membership_status)}</td>
                 <td>${member.email_verified ? "Yes" : "No"}</td>
+                <td>
+                    <div class="organization-table-actions">
+                        <button
+                            class="organization-table-button danger"
+                            data-organization-action="remove-member"
+                            data-user-id="${Number(member.user_id)}"
+                            ${member.user_id === state.user.id || member.membership_status !== "active" ? "disabled" : ""}
+                            type="button"
+                        >
+                            ${text(uiText("org_remove_member", "Remove"))}
+                        </button>
+                    </div>
+                </td>
             </tr>
         `).join("");
     }
 
     function renderInvitations(invitations, emptyMessage = "No invitations found.") {
         if (!invitations.length) {
-            elements.invitationsBody.innerHTML = `<tr><td colspan="5">${text(emptyMessage)}</td></tr>`;
+            elements.invitationsBody.innerHTML = `<tr><td colspan="6">${text(emptyMessage)}</td></tr>`;
             return;
         }
         elements.invitationsBody.innerHTML = invitations.map((invitation) => `
@@ -116,8 +147,55 @@
                 <td>${text(invitation.status)}</td>
                 <td>${text(invitation.expires_at)}</td>
                 <td>${text(invitation.accepted_at || "")}</td>
+                <td>
+                    <div class="organization-table-actions">
+                        <button
+                            class="organization-table-button danger"
+                            data-organization-action="revoke-invitation"
+                            data-invitation-id="${Number(invitation.id)}"
+                            ${invitation.status !== "pending" ? "disabled" : ""}
+                            type="button"
+                        >
+                            ${text(uiText("org_revoke_invitation", "Revoke"))}
+                        </button>
+                    </div>
+                </td>
             </tr>
         `).join("");
+    }
+
+    async function removeMember(userId) {
+        const confirmed = await confirmAction(uiText("org_msg_confirm_remove_member", "Remove this member from the organization?"));
+        if (!confirmed) return;
+        setMessage("", "");
+        try {
+            await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/members/${userId}`, {
+                method: "DELETE",
+            });
+            await refreshCurrentUser();
+            renderOrganizationSelector();
+            renderIdentity();
+            renderPermissions();
+            await loadOrganizationData();
+            setMessage(uiText("org_msg_member_removed", "Member access removed."), "success");
+        } catch (error) {
+            setMessage(error.message, "error");
+        }
+    }
+
+    async function revokeInvitation(invitationId) {
+        const confirmed = await confirmAction(uiText("org_msg_confirm_revoke_invitation", "Revoke this invitation link?"));
+        if (!confirmed) return;
+        setMessage("", "");
+        try {
+            await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/invitations/${invitationId}`, {
+                method: "DELETE",
+            });
+            await loadOrganizationData();
+            setMessage(uiText("org_msg_invitation_revoked", "Invitation revoked."), "success");
+        } catch (error) {
+            setMessage(error.message, "error");
+        }
     }
 
     async function loadOrganizationData() {
@@ -232,6 +310,16 @@
             if (!elements.inviteResult.value) return;
             await navigator.clipboard.writeText(elements.inviteResult.value);
             setMessage("Invitation link copied.", "success");
+        });
+        elements.membersBody.addEventListener("click", (event) => {
+            const button = event.target.closest('[data-organization-action="remove-member"]');
+            if (!button || button.disabled) return;
+            removeMember(Number(button.dataset.userId));
+        });
+        elements.invitationsBody.addEventListener("click", (event) => {
+            const button = event.target.closest('[data-organization-action="revoke-invitation"]');
+            if (!button || button.disabled) return;
+            revokeInvitation(Number(button.dataset.invitationId));
         });
         elements.logout.addEventListener("click", async () => {
             try {
