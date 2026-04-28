@@ -27,6 +27,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from app_config import get_app_config, validate_runtime_config
+from cloud_sql import check_postgres_connection
 from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
@@ -114,20 +115,29 @@ def health_live():
 
 @app.get("/api/health/ready", tags=["Health"])
 def health_ready():
+    config = get_app_config()
     runtime = validate_runtime_config()
     database_status = "ok"
     database_error = None
-    try:
-        connection = get_connection()
+    if config.database_engine in {"postgres", "postgresql"}:
+        postgres_check = check_postgres_connection(config)
+        database_status = postgres_check["status"]
+        database_error = postgres_check.get("error")
+        if postgres_check["status"] != "ok":
+            runtime["issues"].append("PostgreSQL connection check failed")
+            runtime["status"] = "blocked"
+    else:
         try:
-            connection.execute("SELECT 1")
-        finally:
-            connection.close()
-    except Exception as exc:
-        database_status = "error"
-        database_error = str(exc)
-        runtime["issues"].append("Database connection check failed")
-        runtime["status"] = "blocked"
+            connection = get_connection()
+            try:
+                connection.execute("SELECT 1")
+            finally:
+                connection.close()
+        except Exception as exc:
+            database_status = "error"
+            database_error = str(exc)
+            runtime["issues"].append("Database connection check failed")
+            runtime["status"] = "blocked"
 
     payload = {
         "status": "ok" if runtime["status"] == "ok" and database_status == "ok" else "blocked",

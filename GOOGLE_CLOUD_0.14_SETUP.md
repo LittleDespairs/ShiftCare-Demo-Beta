@@ -137,6 +137,7 @@ The repository includes:
 Dockerfile
 requirements-cloud.txt
 cloudbuild.yaml
+docs/postgresql/001_initial_schema.sql
 ```
 
 Smoke deployment command from the repository root:
@@ -168,12 +169,35 @@ SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db
 
 This is intentionally non-production because Cloud Run container storage is ephemeral.
 
+## Cloud SQL PostgreSQL Preparation
+
+The PostgreSQL baseline schema lives at:
+
+```text
+docs/postgresql/001_initial_schema.sql
+```
+
+Apply it only to an empty Cloud SQL PostgreSQL database. The runtime readiness endpoint can validate PostgreSQL connectivity when `DATABASE_ENGINE=postgresql`, but the application data layer is still blocked for production until the SQLite SQL in `main.py` is migrated to PostgreSQL-compatible queries.
+
+Required PostgreSQL environment variables:
+
+```text
+DATABASE_ENGINE=postgresql
+DATABASE_NAME=schedule_beta
+DATABASE_USER=schedule_app
+DATABASE_PASSWORD=<secret>
+CLOUD_SQL_CONNECTION_NAME=schedule-app-beta:me-west1:schedule-beta-db
+DATABASE_SSL_MODE=require
+```
+
+For Cloud Run with Cloud SQL Unix socket connectivity, keep `DATABASE_HOST` empty and configure the Cloud SQL connection on the Cloud Run service.
+
 ## PostgreSQL Migration Blockers
 
 Before using Cloud SQL for real beta organizations, complete these items:
 
 - Replace direct `sqlite3` calls with a database abstraction that supports PostgreSQL placeholders and row access.
-- Add PostgreSQL DDL migrations for every table currently created in `database.py`.
+- Review and harden the PostgreSQL DDL baseline for every table currently created in `database.py`.
 - Replace SQLite-specific `PRAGMA`, `AUTOINCREMENT`, `randomblob`, and trigger syntax.
 - Replace SQLite file backup/restore for deployed mode with logical exports or Cloud SQL backups.
 - Add integration tests that run against a disposable PostgreSQL database.

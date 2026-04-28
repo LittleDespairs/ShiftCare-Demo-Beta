@@ -13,6 +13,12 @@ class AppConfig:
     app_env: str
     database_engine: str
     database_path: str
+    database_name: str
+    database_user: str
+    database_password: str
+    database_host: str
+    database_port: int
+    database_ssl_mode: str
     cloud_sql_connection_name: str
     google_cloud_project: str
     google_cloud_region: str
@@ -33,6 +39,12 @@ def get_app_config() -> AppConfig:
         app_env=os.environ.get("APP_ENV", "development").strip().lower() or "development",
         database_engine=os.environ.get("DATABASE_ENGINE", "sqlite").strip().lower() or "sqlite",
         database_path=os.environ.get("SCHEDULE_APP_DATABASE_PATH", "").strip(),
+        database_name=os.environ.get("DATABASE_NAME", "").strip(),
+        database_user=os.environ.get("DATABASE_USER", "").strip(),
+        database_password=os.environ.get("DATABASE_PASSWORD", "").strip(),
+        database_host=os.environ.get("DATABASE_HOST", "").strip(),
+        database_port=int(os.environ.get("DATABASE_PORT", "5432").strip() or "5432"),
+        database_ssl_mode=os.environ.get("DATABASE_SSL_MODE", "require").strip().lower() or "require",
         cloud_sql_connection_name=os.environ.get("CLOUD_SQL_CONNECTION_NAME", "").strip(),
         google_cloud_project=os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip(),
         google_cloud_region=os.environ.get("GOOGLE_CLOUD_REGION", "").strip(),
@@ -46,11 +58,25 @@ def validate_runtime_config(config: AppConfig | None = None) -> dict:
     issues: list[str] = []
     warnings: list[str] = []
 
-    if config.database_engine not in {"sqlite"}:
+    if config.database_engine not in {"sqlite", "postgres", "postgresql"}:
+        issues.append(f"DATABASE_ENGINE={config.database_engine} is not supported.")
+
+    if config.database_engine in {"postgres", "postgresql"}:
+        missing = []
+        if not config.database_name:
+            missing.append("DATABASE_NAME")
+        if not config.database_user:
+            missing.append("DATABASE_USER")
+        if not config.database_password:
+            missing.append("DATABASE_PASSWORD")
+        if not config.database_host and not config.cloud_sql_connection_name:
+            missing.append("DATABASE_HOST or CLOUD_SQL_CONNECTION_NAME")
+        if missing:
+            issues.append("PostgreSQL configuration is incomplete: " + ", ".join(missing))
+
         issues.append(
-            "DATABASE_ENGINE=%s is configured, but the current 0.14.x beta backend still uses the SQLite data layer. "
-            "PostgreSQL/Cloud SQL support needs a dedicated migration before production data can run on Google Cloud."
-            % config.database_engine
+            "PostgreSQL/Cloud SQL connectivity can be checked, but the application data layer is not yet switched "
+            "from SQLite SQL to PostgreSQL SQL. Keep production traffic blocked until the adapter migration is complete."
         )
 
     if config.is_deployed_env and not config.auth_token_secret:
