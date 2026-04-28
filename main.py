@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, date as Date, datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
+from time import monotonic
 from urllib.parse import urlparse
 from typing import Literal
 
@@ -35,6 +36,11 @@ GITHUB_REPO_OWNER = "LittleDespairs"
 GITHUB_REPO_NAME = "Schedule_app_releases"
 GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases"
 GITHUB_RELEASE_ASSET_PATTERN = re.compile(r"^ScheduleApp_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$")
+AUTH_LOGIN_RATE_LIMIT_ATTEMPTS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
+AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
+AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS", "900"))
+AUTH_LOGIN_ATTEMPTS: dict[str, dict] = {}
+AUTH_LOGIN_ATTEMPTS_LOCK = threading.Lock()
 
 tags_metadata = [
     {"name": "Auth", "description": "Authorization and organization access / Авторизация и доступ к организации"},
@@ -684,6 +690,63 @@ def verify_password(password: str, password_hash: str | None) -> bool:
 
 def hash_session_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def get_request_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    if forwarded_for:
+        return forwarded_for
+    return request.client.host if request.client else "unknown"
+
+
+def login_rate_limit_key(email: str, request: Request) -> str:
+    return f"{email}|{get_request_ip(request)}"
+
+
+def is_login_rate_limited(email: str, request: Request) -> bool:
+    now = monotonic()
+    key = login_rate_limit_key(email, request)
+    with AUTH_LOGIN_ATTEMPTS_LOCK:
+        entry = AUTH_LOGIN_ATTEMPTS.get(key)
+        if not entry:
+            return False
+        locked_until = float(entry.get("locked_until") or 0)
+        if locked_until > now:
+            return True
+        failures = [
+            timestamp
+            for timestamp in entry.get("failures", [])
+            if now - timestamp <= AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS
+        ]
+        if failures:
+            entry["failures"] = failures
+            entry["locked_until"] = 0
+        else:
+            AUTH_LOGIN_ATTEMPTS.pop(key, None)
+        return False
+
+
+def record_login_failure(email: str, request: Request) -> bool:
+    now = monotonic()
+    key = login_rate_limit_key(email, request)
+    with AUTH_LOGIN_ATTEMPTS_LOCK:
+        entry = AUTH_LOGIN_ATTEMPTS.setdefault(key, {"failures": [], "locked_until": 0})
+        entry["failures"] = [
+            timestamp
+            for timestamp in entry["failures"]
+            if now - timestamp <= AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS
+        ]
+        entry["failures"].append(now)
+        if len(entry["failures"]) >= AUTH_LOGIN_RATE_LIMIT_ATTEMPTS:
+            entry["locked_until"] = now + AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS
+            return True
+    return False
+
+
+def clear_login_failures(email: str, request: Request) -> None:
+    key = login_rate_limit_key(email, request)
+    with AUTH_LOGIN_ATTEMPTS_LOCK:
+        AUTH_LOGIN_ATTEMPTS.pop(key, None)
 
 
 def build_auth_response(connection, user_id: int) -> dict:
@@ -1736,11 +1799,20 @@ def bootstrap_first_owner(request_data: AuthBootstrapRequest):
 
 
 @app.post("/api/auth/login", tags=["Auth"])
-def login(request_data: AuthLoginRequest):
+def login(request_data: AuthLoginRequest, request: Request):
     connection = get_connection()
     try:
         cursor = connection.cursor()
         email = str(request_data.email).strip().lower()
+        if is_login_rate_limited(email, request):
+            write_auth_audit_event(
+                cursor,
+                "login_rate_limited",
+                metadata={"email": email, "ip": get_request_ip(request)},
+            )
+            connection.commit()
+            raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
+
         cursor.execute(
             """
             SELECT id, password_hash, status
@@ -1751,6 +1823,21 @@ def login(request_data: AuthLoginRequest):
         )
         user_row = cursor.fetchone()
         if not user_row or user_row["status"] != "active" or not verify_password(request_data.password, user_row["password_hash"]):
+            user_id = user_row["id"] if user_row else None
+            write_auth_audit_event(
+                cursor,
+                "login_failed",
+                user_id=user_id,
+                metadata={"email": email, "ip": get_request_ip(request)},
+            )
+            connection.commit()
+            if record_login_failure(email, request):
+                write_auth_audit_event_record(
+                    "login_rate_limited",
+                    user_id=user_id,
+                    metadata={"email": email, "ip": get_request_ip(request)},
+                )
+                raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
             raise HTTPException(status_code=401, detail="Invalid email or password")
 
         now = current_utc_timestamp()
@@ -1758,6 +1845,7 @@ def login(request_data: AuthLoginRequest):
         write_auth_audit_event(cursor, "login_success", user_id=user_row["id"])
         auth_response = build_auth_response(connection, user_row["id"])
         connection.commit()
+        clear_login_failures(email, request)
         return auth_response
     except HTTPException:
         connection.rollback()

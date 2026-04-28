@@ -135,7 +135,7 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
 - [ ] Avoid medical/resident CRM data in the `0.14.x_beta` authorization milestone.
 - [ ] Add audit logs for login, logout, invitation, role change, export, backup, and restore.
 - [ ] Add rate limits for login and password reset.
-- [ ] Add account lockout or abuse protection.
+- [x] Add account lockout or abuse protection.
 - [ ] Add privacy notice draft for cloud account usage.
 - [ ] Add data retention policy draft.
 - [ ] Add incident response checklist draft.
@@ -300,7 +300,7 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
 - [ ] Не добавлять медицинские данные и CRM домов престарелых в milestone авторизации `0.14.x_beta`.
 - [ ] Добавить audit logs для login, logout, invitation, смены роли, export, backup и restore.
 - [ ] Добавить rate limits для входа и сброса пароля.
-- [ ] Добавить защиту от перебора пароля или блокировку аккаунта.
+- [x] Добавить защиту от перебора пароля или блокировку аккаунта.
 - [ ] Подготовить черновик privacy notice для использования cloud account.
 - [ ] Подготовить черновик data retention policy.
 - [ ] Подготовить черновик incident response checklist.

@@ -21,6 +21,8 @@ class ApiRegressionTests(unittest.TestCase):
     def setUp(self):
         self.connection = database.get_connection()
         self._reset_database()
+        with main.AUTH_LOGIN_ATTEMPTS_LOCK:
+            main.AUTH_LOGIN_ATTEMPTS.clear()
 
     def tearDown(self):
         self.connection.close()
@@ -198,6 +200,53 @@ class ApiRegressionTests(unittest.TestCase):
             json={"email": "owner@example.com", "password": "wrong-password"},
         )
         self.assertEqual(response.status_code, 401)
+
+    def test_auth_login_rate_limits_repeated_failures(self):
+        self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+
+        with patch.object(main, "AUTH_LOGIN_RATE_LIMIT_ATTEMPTS", 3):
+            first_response = self.client.post(
+                "/api/auth/login",
+                json={"email": "owner@example.com", "password": "wrong-password"},
+            )
+            second_response = self.client.post(
+                "/api/auth/login",
+                json={"email": "owner@example.com", "password": "wrong-password"},
+            )
+            limited_response = self.client.post(
+                "/api/auth/login",
+                json={"email": "owner@example.com", "password": "wrong-password"},
+            )
+            correct_password_response = self.client.post(
+                "/api/auth/login",
+                json={"email": "owner@example.com", "password": "CorrectHorse123"},
+            )
+
+        self.assertEqual(first_response.status_code, 401)
+        self.assertEqual(second_response.status_code, 401)
+        self.assertEqual(limited_response.status_code, 429)
+        self.assertEqual(correct_password_response.status_code, 429)
+
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT event_type
+            FROM auth_audit_events
+            WHERE event_type IN ('login_failed', 'login_rate_limited')
+            ORDER BY id
+            """
+        )
+        event_types = [row["event_type"] for row in cursor.fetchall()]
+        self.assertEqual(event_types.count("login_failed"), 3)
+        self.assertGreaterEqual(event_types.count("login_rate_limited"), 1)
 
     def test_auth_profile_update_and_password_change(self):
         bootstrap_response = self.client.post(
