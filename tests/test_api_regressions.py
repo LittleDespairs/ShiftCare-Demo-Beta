@@ -199,6 +199,70 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 401)
 
+    def test_auth_profile_update_and_password_change(self):
+        bootstrap_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(bootstrap_response.status_code, 200)
+        original_token = bootstrap_response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {original_token}"}
+
+        profile_response = self.client.put(
+            "/api/auth/profile",
+            headers=headers,
+            json={"full_name": "Updated Owner"},
+        )
+        self.assertEqual(profile_response.status_code, 200)
+        self.assertEqual(profile_response.json()["user"]["full_name"], "Updated Owner")
+
+        wrong_password_response = self.client.post(
+            "/api/auth/change-password",
+            headers=headers,
+            json={"current_password": "wrong-password", "new_password": "NewPassword123"},
+        )
+        self.assertEqual(wrong_password_response.status_code, 401)
+
+        second_login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "CorrectHorse123"},
+        )
+        self.assertEqual(second_login_response.status_code, 200)
+        second_token = second_login_response.json()["access_token"]
+
+        change_response = self.client.post(
+            "/api/auth/change-password",
+            headers=headers,
+            json={"current_password": "CorrectHorse123", "new_password": "NewPassword123"},
+        )
+        self.assertEqual(change_response.status_code, 200)
+
+        old_login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "CorrectHorse123"},
+        )
+        self.assertEqual(old_login_response.status_code, 401)
+
+        new_login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "NewPassword123"},
+        )
+        self.assertEqual(new_login_response.status_code, 200)
+
+        kept_session_response = self.client.get("/api/auth/me", headers=headers)
+        self.assertEqual(kept_session_response.status_code, 200)
+
+        revoked_session_response = self.client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {second_token}"},
+        )
+        self.assertEqual(revoked_session_response.status_code, 401)
+
     def test_invitation_flow_creates_employee_membership_and_enforces_roles(self):
         owner_response = self.client.post(
             "/api/auth/bootstrap",

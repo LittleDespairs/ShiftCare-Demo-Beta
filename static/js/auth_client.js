@@ -1,6 +1,7 @@
 (function () {
     const TOKEN_KEY = "schedule_app_auth_token";
     const USER_KEY = "schedule_app_auth_user";
+    const ACTIVE_ORGANIZATION_KEY = "schedule_app_active_organization_id";
 
     function getToken() {
         return localStorage.getItem(TOKEN_KEY) || "";
@@ -25,6 +26,30 @@
     function clearSession() {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
+        localStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
+    }
+
+    function getActiveOrganizationId() {
+        const value = localStorage.getItem(ACTIVE_ORGANIZATION_KEY);
+        return value ? Number(value) : null;
+    }
+
+    function setActiveOrganizationId(organizationId) {
+        if (!organizationId) {
+            localStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
+            return;
+        }
+        localStorage.setItem(ACTIVE_ORGANIZATION_KEY, String(organizationId));
+    }
+
+    function getActiveMembership(user = getUser()) {
+        const memberships = user?.memberships || [];
+        const activeMemberships = memberships.filter((membership) => membership.status === "active");
+        const savedOrganizationId = getActiveOrganizationId();
+        return activeMemberships.find((membership) => membership.organization_id === savedOrganizationId)
+            || activeMemberships[0]
+            || memberships[0]
+            || null;
     }
 
     async function request(url, options = {}) {
@@ -61,10 +86,14 @@
     window.scheduleAuth = {
         TOKEN_KEY,
         USER_KEY,
+        ACTIVE_ORGANIZATION_KEY,
         getToken,
         getUser,
         setSession,
         clearSession,
+        getActiveOrganizationId,
+        setActiveOrganizationId,
+        getActiveMembership,
         request,
         requireSession,
     };

@@ -77,13 +77,13 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
 ### 6. Desktop App Changes
 
 - [x] Add login screen before opening organization data.
-- [ ] Add organization selection if the user belongs to multiple organizations.
-- [ ] Add account/profile screen.
+- [x] Add organization selection if the user belongs to multiple organizations.
+- [x] Add account/profile screen.
 - [x] Add organization members management screen.
 - [x] Add invitation management UI for admins.
 - [ ] Add clear offline/online state indicator.
 - [ ] Keep existing scheduling pages functional after login.
-- [ ] Hide or disable actions that the current role cannot perform.
+- [x] Hide or disable actions that the current role cannot perform.
 - [ ] Add Russian, English, and Hebrew UI strings for new auth screens.
 
 ### 7. Employee Preferences Page
@@ -153,7 +153,7 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
 
 ### 12. Testing and Release Criteria
 
-- [ ] Add tests for organization creation.
+- [x] Add tests for organization creation.
 - [x] Add tests for login/logout.
 - [x] Add tests for role-based access.
 - [x] Add tests for employee invitation flow.
@@ -242,13 +242,13 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
 ### 6. Изменения в desktop-приложении
 
 - [x] Добавить экран входа перед открытием данных организации.
-- [ ] Добавить выбор организации, если пользователь состоит в нескольких организациях.
-- [ ] Добавить экран аккаунта/профиля.
+- [x] Добавить выбор организации, если пользователь состоит в нескольких организациях.
+- [x] Добавить экран аккаунта/профиля.
 - [x] Добавить экран управления участниками организации.
 - [x] Добавить интерфейс управления invitation-ссылками для администраторов.
 - [ ] Добавить понятный индикатор offline/online состояния.
 - [ ] Сохранить работоспособность текущих страниц расписания после входа.
-- [ ] Скрывать или отключать действия, которые недоступны текущей роли.
+- [x] Скрывать или отключать действия, которые недоступны текущей роли.
 - [ ] Добавить русские, английские и ивритские строки интерфейса для новых auth-экранов.
 
 ### 7. Страница пожеланий сотрудников
@@ -318,7 +318,7 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
 
 ### 12. Тестирование и критерии релиза
 
-- [ ] Добавить тесты создания организации.
+- [x] Добавить тесты создания организации.
 - [x] Добавить тесты login/logout.
 - [x] Добавить тесты role-based access.
 - [x] Добавить тесты invitation flow для сотрудников.

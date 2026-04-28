@@ -113,6 +113,15 @@ class AuthLoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class AuthProfileUpdateRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=100)
+
+
+class AuthPasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class AuthInvitationAcceptRequest(BaseModel):
     token: str = Field(min_length=32, max_length=512)
     full_name: str = Field(min_length=2, max_length=100)
@@ -1687,6 +1696,81 @@ def login(request_data: AuthLoginRequest):
 @app.get("/api/auth/me", tags=["Auth"])
 def get_authenticated_user(current_user: dict = Depends(get_current_user)):
     return {"user": current_user}
+
+
+@app.put("/api/auth/profile", tags=["Auth"])
+def update_authenticated_profile(
+    request_data: AuthProfileUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        now = current_utc_timestamp()
+        full_name = request_data.full_name.strip()
+        cursor.execute(
+            """
+            UPDATE users
+            SET full_name = ?, updated_at = ?
+            WHERE id = ? AND status = 'active'
+            """,
+            (full_name, now, current_user["id"]),
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        write_auth_audit_event(cursor, "profile_updated", user_id=current_user["id"])
+        updated_user = get_user_context(cursor, current_user["id"])
+        connection.commit()
+        return {"user": updated_user}
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.post("/api/auth/change-password", tags=["Auth"])
+def change_authenticated_password(
+    request_data: AuthPasswordChangeRequest,
+    authorization: str | None = Header(default=None),
+    current_user: dict = Depends(get_current_user),
+):
+    token = authorization.split(" ", 1)[1].strip() if authorization else ""
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT password_hash FROM users WHERE id = ?", (current_user["id"],))
+        user_row = cursor.fetchone()
+        if not user_row or not verify_password(request_data.current_password, user_row["password_hash"]):
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            UPDATE users
+            SET password_hash = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (hash_password(request_data.new_password), now, current_user["id"]),
+        )
+        cursor.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ?
+              AND token_hash != ?
+              AND revoked_at IS NULL
+            """,
+            (now, current_user["id"], hash_session_token(token)),
+        )
+        write_auth_audit_event(cursor, "password_changed", user_id=current_user["id"])
+        connection.commit()
+        return {"message": "Password changed successfully"}
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 @app.post("/api/auth/accept-invitation", tags=["Auth"])

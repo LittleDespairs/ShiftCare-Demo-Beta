@@ -191,6 +191,34 @@
     font-size: 0.92rem;
 }
 
+.organization-selector {
+    display: grid;
+    gap: 4px;
+    min-width: 210px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.organization-selector select {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--text);
+    padding: 9px 10px;
+}
+
+.organization-form-stack {
+    display: grid;
+    gap: 14px;
+}
+
+.organization-form-stack + .organization-form-stack {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+}
+
 .organization-table-wrap {
     overflow-x: auto;
     border: 1px solid var(--border);

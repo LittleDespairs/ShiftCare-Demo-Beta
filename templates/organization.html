@@ -49,12 +49,49 @@
                     <p class="page-subtitle">Members, roles, and employee invitation links.</p>
                 </div>
                 <div class="topbar-actions">
+                    <label id="organization-selector-wrap" class="organization-selector" hidden>
+                        <span>Organization</span>
+                        <select id="organization-select"></select>
+                    </label>
                     <div id="organization-identity" class="organization-identity"></div>
                     <button id="logout-btn" class="btn btn-secondary" type="button">Logout</button>
                 </div>
             </header>
 
             <section class="organization-grid">
+                <section class="organization-panel">
+                    <div class="settings-section-header">
+                        <div>
+                            <h3 class="settings-section-title">Account</h3>
+                            <p class="settings-section-text">Profile details and password.</p>
+                        </div>
+                    </div>
+
+                    <form id="profile-form" class="organization-form-stack">
+                        <label class="form-field">
+                            <span>Full name</span>
+                            <input id="profile-name" type="text" autocomplete="name" required>
+                        </label>
+                        <label class="form-field">
+                            <span>Email</span>
+                            <input id="profile-email" type="email" autocomplete="email" readonly>
+                        </label>
+                        <button class="btn btn-primary" type="submit">Save profile</button>
+                    </form>
+
+                    <form id="password-form" class="organization-form-stack">
+                        <label class="form-field">
+                            <span>Current password</span>
+                            <input id="current-password" type="password" autocomplete="current-password" required>
+                        </label>
+                        <label class="form-field">
+                            <span>New password</span>
+                            <input id="new-password" type="password" autocomplete="new-password" minlength="8" required>
+                        </label>
+                        <button class="btn btn-secondary" type="submit">Change password</button>
+                    </form>
+                </section>
+
                 <form id="invite-form" class="organization-panel">
                     <div class="settings-section-header">
                         <div>
