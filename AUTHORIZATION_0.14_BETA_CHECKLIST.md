@@ -126,8 +126,8 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
   - [ ] Organization ID.
   - [ ] Created date.
   - [ ] Created by.
-- [ ] Restrict restore to authorized owners/admins.
-- [ ] Add restore conflict warning before overwriting cloud data.
+- [x] Restrict restore to authorized owners/admins.
+- [x] Add restore conflict warning before overwriting cloud data.
 
 ### 10. Security and Compliance Baseline
 
@@ -291,8 +291,8 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
   - [ ] ID организации.
   - [ ] Дата создания.
   - [ ] Кем создан.
-- [ ] Разрешать restore только авторизованным владельцам/администраторам.
-- [ ] Добавить предупреждение о конфликтах перед перезаписью cloud-данных.
+- [x] Разрешать restore только авторизованным владельцам/администраторам.
+- [x] Добавить предупреждение о конфликтах перед перезаписью cloud-данных.
 
 ### 10. Базовая безопасность и compliance
 

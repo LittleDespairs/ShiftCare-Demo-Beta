@@ -1336,6 +1336,7 @@
     </div>
 
 <script src="/static/js/i18n.js?v={{ app_version }}"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}"></script>
 
     <script>
         function getSavedSidebarState() {
@@ -1630,34 +1631,42 @@
             });
         }
 
+        async function databaseRequest(url, options = {}) {
+            return window.scheduleAuth
+                ? window.scheduleAuth.request(url, options)
+                : fetch(url, options).then(async (response) => {
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.detail || `Request failed with ${response.status}`);
+                    }
+                    return data;
+                });
+        }
+
         async function loadDatabaseBackups() {
-            const response = await fetch("/api/database/backups");
-            if (!response.ok) {
+            try {
+                const payload = await databaseRequest("/api/database/backups");
+                databaseBackups = payload.backups || [];
+                renderDatabaseBackups(databaseBackups);
+            } catch (error) {
                 showDatabaseMessage(t("settings_backup_load_failed", "Failed to load backups."), "danger");
-                return;
             }
-            const payload = await response.json();
-            databaseBackups = payload.backups || [];
-            renderDatabaseBackups(databaseBackups);
         }
 
         async function createDatabaseBackup() {
-            const response = await fetch("/api/database/backups", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ label: "manual" })
-            });
-            if (!response.ok) {
-                const error = await response.json();
-                showDatabaseMessage(error.detail || t("settings_backup_create_failed", "Failed to create backup."), "danger");
-                return;
+            try {
+                const result = await databaseRequest("/api/database/backups", {
+                    method: "POST",
+                    body: JSON.stringify({ label: "manual" })
+                });
+                showDatabaseMessage(
+                    `${t("settings_backup_created", "Backup created")}: ${result.backup_name}`,
+                    "success"
+                );
+                await loadDatabaseBackups();
+            } catch (error) {
+                showDatabaseMessage(error.message || t("settings_backup_create_failed", "Failed to create backup."), "danger");
             }
-            const result = await response.json();
-            showDatabaseMessage(
-                `${t("settings_backup_created", "Backup created")}: ${result.backup_name}`,
-                "success"
-            );
-            await loadDatabaseBackups();
         }
 
         async function restoreBackup(backupName) {
@@ -1671,22 +1680,19 @@
                 return;
             }
 
-            const response = await fetch("/api/database/restore", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ backup_name: backupName })
-            });
-            if (!response.ok) {
-                const error = await response.json();
-                showDatabaseMessage(error.detail || t("settings_backup_restore_failed", "Failed to restore backup."), "danger");
-                return;
+            try {
+                const result = await databaseRequest("/api/database/restore", {
+                    method: "POST",
+                    body: JSON.stringify({ backup_name: backupName })
+                });
+                showDatabaseMessage(
+                    `${t("settings_backup_restored", "Backup restored")}: ${result.restored_backup}. ${t("settings_backup_pre_restore", "Current database was preserved as")}: ${result.pre_restore_backup}`,
+                    "success"
+                );
+                await loadDatabaseBackups();
+            } catch (error) {
+                showDatabaseMessage(error.message || t("settings_backup_restore_failed", "Failed to restore backup."), "danger");
             }
-            const result = await response.json();
-            showDatabaseMessage(
-                `${t("settings_backup_restored", "Backup restored")}: ${result.restored_backup}. ${t("settings_backup_pre_restore", "Current database was preserved as")}: ${result.pre_restore_backup}`,
-                "success"
-            );
-            await loadDatabaseBackups();
         }
 
         async function loadGenerationSettings() {

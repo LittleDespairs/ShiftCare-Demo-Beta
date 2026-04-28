@@ -1110,6 +1110,44 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(worksheet["A3"].value, "Employee")
         self.assertEqual(worksheet["I5"].value, "0 / 0h")
 
+    def test_schedule_export_writes_audit_event_when_authenticated(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_token = owner_response.json()["access_token"]
+        position_id = self._create_position()
+
+        export_response = self.client.get(
+            "/api/schedule/export-excel",
+            headers={"Authorization": f"Bearer {owner_token}"},
+            params={"week_start_date": "2026-04-20", "position_id": position_id, "lang": "en"},
+        )
+        self.assertEqual(export_response.status_code, 200)
+
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT user_id, organization_id, metadata_json
+            FROM auth_audit_events
+            WHERE event_type = 'schedule_exported'
+            """
+        )
+        event = cursor.fetchone()
+        self.assertIsNotNone(event)
+        self.assertEqual(event["user_id"], owner_response.json()["user"]["id"])
+        self.assertEqual(event["organization_id"], 1)
+        metadata = main.json.loads(event["metadata_json"])
+        self.assertEqual(metadata["format"], "excel")
+        self.assertEqual(metadata["scope"], "position")
+        self.assertEqual(metadata["position_id"], position_id)
+
     def test_export_word_for_empty_week_has_headers_and_zero_total(self):
         employee_id = self._create_employee(full_name="Employee A")
         position_id = self._create_position()
@@ -1722,6 +1760,83 @@ class ApiRegressionTests(unittest.TestCase):
         employees = self.client.get("/api/employees").json()
         self.assertEqual(len(employees), 1)
         self.assertEqual(employees[0]["full_name"], "Employee A")
+
+    def test_database_backup_restore_requires_admin_after_auth_bootstrap(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_token = owner_response.json()["access_token"]
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+        create_backup = self.client.post(
+            "/api/database/backups",
+            headers=owner_headers,
+            json={"label": "manual"},
+        )
+        self.assertEqual(create_backup.status_code, 200)
+        backup_name = create_backup.json()["backup_name"]
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM auth_audit_events WHERE event_type = 'database_backup_created'")
+        self.assertEqual(cursor.fetchone()[0], 1)
+
+        unauthenticated_list = self.client.get("/api/database/backups")
+        self.assertEqual(unauthenticated_list.status_code, 401)
+
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "employee@example.com", "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        employee_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "full_name": "Employee User",
+                "password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(employee_response.status_code, 200)
+        employee_headers = {"Authorization": f"Bearer {employee_response.json()['access_token']}"}
+
+        employee_restore = self.client.post(
+            "/api/database/restore",
+            headers=employee_headers,
+            json={"backup_name": backup_name},
+        )
+        self.assertEqual(employee_restore.status_code, 403)
+
+        restore_response = self.client.post(
+            "/api/database/restore",
+            headers=owner_headers,
+            json={"backup_name": backup_name},
+        )
+        self.assertEqual(restore_response.status_code, 200)
+
+        restored_connection = database.get_connection()
+        try:
+            restored_cursor = restored_connection.cursor()
+            restored_cursor.execute(
+                """
+                SELECT event_type
+                FROM auth_audit_events
+                WHERE event_type = 'database_backup_restored'
+                ORDER BY id
+                """
+            )
+            self.assertEqual(
+                [row["event_type"] for row in restored_cursor.fetchall()],
+                ["database_backup_restored"],
+            )
+        finally:
+            restored_connection.close()
 
     def test_delete_employee_cascades_related_records_and_returns_backup_name(self):
         employee_id = self._create_employee(full_name="Employee A")

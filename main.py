@@ -797,6 +797,45 @@ def require_organization_role(current_user: dict, organization_id: int, allowed_
     return membership
 
 
+def find_any_membership_with_role(current_user: dict, allowed_roles: set[str]) -> dict | None:
+    for membership in current_user["memberships"]:
+        if membership["status"] == "active" and membership["role"] in allowed_roles:
+            return membership
+    return None
+
+
+def active_user_count(cursor) -> int:
+    cursor.execute("SELECT COUNT(*) FROM users WHERE status = 'active'")
+    return int(cursor.fetchone()[0])
+
+
+def require_database_admin_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        has_active_users = active_user_count(cursor) > 0
+    finally:
+        connection.close()
+
+    if not has_active_users:
+        return None
+
+    current_user = get_current_user(authorization)
+    membership = find_any_membership_with_role(current_user, {"owner", "admin"})
+    if not membership:
+        raise HTTPException(status_code=403, detail="Owner or admin permissions are required")
+    return {"user": current_user, "membership": membership}
+
+
+def get_optional_current_user(authorization: str | None = Header(default=None)) -> dict | None:
+    if not authorization:
+        return None
+    try:
+        return get_current_user(authorization)
+    except HTTPException:
+        return None
+
+
 def write_auth_audit_event(
     cursor,
     event_type: str,
@@ -811,6 +850,40 @@ def write_auth_audit_event(
         """,
         (organization_id, user_id, event_type, json.dumps(metadata or {}, ensure_ascii=False)),
     )
+
+
+def write_auth_audit_event_record(
+    event_type: str,
+    user_id: int | None = None,
+    organization_id: int | None = None,
+    metadata: dict | None = None,
+) -> None:
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        write_auth_audit_event(
+            cursor,
+            event_type,
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata=metadata,
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def audit_context_from_admin(admin_context: dict | None) -> tuple[int | None, int | None]:
+    if not admin_context:
+        return None, None
+    return admin_context["user"]["id"], admin_context["membership"]["organization_id"]
+
+
+def audit_context_from_user(current_user: dict | None) -> tuple[int | None, int | None]:
+    if not current_user:
+        return None, None
+    membership = current_user["memberships"][0] if current_user["memberships"] else None
+    return current_user["id"], membership["organization_id"] if membership else None
 
 
 def create_recovery_backup(label: str) -> str:
@@ -2006,13 +2079,23 @@ def create_organization_invitation(
 
 
 @app.get("/api/database/backups", tags=["Settings"])
-def get_database_backups():
+def get_database_backups(admin_context: dict | None = Depends(require_database_admin_if_auth_initialized)):
     return {"backups": database_module.list_database_backups()}
 
 
 @app.post("/api/database/backups", tags=["Settings"])
-def create_database_backup_endpoint(request_data: DatabaseBackupCreateRequest):
+def create_database_backup_endpoint(
+    request_data: DatabaseBackupCreateRequest,
+    admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
+):
     backup_path = database_module.create_database_backup(request_data.label)
+    user_id, organization_id = audit_context_from_admin(admin_context)
+    write_auth_audit_event_record(
+        "database_backup_created",
+        user_id=user_id,
+        organization_id=organization_id,
+        metadata={"backup_name": backup_path.name, "label": request_data.label},
+    )
     return {
         "message": "Database backup created successfully",
         "backup_name": backup_path.name,
@@ -2020,13 +2103,23 @@ def create_database_backup_endpoint(request_data: DatabaseBackupCreateRequest):
 
 
 @app.post("/api/database/restore", tags=["Settings"])
-def restore_database_backup_endpoint(request_data: DatabaseRestoreRequest):
+def restore_database_backup_endpoint(
+    request_data: DatabaseRestoreRequest,
+    admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
+):
     try:
         result = database_module.restore_database_backup(request_data.backup_name)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Backup not found")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    user_id, organization_id = audit_context_from_admin(admin_context)
+    write_auth_audit_event_record(
+        "database_backup_restored",
+        user_id=user_id,
+        organization_id=organization_id,
+        metadata=result,
+    )
     return {"message": "Database restored successfully", **result}
 
 
@@ -5098,7 +5191,12 @@ def auto_generate_all_schedules(request_data: AutoGenerateAllScheduleRequest):
 
 
 @app.get("/api/schedule/export-excel", tags=["Schedule"])
-def export_schedule_excel(week_start_date: str, position_id: int, lang: str = "en"):
+def export_schedule_excel(
+    week_start_date: str,
+    position_id: int,
+    lang: str = "en",
+    current_user: dict | None = Depends(get_optional_current_user),
+):
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -5126,6 +5224,20 @@ def export_schedule_excel(week_start_date: str, position_id: int, lang: str = "e
         )
         safe_position_name = position["name"].replace(" ", "_")
         filename = f"schedule_{safe_position_name}_{week_start_date}.xlsx"
+        user_id, organization_id = audit_context_from_user(current_user)
+        write_auth_audit_event_record(
+            "schedule_exported",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={
+                "format": "excel",
+                "scope": "position",
+                "week_start_date": week_start_date,
+                "position_id": position_id,
+                "lang": lang,
+                "filename": filename,
+            },
+        )
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -5136,7 +5248,11 @@ def export_schedule_excel(week_start_date: str, position_id: int, lang: str = "e
 
 
 @app.get("/api/schedule/export-excel-all", tags=["Schedule"])
-def export_all_schedules_excel(week_start_date: str, lang: str = "en"):
+def export_all_schedules_excel(
+    week_start_date: str,
+    lang: str = "en",
+    current_user: dict | None = Depends(get_optional_current_user),
+):
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -5166,6 +5282,19 @@ def export_all_schedules_excel(week_start_date: str, lang: str = "en"):
             lang=lang,
         )
         filename = f"schedule_all_{week_start_date}.xlsx"
+        user_id, organization_id = audit_context_from_user(current_user)
+        write_auth_audit_event_record(
+            "schedule_exported",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={
+                "format": "excel",
+                "scope": "all",
+                "week_start_date": week_start_date,
+                "lang": lang,
+                "filename": filename,
+            },
+        )
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -5176,7 +5305,12 @@ def export_all_schedules_excel(week_start_date: str, lang: str = "en"):
 
 
 @app.get("/api/schedule/export-word", tags=["Schedule"])
-def export_schedule_word(week_start_date: str, position_id: int, lang: str = "en"):
+def export_schedule_word(
+    week_start_date: str,
+    position_id: int,
+    lang: str = "en",
+    current_user: dict | None = Depends(get_optional_current_user),
+):
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -5204,6 +5338,20 @@ def export_schedule_word(week_start_date: str, position_id: int, lang: str = "en
         )
         safe_position_name = position["name"].replace(" ", "_")
         filename = f"schedule_{safe_position_name}_{week_start_date}.docx"
+        user_id, organization_id = audit_context_from_user(current_user)
+        write_auth_audit_event_record(
+            "schedule_exported",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={
+                "format": "word",
+                "scope": "position",
+                "week_start_date": week_start_date,
+                "position_id": position_id,
+                "lang": lang,
+                "filename": filename,
+            },
+        )
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -5214,7 +5362,11 @@ def export_schedule_word(week_start_date: str, position_id: int, lang: str = "en
 
 
 @app.get("/api/schedule/export-word-all", tags=["Schedule"])
-def export_all_schedules_word(week_start_date: str, lang: str = "en"):
+def export_all_schedules_word(
+    week_start_date: str,
+    lang: str = "en",
+    current_user: dict | None = Depends(get_optional_current_user),
+):
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -5244,6 +5396,19 @@ def export_all_schedules_word(week_start_date: str, lang: str = "en"):
             lang=lang,
         )
         filename = f"schedule_all_{week_start_date}.docx"
+        user_id, organization_id = audit_context_from_user(current_user)
+        write_auth_audit_event_record(
+            "schedule_exported",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={
+                "format": "word",
+                "scope": "all",
+                "week_start_date": week_start_date,
+                "lang": lang,
+                "filename": filename,
+            },
+        )
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

@@ -1091,7 +1091,12 @@
             button.disabled = true;
 
             try {
-                const response = await fetch(url);
+                const headers = new Headers();
+                const token = window.scheduleAuth?.getToken?.();
+                if (token) {
+                    headers.set("Authorization", `Bearer ${token}`);
+                }
+                const response = await fetch(url, { headers });
                 if (!response.ok) {
                     showMessage(t("msg_export_failed", "Export failed."), "danger");
                     return;
