@@ -2,6 +2,20 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
 
+## 0.14.4_beta - 2026-04-29
+
+### What Changed
+
+- Rebranded the visible desktop and web shell from Schedule App to ShiftCare.
+- Updated the application title, login screen, side navigation headers, manifests, localized UI strings, and Windows version metadata.
+- Renamed the Windows build output to `ShiftCare_0.14.4_beta` and the installer asset to `ShiftCare_Setup_0.14.4-beta.exe`.
+- Kept the legacy local data directory for existing beta users so local databases and logs are not lost during the brand transition.
+- Updated the in-app update checker to accept both old `ScheduleApp_Setup_...` and new `ShiftCare_Setup_...` installer assets.
+
+### Release Artifact
+
+- `dist\installer\ShiftCare_Setup_0.14.4-beta.exe`
+
 ## 0.14.3_beta - 2026-04-29
 
 ### What Changed

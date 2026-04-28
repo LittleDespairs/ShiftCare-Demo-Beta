@@ -1,8 +1,8 @@
 (function () {
     const translations = {
         en: {
-            app_title: "Schedule App",
-            auth_kicker: "0.14.x beta",
+            app_title: "ShiftCare",
+            auth_kicker: "ShiftCare 0.14.x beta",
             auth_login: "Login",
             auth_create_owner: "Create first owner",
             auth_email: "Email",
@@ -63,8 +63,8 @@
             common_delete: "Delete",
         },
         ru: {
-            app_title: "Schedule App",
-            auth_kicker: "0.14.x beta",
+            app_title: "ShiftCare",
+            auth_kicker: "ShiftCare 0.14.x beta",
             auth_login: "Войти",
             auth_create_owner: "Создать владельца",
             auth_email: "Email",
@@ -125,8 +125,8 @@
             common_delete: "Удалить",
         },
         he: {
-            app_title: "Schedule App",
-            auth_kicker: "0.14.x beta",
+            app_title: "ShiftCare",
+            auth_kicker: "ShiftCare 0.14.x beta",
             auth_login: "כניסה",
             auth_create_owner: "יצירת בעלים ראשון",
             auth_email: "אימייל",

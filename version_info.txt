@@ -14,14 +14,14 @@ VSVersionInfo(
       StringTable(
         '040904B0',
         [
-          StringStruct('CompanyName', 'Schedule App'),
-          StringStruct('FileDescription', 'Schedule App Desktop'),
-          StringStruct('FileVersion', '0.14.3.0'),
-          StringStruct('InternalName', 'ScheduleApp'),
-          StringStruct('LegalCopyright', 'Copyright (C) 2026 Schedule App'),
-          StringStruct('OriginalFilename', 'ScheduleApp_0.14.3_beta.exe'),
-          StringStruct('ProductName', 'Schedule App'),
-          StringStruct('ProductVersion', '0.14.3-beta')
+          StringStruct('CompanyName', 'ShiftCare'),
+          StringStruct('FileDescription', 'ShiftCare Desktop'),
+          StringStruct('FileVersion', '0.14.4.0'),
+          StringStruct('InternalName', 'ShiftCare'),
+          StringStruct('LegalCopyright', 'Copyright (C) 2026 ShiftCare'),
+          StringStruct('OriginalFilename', 'ShiftCare_0.14.4_beta.exe'),
+          StringStruct('ProductName', 'ShiftCare'),
+          StringStruct('ProductVersion', '0.14.4-beta')
         ]
       )
     ]),

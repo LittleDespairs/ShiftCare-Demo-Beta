@@ -85,7 +85,7 @@ public class MainActivity extends Activity {
         loadingPanel.addView(progressBar, progressParams);
 
         statusText = new TextView(this);
-        statusText.setText("Starting Schedule App...");
+        statusText.setText("Starting ShiftCare...");
         statusText.setTextColor(Color.rgb(30, 41, 59));
         statusText.setTextSize(18);
         statusText.setGravity(Gravity.CENTER);
@@ -168,7 +168,7 @@ public class MainActivity extends Activity {
                 });
             } catch (Exception error) {
                 mainHandler.post(() -> {
-                    statusText.setText("Failed to start Schedule App:\n" + error.getMessage());
+                    statusText.setText("Failed to start ShiftCare:\n" + error.getMessage());
                     progressBar.setVisibility(android.view.View.GONE);
                 });
             }

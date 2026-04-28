@@ -34,13 +34,13 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.14.3_beta"
-APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
+APP_VERSION = "0.14.4_beta"
+APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app"
 GITHUB_REPO_OWNER = "LittleDespairs"
 GITHUB_REPO_NAME = "Schedule_app_releases"
 GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases"
-GITHUB_RELEASE_ASSET_PATTERN = re.compile(r"^ScheduleApp_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$")
+GITHUB_RELEASE_ASSET_PATTERN = re.compile(r"^(?:ScheduleApp|ShiftCare)_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$")
 AUTH_LOGIN_RATE_LIMIT_ATTEMPTS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
 AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
 AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS", "900"))
@@ -1094,7 +1094,7 @@ def request_github_releases() -> list[dict]:
         GITHUB_RELEASES_API_URL,
         headers={
             "Accept": "application/vnd.github+json",
-            "User-Agent": f"ScheduleApp/{APP_VERSION}",
+            "User-Agent": f"ShiftCare/{APP_VERSION}",
         },
     )
     try:
@@ -1175,15 +1175,15 @@ def download_update_installer(download_url: str, asset_name: str) -> Path:
     validate_release_download_url(download_url)
     safe_asset_name = Path(asset_name).name
     if not release_asset_version(safe_asset_name):
-        raise HTTPException(status_code=400, detail="Release asset is not a Schedule App installer")
+        raise HTTPException(status_code=400, detail="Release asset is not a ShiftCare installer")
 
-    target_dir = Path(tempfile.gettempdir()) / "Schedule App" / "updates"
+    target_dir = Path(tempfile.gettempdir()) / "ShiftCare" / "updates"
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / safe_asset_name
 
     request = urllib.request.Request(
         download_url,
-        headers={"User-Agent": f"ScheduleApp/{APP_VERSION}"},
+        headers={"User-Agent": f"ShiftCare/{APP_VERSION}"},
     )
     try:
         with urllib.request.urlopen(request, timeout=60) as response, target_path.open("wb") as output_file:

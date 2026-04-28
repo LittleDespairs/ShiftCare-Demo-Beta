@@ -141,7 +141,7 @@ def build_docx(source: Path):
         index += 1
 
     document.core_properties.title = "Руководство по работе генератора расписания"
-    document.core_properties.subject = "Schedule App"
+    document.core_properties.subject = "ShiftCare"
     document.core_properties.author = "Codex"
     document.save(output)
     return output

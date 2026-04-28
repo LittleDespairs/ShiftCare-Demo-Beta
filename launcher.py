@@ -10,7 +10,7 @@ import uvicorn
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
-APP_WINDOW_TITLE = "Schedule App"
+APP_WINDOW_TITLE = "ShiftCare"
 APP_WINDOW_WIDTH = 1440
 APP_WINDOW_HEIGHT = 900
 APP_WINDOW_MIN_SIZE = (1100, 720)
@@ -92,7 +92,7 @@ except Exception:
     error_text = f"ERROR while importing app from main.py:\n{traceback.format_exc()}"
     write_log(error_text)
     show_error(
-        "Schedule App",
+        "ShiftCare",
         f"Application failed to start.\n\nDetails were saved to:\n{LOG_PATH}",
     )
     sys.exit(1)
@@ -215,7 +215,7 @@ if __name__ == "__main__":
         stop_server()
         write_log(f"APPLICATION ERROR:\n{traceback.format_exc()}")
         show_error(
-            "Schedule App",
+            "ShiftCare",
             f"Application failed to start.\n\nDetails were saved to:\n{LOG_PATH}",
         )
         sys.exit(1)

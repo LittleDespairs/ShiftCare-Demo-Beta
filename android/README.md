@@ -1,4 +1,4 @@
-# Schedule App Standalone Android APK
+# ShiftCare Standalone Android APK
 
 This folder contains a standalone Android wrapper for the existing FastAPI app.
 

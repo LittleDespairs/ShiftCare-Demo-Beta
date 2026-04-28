@@ -64,7 +64,7 @@ def start_server(backend_path: str | None = None) -> str:
             return get_url()
         time.sleep(0.2)
 
-    raise RuntimeError("Schedule App backend did not start within 30 seconds")
+    raise RuntimeError("ShiftCare backend did not start within 30 seconds")
 
 
 def get_url() -> str:

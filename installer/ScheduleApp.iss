@@ -1,8 +1,8 @@
-#define MyAppName "Schedule App"
-#define MyAppPublisher "Schedule App"
-#define MyAppVersion "0.14.3-beta"
-#define MyAppExeName "ScheduleApp_0.14.3_beta.exe"
-#define MyAppDistDir "..\dist\ScheduleApp_0.14.3_beta"
+#define MyAppName "ShiftCare"
+#define MyAppPublisher "ShiftCare"
+#define MyAppVersion "0.14.4-beta"
+#define MyAppExeName "ShiftCare_0.14.4_beta.exe"
+#define MyAppDistDir "..\dist\ShiftCare_0.14.4_beta"
 #define MyAppIcon "..\static\icons\app-icon.ico"
 
 [Setup]
@@ -14,14 +14,14 @@ AppPublisher={#MyAppPublisher}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Installer
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion=0.14.3.0
-VersionInfoVersion=0.14.3.0
-DefaultDirName={autopf}\Schedule App
+VersionInfoProductVersion=0.14.4.0
+VersionInfoVersion=0.14.4.0
+DefaultDirName={autopf}\ShiftCare
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
 OutputDir=..\dist\installer
-OutputBaseFilename=ScheduleApp_Setup_{#MyAppVersion}
+OutputBaseFilename=ShiftCare_Setup_{#MyAppVersion}
 SetupIconFile={#MyAppIcon}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64

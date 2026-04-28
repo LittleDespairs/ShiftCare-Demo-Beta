@@ -10,8 +10,8 @@ window.escapeHtml = window.escapeHtml || function (value) {
 
 const I18N_TRANSLATIONS = {
     en: {
-        app_title: "Schedule App",
-        app_subtitle: "Nursing staff scheduling",
+        app_title: "ShiftCare",
+        app_subtitle: "Thoughtful scheduling for care teams",
 
         nav_section_main: "Main",
         nav_dashboard: "Dashboard",
@@ -67,7 +67,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Documentation",
         footer_guide: "User Guide",
-        footer_version: "Schedule App v{version}",
+        footer_version: "ShiftCare v{version}",
 
         quick_actions_title: "Quick actions",
         quick_action_schedule_title: "Open current week",
@@ -566,7 +566,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v{version}",
+        footer_version: "ShiftCare v{version}",
 
         msg_enter_template_name: "Please enter template name.",
         msg_select_shift_category: "Please select shift category.",
@@ -663,7 +663,7 @@ const I18N_TRANSLATIONS = {
         settings_coverage_display_hint: "The interval mode uses real coverage requirements and is recommended for accuracy.",
         settings_save_schedule_view: "Save schedule view",
         settings_backup_restore_warning: "Restoring a backup replaces the current database. A recovery copy is created first.",
-        settings_about_title: "About Schedule App",
+        settings_about_title: "About ShiftCare",
         settings_about_text: "Current beta information and links for help.",
         settings_guide_text: "Open the step-by-step guide for preparing and publishing a schedule.",
         settings_docs_text: "Open technical notes and app documentation.",
@@ -736,7 +736,7 @@ const I18N_TRANSLATIONS = {
         guide_page_title: "User Guide",
         guide_page_subtitle: "A detailed workflow for setup, weekly planning, generation, manual edits, export, and safe recovery.",
         guide_start_title: "What this app is for",
-        guide_start_text: "Schedule App helps build and maintain a weekly staff schedule. It keeps employees, positions, shift templates, coverage needs, preferences, generation results, exports, and backups in one local workflow.",
+        guide_start_text: "ShiftCare helps build and maintain a weekly staff schedule. It keeps employees, positions, shift templates, coverage needs, preferences, generation results, exports, and backups in one local workflow.",
         guide_setup_title: "Before creating a schedule",
         guide_setup_text: "Do the setup in order. After that, weekly planning becomes mostly loading the week, checking preferences, generating, reviewing, and exporting.",
         guide_setup_step_1: "Create employees.",
@@ -864,8 +864,8 @@ const I18N_TRANSLATIONS = {
     },
 
     ru: {
-        app_title: "Schedule App",
-        app_subtitle: "Составление расписания персонала",
+        app_title: "ShiftCare",
+        app_subtitle: "Бережное расписание для команд ухода",
 
         nav_section_main: "Основное",
         nav_dashboard: "Главная",
@@ -921,7 +921,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "Документация",
         footer_guide: "Руководство",
-        footer_version: "Schedule App v{version}",
+        footer_version: "ShiftCare v{version}",
 
         quick_actions_title: "Быстрые действия",
         quick_action_schedule_title: "Открыть текущую неделю",
@@ -1512,7 +1512,7 @@ const I18N_TRANSLATIONS = {
         settings_coverage_display_hint: "Режим временных интервалов использует реальные требования покрытия и рекомендован для точности.",
         settings_save_schedule_view: "Сохранить вид расписания",
         settings_backup_restore_warning: "Восстановление резервной копии заменяет текущую базу данных. Перед этим создаётся копия для отката.",
-        settings_about_title: "О Schedule App",
+        settings_about_title: "О ShiftCare",
         settings_about_text: "Информация о текущей бета-версии и ссылки на помощь.",
         settings_guide_text: "Открыть пошаговое руководство по подготовке и публикации расписания.",
         settings_docs_text: "Открыть технические заметки и документацию приложения.",
@@ -1586,7 +1586,7 @@ const I18N_TRANSLATIONS = {
         guide_page_title: "Руководство пользователя",
         guide_page_subtitle: "Подробный порядок работы: настройка, недельное планирование, генерация, ручные правки, экспорт и восстановление.",
         guide_start_title: "Для чего нужно приложение",
-        guide_start_text: "Schedule App помогает составлять и вести недельное расписание персонала. В одном локальном процессе хранятся сотрудники, должности, шаблоны смен, требования покрытия, пожелания, результаты генерации, экспорты и резервные копии.",
+        guide_start_text: "ShiftCare помогает составлять и вести недельное расписание персонала. В одном локальном процессе хранятся сотрудники, должности, шаблоны смен, требования покрытия, пожелания, результаты генерации, экспорты и резервные копии.",
         guide_setup_title: "Перед созданием расписания",
         guide_setup_text: "Выполните настройку по порядку. После этого еженедельная работа обычно сводится к загрузке недели, проверке пожеланий, генерации, просмотру результата и экспорту.",
         guide_setup_step_1: "Создайте сотрудников.",
@@ -1714,8 +1714,8 @@ const I18N_TRANSLATIONS = {
     },
 
     he: {
-        app_title: "Schedule App",
-        app_subtitle: "מערכת לסידור עבודה לצוות סיעודי",
+        app_title: "ShiftCare",
+        app_subtitle: "סידור עבודה חכם לצוותי טיפול",
 
         nav_section_main: "ראשי",
         nav_dashboard: "דף הבית",
@@ -2057,7 +2057,7 @@ const I18N_TRANSLATIONS = {
 
         footer_docs: "תיעוד",
         footer_guide: "מדריך",
-        footer_version: "Schedule App v{version}",
+        footer_version: "ShiftCare v{version}",
 
         employees_table_id: "מזהה",
         employees_table_name: "שם מלא",
@@ -2362,7 +2362,7 @@ const I18N_TRANSLATIONS = {
         settings_coverage_display_hint: "מצב טווחי הזמן משתמש בדרישות הכיסוי האמיתיות ומומלץ לדיוק.",
         settings_save_schedule_view: "שמור תצוגת סידור",
         settings_backup_restore_warning: "שחזור גיבוי מחליף את מסד הנתונים הנוכחי. קודם נוצרת עותק לשחזור.",
-        settings_about_title: "אודות Schedule App",
+        settings_about_title: "אודות ShiftCare",
         settings_about_text: "מידע על גרסת הבטא הנוכחית וקישורי עזרה.",
         settings_guide_text: "פתח מדריך שלב אחר שלב להכנה ופרסום של סידור עבודה.",
         settings_docs_text: "פתח הערות טכניות ותיעוד של האפליקציה.",
@@ -2436,7 +2436,7 @@ const I18N_TRANSLATIONS = {
         guide_page_title: "מדריך משתמש",
         guide_page_subtitle: "תהליך עבודה מפורט להכנה, תכנון שבועי, יצירה, תיקונים ידניים, ייצוא ושחזור בטוח.",
         guide_start_title: "למה האפליקציה מיועדת",
-        guide_start_text: "Schedule App עוזרת לבנות ולנהל סידור עבודה שבועי לצוות. עובדים, תפקידים, תבניות משמרת, דרישות כיסוי, העדפות, תוצאות יצירה, ייצוא וגיבויים נמצאים בתהליך מקומי אחד.",
+        guide_start_text: "ShiftCare עוזרת לבנות ולנהל סידור עבודה שבועי לצוות. עובדים, תפקידים, תבניות משמרת, דרישות כיסוי, העדפות, תוצאות יצירה, ייצוא וגיבויים נמצאים בתהליך מקומי אחד.",
         guide_setup_title: "לפני יצירת סידור עבודה",
         guide_setup_text: "בצע את ההגדרות לפי הסדר. לאחר מכן העבודה השבועית היא בעיקר טעינת השבוע, בדיקת העדפות, יצירה, סקירה וייצוא.",
         guide_setup_step_1: "צור עובדים.",

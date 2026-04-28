@@ -57,6 +57,28 @@ def draw_rounded_rect(
                 pixels[y][x] = blend_pixel(pixels[y][x], color)
 
 
+def draw_block_letter(
+    pixels: list[list[tuple[int, int, int, int]]],
+    pattern: tuple[str, ...],
+    left: float,
+    top: float,
+    cell: float,
+    color: tuple[int, int, int, int],
+) -> None:
+    for row_index, row in enumerate(pattern):
+        for col_index, cell_value in enumerate(row):
+            if cell_value == "#":
+                draw_rounded_rect(
+                    pixels,
+                    left + col_index * cell,
+                    top + row_index * cell,
+                    left + (col_index + 0.82) * cell,
+                    top + (row_index + 0.82) * cell,
+                    cell * 0.16,
+                    color,
+                )
+
+
 def render_icon(size: int) -> list[list[tuple[int, int, int, int]]]:
     canvas_size = size * SCALE
     unit = canvas_size / 512
@@ -89,6 +111,38 @@ def render_icon(size: int) -> list[list[tuple[int, int, int, int]]]:
 
     draw_rounded_rect(pixels, sx(140), sx(74), sx(174), sx(150), sx(17), slate)
     draw_rounded_rect(pixels, sx(338), sx(74), sx(372), sx(150), sx(17), slate)
+    draw_block_letter(
+        pixels,
+        (
+            "####",
+            "#...",
+            "#...",
+            "####",
+            "...#",
+            "...#",
+            "####",
+        ),
+        sx(150),
+        sx(122),
+        sx(11),
+        blue,
+    )
+    draw_block_letter(
+        pixels,
+        (
+            "####",
+            "#...",
+            "#...",
+            "#...",
+            "#...",
+            "#...",
+            "####",
+        ),
+        sx(276),
+        sx(122),
+        sx(11),
+        blue,
+    )
 
     if SCALE == 1:
         return pixels
