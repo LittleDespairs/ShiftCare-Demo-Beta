@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Login - Schedule App</title>
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}">
+</head>
+
+<body class="app-shell ltr auth-page" data-app-version="{{ app_version }}">
+    <main class="auth-layout">
+        <section class="auth-panel" aria-labelledby="auth-title">
+            <div class="auth-brand">
+                <div class="brand-logo">SA</div>
+                <div>
+                    <h1 id="auth-title">Schedule App</h1>
+                    <p>Organization access</p>
+                </div>
+            </div>
+
+            <div class="auth-tabs" role="tablist" aria-label="Authorization mode">
+                <button id="login-tab" class="auth-tab active" type="button" data-auth-tab="login">Login</button>
+                <button id="bootstrap-tab" class="auth-tab" type="button" data-auth-tab="bootstrap">Create first owner</button>
+            </div>
+
+            <form id="login-form" class="auth-form" data-auth-form="login">
+                <label class="form-field">
+                    <span>Email</span>
+                    <input id="login-email" type="email" autocomplete="email" required>
+                </label>
+
+                <label class="form-field">
+                    <span>Password</span>
+                    <input id="login-password" type="password" autocomplete="current-password" required>
+                </label>
+
+                <button class="btn btn-primary auth-submit" type="submit">Login</button>
+            </form>
+
+            <form id="bootstrap-form" class="auth-form hidden" data-auth-form="bootstrap">
+                <label class="form-field">
+                    <span>Organization name</span>
+                    <input id="bootstrap-organization" type="text" autocomplete="organization" required minlength="2">
+                </label>
+
+                <label class="form-field">
+                    <span>Your name</span>
+                    <input id="bootstrap-name" type="text" autocomplete="name" required minlength="2">
+                </label>
+
+                <label class="form-field">
+                    <span>Email</span>
+                    <input id="bootstrap-email" type="email" autocomplete="email" required>
+                </label>
+
+                <label class="form-field">
+                    <span>Password</span>
+                    <input id="bootstrap-password" type="password" autocomplete="new-password" required minlength="8">
+                </label>
+
+                <button class="btn btn-primary auth-submit" type="submit">Create owner account</button>
+            </form>
+
+            <div id="auth-message" class="auth-message" role="status" aria-live="polite"></div>
+        </section>
+
+        <aside class="auth-side">
+            <div class="auth-side-content">
+                <p class="auth-kicker">0.14.x beta</p>
+                <h2>User authorization foundation</h2>
+                <p>
+                    This screen stores the session token locally and connects the desktop workflow
+                    to organization-based access.
+                </p>
+                <div id="current-session" class="auth-session"></div>
+            </div>
+        </aside>
+    </main>
+
+    <script src="/static/js/auth.js?v={{ app_version }}"></script>
+</body>
+
+</html>

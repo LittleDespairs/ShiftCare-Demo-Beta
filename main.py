@@ -1,7 +1,10 @@
 import database as database_module
+import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import sqlite3
 import subprocess
 import sys
@@ -10,17 +13,17 @@ import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import date as Date, datetime, time, timedelta
+from datetime import UTC, date as Date, datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
@@ -33,15 +36,16 @@ GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GI
 GITHUB_RELEASE_ASSET_PATTERN = re.compile(r"^ScheduleApp_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$")
 
 tags_metadata = [
-    {"name": "Pages", "description": "Frontend pages / HTML страницы"},
-    {"name": "Employees", "description": "Employee management / Сотрудники"},
-    {"name": "Positions", "description": "Position management / Должности"},
-    {"name": "Assignments", "description": "Employee-position assignments / Привязки"},
-    {"name": "Shift Templates", "description": "Shift templates / Шаблоны смен"},
-    {"name": "Preferences", "description": "Employee preferences / Пожелания"},
-    {"name": "Weekly Preferences", "description": "Weekly preferences / Недельные пожелания"},
-    {"name": "Requirements", "description": "Shift and coverage requirements / Требования"},
-    {"name": "Schedule", "description": "Schedule management / Расписание"},
+    {"name": "Auth", "description": "Authorization and organization access / Авторизация и доступ к организации"},
+    {"name": "Pages", "description": "Frontend pages / HTML СЃС‚СЂР°РЅРёС†С‹"},
+    {"name": "Employees", "description": "Employee management / РЎРѕС‚СЂСѓРґРЅРёРєРё"},
+    {"name": "Positions", "description": "Position management / Р”РѕР»Р¶РЅРѕСЃС‚Рё"},
+    {"name": "Assignments", "description": "Employee-position assignments / РџСЂРёРІСЏР·РєРё"},
+    {"name": "Shift Templates", "description": "Shift templates / РЁР°Р±Р»РѕРЅС‹ СЃРјРµРЅ"},
+    {"name": "Preferences", "description": "Employee preferences / РџРѕР¶РµР»Р°РЅРёСЏ"},
+    {"name": "Weekly Preferences", "description": "Weekly preferences / РќРµРґРµР»СЊРЅС‹Рµ РїРѕР¶РµР»Р°РЅРёСЏ"},
+    {"name": "Requirements", "description": "Shift and coverage requirements / РўСЂРµР±РѕРІР°РЅРёСЏ"},
+    {"name": "Schedule", "description": "Schedule management / Р Р°СЃРїРёСЃР°РЅРёРµ"},
 ]
 
 app = FastAPI(
@@ -85,6 +89,30 @@ DEFAULT_SCHEDULE_COLORS = {
 # =========================
 # Models
 # =========================
+
+
+class AuthBootstrapRequest(BaseModel):
+    organization_name: str = Field(min_length=2, max_length=120)
+    full_name: str = Field(min_length=2, max_length=100)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class AuthLoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AuthInvitationAcceptRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+    full_name: str = Field(min_length=2, max_length=100)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class OrganizationInvitationCreate(BaseModel):
+    email: EmailStr
+    role: Literal["admin", "scheduler", "employee", "manager", "read_only"] = "employee"
+    expires_in_days: int = Field(default=7, ge=1, le=30)
 
 
 class EmployeeCreate(BaseModel):
@@ -606,6 +634,164 @@ def fetch_one_or_404(cursor, query: str, params: tuple, message: str):
 def fetch_count(cursor, query: str, params: tuple = ()) -> int:
     cursor.execute(query, params)
     return int(cursor.fetchone()[0])
+
+
+def current_utc_timestamp() -> str:
+    return datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    iterations = 210_000
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, password_hash: str | None) -> bool:
+    if not password_hash:
+        return False
+    try:
+        algorithm, iterations_value, salt_hex, digest_hex = password_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        iterations = int(iterations_value)
+        salt = bytes.fromhex(salt_hex)
+        expected = bytes.fromhex(digest_hex)
+    except (ValueError, TypeError):
+        return False
+    actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return hmac.compare_digest(actual, expected)
+
+
+def hash_session_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def build_auth_response(connection, user_id: int) -> dict:
+    token = secrets.token_urlsafe(32)
+    expires_at = (
+        datetime.now(UTC) + timedelta(days=int(os.environ.get("AUTH_REFRESH_TOKEN_DAYS", "30")))
+    ).replace(tzinfo=None).isoformat(timespec="seconds")
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        INSERT INTO auth_sessions (user_id, token_hash, expires_at)
+        VALUES (?, ?, ?)
+        """,
+        (user_id, hash_session_token(token), expires_at),
+    )
+    user = get_user_context(cursor, user_id)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_at": expires_at,
+        "user": user,
+    }
+
+
+def get_user_context(cursor, user_id: int) -> dict:
+    cursor.execute(
+        """
+        SELECT id, email, full_name, status, email_verified, created_at, updated_at, last_login_at
+        FROM users
+        WHERE id = ?
+        """,
+        (user_id,),
+    )
+    user_row = cursor.fetchone()
+    if not user_row:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    cursor.execute(
+        """
+        SELECT om.organization_id, o.public_id, o.name, om.role, om.status, om.employee_id
+        FROM organization_memberships om
+        JOIN organizations o ON o.id = om.organization_id
+        WHERE om.user_id = ?
+        ORDER BY om.organization_id
+        """,
+        (user_id,),
+    )
+    memberships = [
+        {
+            "organization_id": row["organization_id"],
+            "organization_public_id": row["public_id"],
+            "organization_name": row["name"],
+            "role": row["role"],
+            "status": row["status"],
+            "employee_id": row["employee_id"],
+        }
+        for row in cursor.fetchall()
+    ]
+    return {
+        "id": user_row["id"],
+        "email": user_row["email"],
+        "full_name": user_row["full_name"],
+        "status": user_row["status"],
+        "email_verified": bool(user_row["email_verified"]),
+        "created_at": user_row["created_at"],
+        "updated_at": user_row["updated_at"],
+        "last_login_at": user_row["last_login_at"],
+        "memberships": memberships,
+    }
+
+
+def get_current_user(authorization: str | None = Header(default=None)) -> dict:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT user_id
+            FROM auth_sessions
+            WHERE token_hash = ?
+              AND revoked_at IS NULL
+              AND expires_at > ?
+            """,
+            (hash_session_token(token), current_utc_timestamp()),
+        )
+        session_row = cursor.fetchone()
+        if not session_row:
+            raise HTTPException(status_code=401, detail="Invalid or expired session")
+        return get_user_context(cursor, session_row["user_id"])
+    finally:
+        connection.close()
+
+
+def find_membership(current_user: dict, organization_id: int) -> dict | None:
+    for membership in current_user["memberships"]:
+        if membership["organization_id"] == organization_id and membership["status"] == "active":
+            return membership
+    return None
+
+
+def require_organization_role(current_user: dict, organization_id: int, allowed_roles: set[str]) -> dict:
+    membership = find_membership(current_user, organization_id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="User is not an active member of this organization")
+    if membership["role"] not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Insufficient organization permissions")
+    return membership
+
+
+def write_auth_audit_event(
+    cursor,
+    event_type: str,
+    user_id: int | None = None,
+    organization_id: int | None = None,
+    metadata: dict | None = None,
+) -> None:
+    cursor.execute(
+        """
+        INSERT INTO auth_audit_events (organization_id, user_id, event_type, metadata_json)
+        VALUES (?, ?, ?, ?)
+        """,
+        (organization_id, user_id, event_type, json.dumps(metadata or {}, ensure_ascii=False)),
+    )
 
 
 def create_recovery_backup(label: str) -> str:
@@ -1409,6 +1595,322 @@ def validate_manual_schedule_entry_basics(connection, entry: ScheduleEntryCreate
 # =========================
 
 
+@app.post("/api/auth/bootstrap", tags=["Auth"])
+def bootstrap_first_owner(request_data: AuthBootstrapRequest):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        active_user_count = fetch_count(cursor, "SELECT COUNT(*) FROM users WHERE status = 'active'")
+        if active_user_count:
+            raise HTTPException(status_code=409, detail="Application already has an active user")
+
+        email = str(request_data.email).strip().lower()
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            UPDATE organizations
+            SET name = ?, updated_at = ?
+            WHERE id = 1
+            """,
+            (request_data.organization_name.strip(), now),
+        )
+        cursor.execute(
+            """
+            INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
+            VALUES (?, ?, ?, 'active', 1, ?, ?)
+            """,
+            (email, request_data.full_name.strip(), hash_password(request_data.password), now, now),
+        )
+        user_id = cursor.lastrowid
+        cursor.execute(
+            """
+            INSERT INTO organization_memberships (organization_id, user_id, role, status, created_at, updated_at)
+            VALUES (1, ?, 'owner', 'active', ?, ?)
+            """,
+            (user_id, now, now),
+        )
+        write_auth_audit_event(cursor, "bootstrap_owner_created", user_id=user_id, organization_id=1)
+        auth_response = build_auth_response(connection, user_id)
+        connection.commit()
+        return auth_response
+    except sqlite3.IntegrityError as exc:
+        connection.rollback()
+        raise HTTPException(status_code=409, detail="User already exists") from exc
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.post("/api/auth/login", tags=["Auth"])
+def login(request_data: AuthLoginRequest):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        email = str(request_data.email).strip().lower()
+        cursor.execute(
+            """
+            SELECT id, password_hash, status
+            FROM users
+            WHERE lower(email) = ?
+            """,
+            (email,),
+        )
+        user_row = cursor.fetchone()
+        if not user_row or user_row["status"] != "active" or not verify_password(request_data.password, user_row["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        now = current_utc_timestamp()
+        cursor.execute("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?", (now, now, user_row["id"]))
+        write_auth_audit_event(cursor, "login_success", user_id=user_row["id"])
+        auth_response = build_auth_response(connection, user_row["id"])
+        connection.commit()
+        return auth_response
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.get("/api/auth/me", tags=["Auth"])
+def get_authenticated_user(current_user: dict = Depends(get_current_user)):
+    return {"user": current_user}
+
+
+@app.post("/api/auth/accept-invitation", tags=["Auth"])
+def accept_invitation(request_data: AuthInvitationAcceptRequest):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        now = current_utc_timestamp()
+        token_hash = hash_session_token(request_data.token)
+        cursor.execute(
+            """
+            SELECT id, organization_id, email, role
+            FROM organization_invitations
+            WHERE token_hash = ?
+              AND status = 'pending'
+              AND expires_at > ?
+            """,
+            (token_hash, now),
+        )
+        invitation = cursor.fetchone()
+        if not invitation:
+            raise HTTPException(status_code=404, detail="Invitation not found or expired")
+
+        cursor.execute("SELECT id FROM users WHERE lower(email) = ?", (invitation["email"].lower(),))
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="User already exists")
+
+        cursor.execute(
+            """
+            INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
+            VALUES (?, ?, ?, 'active', 0, ?, ?)
+            """,
+            (
+                invitation["email"].lower(),
+                request_data.full_name.strip(),
+                hash_password(request_data.password),
+                now,
+                now,
+            ),
+        )
+        user_id = cursor.lastrowid
+        cursor.execute(
+            """
+            INSERT INTO organization_memberships (organization_id, user_id, role, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'active', ?, ?)
+            """,
+            (invitation["organization_id"], user_id, invitation["role"], now, now),
+        )
+        cursor.execute(
+            """
+            UPDATE organization_invitations
+            SET status = 'accepted', accepted_at = ?
+            WHERE id = ?
+            """,
+            (now, invitation["id"]),
+        )
+        write_auth_audit_event(
+            cursor,
+            "invitation_accepted",
+            user_id=user_id,
+            organization_id=invitation["organization_id"],
+            metadata={"invitation_id": invitation["id"], "role": invitation["role"]},
+        )
+        auth_response = build_auth_response(connection, user_id)
+        connection.commit()
+        return auth_response
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.post("/api/auth/logout", tags=["Auth"])
+def logout(authorization: str | None = Header(default=None), current_user: dict = Depends(get_current_user)):
+    token = authorization.split(" ", 1)[1].strip() if authorization else ""
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE token_hash = ? AND revoked_at IS NULL
+            """,
+            (now, hash_session_token(token)),
+        )
+        write_auth_audit_event(cursor, "logout", user_id=current_user["id"])
+        connection.commit()
+        return {"message": "Logged out successfully"}
+    finally:
+        connection.close()
+
+
+@app.get("/api/organizations", tags=["Auth"])
+def get_user_organizations(current_user: dict = Depends(get_current_user)):
+    return {"organizations": current_user["memberships"]}
+
+
+@app.get("/api/organizations/{organization_id}/members", tags=["Auth"])
+def get_organization_members(organization_id: int, current_user: dict = Depends(get_current_user)):
+    require_organization_role(current_user, organization_id, {"owner", "admin", "scheduler", "manager"})
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT u.id, u.email, u.full_name, u.status AS user_status, u.email_verified,
+                   om.role, om.status AS membership_status, om.employee_id, om.created_at, om.updated_at
+            FROM organization_memberships om
+            JOIN users u ON u.id = om.user_id
+            WHERE om.organization_id = ?
+            ORDER BY u.full_name, u.email
+            """,
+            (organization_id,),
+        )
+        return {
+            "members": [
+                {
+                    "user_id": row["id"],
+                    "email": row["email"],
+                    "full_name": row["full_name"],
+                    "user_status": row["user_status"],
+                    "email_verified": bool(row["email_verified"]),
+                    "role": row["role"],
+                    "membership_status": row["membership_status"],
+                    "employee_id": row["employee_id"],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                }
+                for row in cursor.fetchall()
+            ]
+        }
+    finally:
+        connection.close()
+
+
+@app.get("/api/organizations/{organization_id}/invitations", tags=["Auth"])
+def get_organization_invitations(organization_id: int, current_user: dict = Depends(get_current_user)):
+    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT id, email, role, status, expires_at, accepted_at, created_by_user_id, created_at
+            FROM organization_invitations
+            WHERE organization_id = ?
+            ORDER BY created_at DESC
+            """,
+            (organization_id,),
+        )
+        return {"invitations": [dict(row) for row in cursor.fetchall()]}
+    finally:
+        connection.close()
+
+
+@app.post("/api/organizations/{organization_id}/invitations", tags=["Auth"])
+def create_organization_invitation(
+    organization_id: int,
+    request_data: OrganizationInvitationCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        fetch_one_or_404(cursor, "SELECT id FROM organizations WHERE id = ?", (organization_id,), "Organization not found")
+        email = str(request_data.email).strip().lower()
+        cursor.execute(
+            """
+            SELECT 1
+            FROM organization_memberships om
+            JOIN users u ON u.id = om.user_id
+            WHERE om.organization_id = ? AND lower(u.email) = ?
+            """,
+            (organization_id, email),
+        )
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="User is already a member of this organization")
+
+        now = current_utc_timestamp()
+        expires_at = (datetime.now(UTC) + timedelta(days=request_data.expires_in_days)).replace(tzinfo=None).isoformat(
+            timespec="seconds"
+        )
+        invitation_token = secrets.token_urlsafe(32)
+        cursor.execute(
+            """
+            INSERT INTO organization_invitations (
+                organization_id, email, role, token_hash, status, expires_at, created_by_user_id, created_at
+            )
+            VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+            """,
+            (
+                organization_id,
+                email,
+                request_data.role,
+                hash_session_token(invitation_token),
+                expires_at,
+                current_user["id"],
+                now,
+            ),
+        )
+        invitation_id = cursor.lastrowid
+        write_auth_audit_event(
+            cursor,
+            "invitation_created",
+            user_id=current_user["id"],
+            organization_id=organization_id,
+            metadata={"invitation_id": invitation_id, "email": email, "role": request_data.role},
+        )
+        connection.commit()
+        return {
+            "invitation": {
+                "id": invitation_id,
+                "organization_id": organization_id,
+                "email": email,
+                "role": request_data.role,
+                "status": "pending",
+                "expires_at": expires_at,
+            },
+            "invitation_token": invitation_token,
+        }
+    except sqlite3.IntegrityError as exc:
+        connection.rollback()
+        raise HTTPException(status_code=409, detail="Invitation already exists or token collision") from exc
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 @app.get("/api/database/backups", tags=["Settings"])
 def get_database_backups():
     return {"backups": database_module.list_database_backups()}
@@ -1467,6 +1969,11 @@ def install_update(request_data: UpdateInstallRequest):
 @app.get("/", tags=["Pages"])
 def home_page(request: Request):
     return templates.TemplateResponse(request=request, name="index.html", context={})
+
+
+@app.get("/login", tags=["Pages"])
+def login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="login.html", context={})
 
 
 @app.get("/employees", tags=["Pages"])

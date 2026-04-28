@@ -50,6 +50,17 @@ def get_database_path() -> Path:
 
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
+DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
+
+
+def _table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    return {row["name"] for row in cursor.fetchall()}
+
+
+def _add_column_if_missing(cursor: sqlite3.Cursor, table_name: str, column_name: str, definition: str) -> None:
+    if column_name not in _table_columns(cursor, table_name):
+        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
 
 def get_backup_dir() -> Path:
@@ -138,6 +149,120 @@ def init_db():
 
     # Turn on foreign keys in SQLite / Включаем внешние ключи в SQLite
     cursor.execute("PRAGMA foreign_keys = ON")
+
+    # ==========================================
+    # Organizations and authorization / Организации и авторизация
+    # ==========================================
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS organizations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_id TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deleted')),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO organizations (id, public_id, name, status)
+        VALUES (1, ?, 'Local Organization', 'active')
+        """,
+        (DEFAULT_ORGANIZATION_PUBLIC_ID,),
+    )
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            full_name TEXT NOT NULL,
+            password_hash TEXT,
+            status TEXT NOT NULL DEFAULT 'invited' CHECK (status IN ('invited', 'active', 'disabled')),
+            email_verified INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_login_at TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS organization_memberships (
+            organization_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'scheduler', 'employee', 'manager', 'read_only')),
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('invited', 'active', 'disabled')),
+            employee_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (organization_id, user_id),
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS organization_invitations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL,
+            email TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'scheduler', 'employee', 'manager', 'read_only')),
+            token_hash TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired', 'revoked')),
+            expires_at TEXT NOT NULL,
+            accepted_at TEXT,
+            created_by_user_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS auth_audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER,
+            user_id INTEGER,
+            event_type TEXT NOT NULL,
+            actor_ip TEXT,
+            user_agent TEXT,
+            metadata_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TEXT NOT NULL,
+            revoked_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)")
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memberships_user
+        ON organization_memberships (user_id, organization_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_invitations_org_email_status
+        ON organization_invitations (organization_id, email, status)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_auth_audit_events_org_created
+        ON auth_audit_events (organization_id, created_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active
+        ON auth_sessions (user_id, expires_at, revoked_at)
+    """)
 
     # =========================
     # Employees / Сотрудники
@@ -494,6 +619,48 @@ def init_db():
             ('balance_consecutive_split_weight', '100'),
             ('balance_excess_night_weight', '2000'),
             ('balance_excess_split_weight', '1800')
+    """)
+
+    organization_owned_tables = (
+        "employees",
+        "positions",
+        "shift_templates",
+        "schedule_entries",
+        "shift_requirements",
+        "employee_preferences",
+        "employee_week_preferences",
+        "employee_day_statuses",
+        "coverage_requirements",
+    )
+    for table_name in organization_owned_tables:
+        _add_column_if_missing(cursor, table_name, "organization_id", "INTEGER NOT NULL DEFAULT 1")
+        _add_column_if_missing(cursor, table_name, "created_at", "TEXT")
+        _add_column_if_missing(cursor, table_name, "updated_at", "TEXT")
+        _add_column_if_missing(cursor, table_name, "updated_by", "INTEGER")
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employees_org
+        ON employees (organization_id, id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_positions_org
+        ON positions (organization_id, id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_shift_templates_org
+        ON shift_templates (organization_id, position_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_schedule_entries_org_date
+        ON schedule_entries (organization_id, date)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_org_week
+        ON employee_week_preferences (organization_id, week_start_date, preference_date)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position
+        ON coverage_requirements (organization_id, position_id)
     """)
 
     connection.commit()

@@ -26,6 +26,9 @@ android/app/src/main/assets/schedule_app_backend/
 *.db
 *.sqlite
 *.sqlite3
+.env
+.env.*
+!.env.example
 
 # Private draft documentation
 GENERATOR_EXPLANATION_RU.docx

@@ -27,6 +27,11 @@ class ApiRegressionTests(unittest.TestCase):
     def _reset_database(self):
         cursor = self.connection.cursor()
         for table in (
+            "auth_sessions",
+            "auth_audit_events",
+            "organization_invitations",
+            "organization_memberships",
+            "users",
             "schedule_entries",
             "employee_day_statuses",
             "employee_week_preferences",
@@ -39,6 +44,9 @@ class ApiRegressionTests(unittest.TestCase):
             "employees",
         ):
             cursor.execute(f"DELETE FROM {table}")
+        cursor.execute(
+            "UPDATE organizations SET name = 'Local Organization', status = 'active' WHERE id = 1"
+        )
         self.connection.commit()
         backup_dir = database.get_backup_dir()
         for backup_path in backup_dir.glob("*.db"):
@@ -99,6 +107,164 @@ class ApiRegressionTests(unittest.TestCase):
         response = self.client.post("/api/shift-templates", json=self._template_payload(**overrides))
         self.assertEqual(response.status_code, 200)
         return response.json()["shift_template"]["id"]
+
+    def test_authorization_schema_is_initialized(self):
+        cursor = self.connection.cursor()
+        for table_name in (
+            "organizations",
+            "users",
+            "organization_memberships",
+            "organization_invitations",
+            "auth_audit_events",
+            "auth_sessions",
+        ):
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (table_name,),
+            )
+            self.assertIsNotNone(cursor.fetchone(), table_name)
+
+        cursor.execute("SELECT public_id, name, status FROM organizations WHERE id = 1")
+        default_organization = cursor.fetchone()
+        self.assertIsNotNone(default_organization)
+        self.assertEqual(default_organization["public_id"], "local-default")
+        self.assertEqual(default_organization["status"], "active")
+
+        for table_name in (
+            "employees",
+            "positions",
+            "shift_templates",
+            "schedule_entries",
+            "shift_requirements",
+            "employee_preferences",
+            "employee_week_preferences",
+            "employee_day_statuses",
+            "coverage_requirements",
+        ):
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = {row["name"] for row in cursor.fetchall()}
+            self.assertIn("organization_id", columns, table_name)
+            self.assertIn("updated_by", columns, table_name)
+
+    def test_auth_bootstrap_login_me_and_logout_flow(self):
+        payload = {
+            "organization_name": "Beta Clinic",
+            "full_name": "Owner User",
+            "email": "Owner@Example.COM",
+            "password": "CorrectHorse123",
+        }
+        bootstrap_response = self.client.post("/api/auth/bootstrap", json=payload)
+        self.assertEqual(bootstrap_response.status_code, 200)
+        bootstrap_body = bootstrap_response.json()
+        self.assertEqual(bootstrap_body["token_type"], "bearer")
+        self.assertTrue(bootstrap_body["access_token"])
+        self.assertEqual(bootstrap_body["user"]["email"], "owner@example.com")
+        self.assertEqual(bootstrap_body["user"]["memberships"][0]["role"], "owner")
+        self.assertEqual(bootstrap_body["user"]["memberships"][0]["organization_name"], "Beta Clinic")
+
+        duplicate_response = self.client.post("/api/auth/bootstrap", json=payload)
+        self.assertEqual(duplicate_response.status_code, 409)
+
+        login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "CorrectHorse123"},
+        )
+        self.assertEqual(login_response.status_code, 200)
+        token = login_response.json()["access_token"]
+
+        me_response = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(me_response.status_code, 200)
+        self.assertEqual(me_response.json()["user"]["email"], "owner@example.com")
+
+        logout_response = self.client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(logout_response.status_code, 200)
+
+        revoked_response = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(revoked_response.status_code, 401)
+
+    def test_auth_login_rejects_invalid_password(self):
+        self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        response = self.client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "wrong-password"},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_invitation_flow_creates_employee_membership_and_enforces_roles(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_token = owner_response.json()["access_token"]
+
+        members_response = self.client.get(
+            "/api/organizations/1/members",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        self.assertEqual(members_response.status_code, 200)
+        self.assertEqual(len(members_response.json()["members"]), 1)
+
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers={"Authorization": f"Bearer {owner_token}"},
+            json={"email": "employee@example.com", "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        invitation_token = invitation_response.json()["invitation_token"]
+
+        accept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_token,
+                "full_name": "Employee User",
+                "password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(accept_response.status_code, 200)
+        employee_token = accept_response.json()["access_token"]
+        employee_memberships = accept_response.json()["user"]["memberships"]
+        self.assertEqual(employee_memberships[0]["role"], "employee")
+        self.assertEqual(employee_memberships[0]["organization_id"], 1)
+
+        forbidden_members_response = self.client.get(
+            "/api/organizations/1/members",
+            headers={"Authorization": f"Bearer {employee_token}"},
+        )
+        self.assertEqual(forbidden_members_response.status_code, 403)
+
+        forbidden_invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers={"Authorization": f"Bearer {employee_token}"},
+            json={"email": "second@example.com", "role": "employee"},
+        )
+        self.assertEqual(forbidden_invitation_response.status_code, 403)
+
+        invitations_response = self.client.get(
+            "/api/organizations/1/invitations",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        self.assertEqual(invitations_response.status_code, 200)
+        self.assertEqual(invitations_response.json()["invitations"][0]["status"], "accepted")
+
+    def test_login_page_returns_auth_shell(self):
+        response = self.client.get("/login")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Create first owner", response.text)
+        self.assertIn("/static/js/auth.js", response.text)
 
     def _save_shift_requirement(self, **overrides):
         payload = {
@@ -1004,9 +1170,9 @@ class ApiRegressionTests(unittest.TestCase):
         worksheet = workbook.active
         self.assertEqual(worksheet["B5"].value, "Morning")
         self.assertIn("B5:B6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
-        self.assertEqual(worksheet["C5"].value, "Evening - Неявка")
+        self.assertEqual(worksheet["C5"].value, "Evening - РќРµСЏРІРєР°")
         self.assertIn("C5:C6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
-        self.assertEqual(worksheet["D5"].value, "Выходной")
+        self.assertEqual(worksheet["D5"].value, "Р’С‹С…РѕРґРЅРѕР№")
         self.assertIn("D5:D6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
         self.assertEqual(worksheet["E5"].value, "Reception: Other Morning")
         self.assertEqual(worksheet["E6"].value, "Night")
@@ -1014,16 +1180,16 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(worksheet["E5"].fill.fgColor.rgb, "FFFDE68A")
         self.assertEqual(worksheet["E6"].fill.fill_type, None)
         self.assertEqual(worksheet["F5"].value, "Morning")
-        self.assertEqual(worksheet["F6"].value, "Больничный")
-        self.assertEqual(worksheet["I5"].value, "3 / 27ч")
+        self.assertEqual(worksheet["F6"].value, "Р‘РѕР»СЊРЅРёС‡РЅС‹Р№")
+        self.assertEqual(worksheet["I5"].value, "3 / 27С‡")
         self.assertIn("A5:A6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
         self.assertIn("I5:I6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
         self.assertEqual(worksheet["A5"].border.left.style, "medium")
         self.assertEqual(worksheet["A5"].border.top.style, "medium")
         self.assertEqual(worksheet["I5"].border.right.style, "medium")
         self.assertEqual(worksheet["E6"].border.bottom.style, "medium")
-        summary_sheet = workbook["Сводка координатора"]
-        self.assertEqual(summary_sheet["A1"].value, "Сводка координатора")
+        summary_sheet = workbook["РЎРІРѕРґРєР° РєРѕРѕСЂРґРёРЅР°С‚РѕСЂР°"]
+        self.assertEqual(summary_sheet["A1"].value, "РЎРІРѕРґРєР° РєРѕРѕСЂРґРёРЅР°С‚РѕСЂР°")
         self.assertEqual(summary_sheet["B3"].value, "Nurse")
         self.assertEqual(summary_sheet["B6"].value, 5)
         self.assertEqual(summary_sheet["B8"].value, 1)
