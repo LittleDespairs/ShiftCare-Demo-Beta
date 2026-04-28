@@ -34,7 +34,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.14.5_beta"
+APP_VERSION = "0.14.6_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app"
 GITHUB_REPO_OWNER = "LittleDespairs"
@@ -2005,6 +2005,26 @@ def login(request_data: AuthLoginRequest, request: Request):
 @app.get("/api/auth/me", tags=["Auth"])
 def get_authenticated_user(current_user: dict = Depends(get_current_user)):
     return {"user": current_user}
+
+
+@app.get("/api/auth/status", tags=["Auth"])
+def auth_status():
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT COUNT(*) AS user_count FROM users WHERE status = 'active'")
+        user_count = cursor.fetchone()["user_count"]
+        cursor.execute("SELECT COUNT(*) AS organization_count FROM organizations WHERE status = 'active'")
+        organization_count = cursor.fetchone()["organization_count"]
+        return {
+            "app_version": APP_VERSION,
+            "bootstrap_available": user_count == 0,
+            "active_user_count": user_count,
+            "active_organization_count": organization_count,
+            "environment": get_app_config().app_env,
+        }
+    finally:
+        connection.close()
 
 
 @app.put("/api/auth/profile", tags=["Auth"])

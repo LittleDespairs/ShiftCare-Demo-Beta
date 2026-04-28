@@ -2,6 +2,18 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
 
+## 0.14.6_beta - 2026-04-29
+
+### What Changed
+
+- Added `/api/auth/status` so the login screen can detect whether the selected backend allows first-owner creation.
+- Added a login-screen warning when Cloud beta API is selected and already has an owner, which was easy to confuse with the local installed database.
+- Added regression coverage for auth bootstrap availability reporting.
+
+### Release Artifact
+
+- `dist\installer\ShiftCare_Setup_0.14.6-beta.exe`
+
 ## 0.14.5_beta - 2026-04-29
 
 ### What Changed

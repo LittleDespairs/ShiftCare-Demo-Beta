@@ -94,6 +94,32 @@
         apiCloudButton?.classList.toggle("btn-soft", !apiBaseUrl);
     }
 
+    async function renderAuthStatus() {
+        try {
+            const status = await window.scheduleAuth.request("/api/auth/status");
+            const apiBaseUrl = window.scheduleAuth?.getApiBaseUrl?.() || "";
+            if (status.bootstrap_available) {
+                if (apiBaseUrl) {
+                    setMessage(
+                        "Cloud beta API is selected and has no owner yet. Use Local if you want to create an organization only on this computer.",
+                        "success",
+                    );
+                }
+                return;
+            }
+            if (apiBaseUrl) {
+                setMessage(
+                    "Cloud beta API is selected and already has an owner. To create a local organization, switch to Local first.",
+                    "error",
+                );
+                return;
+            }
+            setMessage("This local database already has an owner. Log in with that owner account.", "");
+        } catch (error) {
+            setMessage(`Could not check authorization state: ${error.message}`, "error");
+        }
+    }
+
     async function postJson(url, payload) {
         const response = await fetch(url, {
             method: "POST",
@@ -119,6 +145,7 @@
         renderApiMode();
         document.dispatchEvent(new CustomEvent("schedule-api-mode-changed"));
         setMessage("Local API selected. Please log in again.", "success");
+        renderAuthStatus();
     });
 
     apiCloudButton?.addEventListener("click", () => {
@@ -127,6 +154,7 @@
         renderApiMode();
         document.dispatchEvent(new CustomEvent("schedule-api-mode-changed"));
         setMessage("Cloud beta API selected. Please log in again.", "success");
+        renderAuthStatus();
     });
 
     loginForm.addEventListener("submit", async (event) => {
@@ -166,4 +194,5 @@
 
     renderSession();
     renderApiMode();
+    renderAuthStatus();
 })();

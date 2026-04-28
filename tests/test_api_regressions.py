@@ -197,6 +197,28 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(payload["employee_portal_url"], "https://shiftcare.example.com/login")
         self.assertEqual(payload["employee_invitation_url_base"], "https://shiftcare.example.com/accept-invitation")
 
+    def test_auth_status_reports_bootstrap_availability(self):
+        empty_response = self.client.get("/api/auth/status")
+        self.assertEqual(empty_response.status_code, 200)
+        self.assertTrue(empty_response.json()["bootstrap_available"])
+        self.assertEqual(empty_response.json()["active_user_count"], 0)
+
+        bootstrap_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(bootstrap_response.status_code, 200)
+
+        populated_response = self.client.get("/api/auth/status")
+        self.assertEqual(populated_response.status_code, 200)
+        self.assertFalse(populated_response.json()["bootstrap_available"])
+        self.assertEqual(populated_response.json()["active_user_count"], 1)
+
     def test_health_readiness_blocks_unsupported_database_engine(self):
         with patch.dict(os.environ, {"DATABASE_ENGINE": "postgresql"}):
             response = self.client.get("/api/health/ready")
