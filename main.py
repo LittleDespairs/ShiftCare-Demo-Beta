@@ -31,7 +31,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.14.1_beta"
+APP_VERSION = "0.14.2_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
 GITHUB_REPO_OWNER = "LittleDespairs"
 GITHUB_REPO_NAME = "Schedule_app_releases"

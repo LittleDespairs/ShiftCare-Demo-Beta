@@ -2,10 +2,11 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
 
-## 0.14.1_beta cloud/backend hardening - 2026-04-29
+## 0.14.2_beta - 2026-04-29
 
 ### What Changed
 
+- Bumped runtime, service worker, Windows packaging, installer, and Android beta metadata to `0.14.2_beta`.
 - Allowed `employee` users to view the schedule while keeping schedule editing blocked for non-scheduler roles.
 - Added local per-user schedule card display mode and local read-only coverage display preferences.
 - Added backend permission checks for employee day status writes so non-scheduler roles cannot edit schedule status data through direct API calls.
@@ -22,6 +23,8 @@ This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.
   - `GET /api/health/live`
   - `GET /api/health/ready`
 - Browser verification for `employee` schedule access, read-only schedule controls, and compact card display mode.
+- Built Windows installer asset:
+  - `dist\installer\ScheduleApp_Setup_0.14.2-beta.exe`
 
 ### Current Cloud Limitation
 

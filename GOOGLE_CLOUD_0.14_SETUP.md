@@ -18,7 +18,7 @@ Cloud Run API -> Cloud SQL PostgreSQL
 
 ## Current Implementation Status
 
-As of `0.14.1_beta`, the deployable Cloud Run container is suitable for backend smoke tests only.
+As of `0.14.2_beta`, the deployable Cloud Run container is suitable for backend smoke tests only.
 The application data layer is still SQLite-based (`sqlite3`, SQLite DDL, SQLite backup/restore).
 Do not connect production organization data to Cloud Run until the PostgreSQL adapter and migrations are implemented.
 

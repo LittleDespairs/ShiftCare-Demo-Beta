@@ -84,7 +84,7 @@ Invoke-RestMethod http://127.0.0.1:8080/api/health/live
 Invoke-RestMethod http://127.0.0.1:8080/api/health/ready
 ```
 
-Important: `0.14.1_beta` Cloud Run deployment is a smoke backend only. The data layer still uses SQLite.
+Important: `0.14.2_beta` Cloud Run deployment is a smoke backend only. The data layer still uses SQLite.
 Do not use it for production organization data until PostgreSQL/Cloud SQL support is implemented and tested.
 
 ## Android Standalone APK
@@ -114,13 +114,13 @@ See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
 Current spec:
 
 ```text
-ScheduleApp_0.13.9_beta.spec
+ScheduleApp_0.14.2_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.13.9_beta.spec
+.\.venv\Scripts\pyinstaller.exe ScheduleApp_0.14.2_beta.spec
 ```
 
 ## Windows Installer
@@ -143,7 +143,7 @@ If Inno Setup is not installed locally:
 Expected installer output:
 
 ```text
-dist\installer\ScheduleApp_Setup_0.13.9-beta.exe
+dist\installer\ScheduleApp_Setup_0.14.2-beta.exe
 ```
 
 ## Before Committing
