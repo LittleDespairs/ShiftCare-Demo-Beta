@@ -24,16 +24,7 @@
 
         /* Layout for the page body / Макет основной части страницы */
         .employees-layout {
-            display: grid;
-            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
-            gap: 22px;
-        }
-
-        /* Form section / Секция формы */
-        .employee-form-panel {
-            position: sticky;
-            top: 28px;
-            align-self: start;
+            display: block;
         }
 
         /* Section titles / Заголовки блоков */
@@ -266,6 +257,25 @@
             color: #b91c1c;
         }
 
+        .employee-modal {
+            width: min(720px, 100%);
+        }
+
+        .employee-modal .form-grid {
+            gap: 16px;
+        }
+
+        .employee-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 4px;
+        }
+
+        body.rtl .employee-modal-actions {
+            justify-content: flex-start;
+        }
+
         /* Notes box / Блок заметок */
         .notes-box {
             border: 1px solid var(--border);
@@ -343,18 +353,33 @@
                 grid-template-columns: 1fr;
             }
 
-            .employee-form-panel {
-                position: static;
+            .list-header {
+                align-items: stretch;
+                flex-direction: column;
             }
         }
 
         @media (max-width: 920px) {
             body.mobile-sidebar-hidden .sidebar {
+                gap: 0;
+                padding-block: 14px;
+            }
+
+            body.mobile-sidebar-hidden .sidebar > div:not(.sidebar-top-row),
+            body.mobile-sidebar-hidden .sidebar-footer {
                 display: none;
             }
 
             .triple-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .employee-modal-actions {
+                flex-direction: column-reverse;
+            }
+
+            .employee-modal-actions .btn {
+                width: 100%;
             }
         }
     </style>
@@ -447,117 +472,6 @@
             <div id="message-box"></div>
 
             <div class="employees-layout">
-                <!--
-                    LEFT COLUMN / ЛЕВАЯ КОЛОНКА
-                    Employee form.
-                    Форма сотрудника.
-                -->
-                <section class="panel employee-form-panel">
-                    <div class="panel-body">
-                        <h3 class="subsection-title" data-i18n="employees_form_title">Employee form</h3>
-                        <p class="subsection-text" data-i18n="employees_form_subtitle">
-                            Fill in the employee data and save it to the system.
-                        </p>
-
-                        <form id="employee-form" class="form-grid">
-                            <!-- Full name / Полное имя -->
-                            <div>
-                                <label class="form-label" for="full_name" data-i18n="employees_full_name">Full
-                                    name</label>
-                                <input type="text" id="full_name" class="input"
-                                    data-i18n-placeholder="employees_full_name_placeholder"
-                                    placeholder="Enter full name" required>
-                            </div>
-
-                            <!-- Sex / Пол -->
-                            <div>
-                                <label class="form-label" for="sex" data-i18n="employees_sex">Sex</label>
-                                <select id="sex" class="select" required>
-                                    <option value="" data-i18n="employees_select_sex">Select sex</option>
-                                    <option value="male" data-i18n="employees_sex_male">Male</option>
-                                    <option value="female" data-i18n="employees_sex_female">Female</option>
-                                </select>
-                            </div>
-
-                            <!-- Min/Target/Max / Мин/Цель/Макс -->
-                            <div class="triple-grid">
-                                <div>
-                                    <label class="form-label" for="min_shifts_per_week"
-                                        data-i18n="employees_min_shifts">
-                                        Min shifts / week
-                                    </label>
-                                    <input type="number" id="min_shifts_per_week" class="input" min="0" max="14"
-                                        required>
-                                </div>
-
-                                <div>
-                                    <label class="form-label" for="target_shifts_per_week"
-                                        data-i18n="employees_target_shifts">
-                                        Target shifts / week
-                                    </label>
-                                    <input type="number" id="target_shifts_per_week" class="input" min="0" max="14"
-                                        required>
-                                </div>
-
-                                <div>
-                                    <label class="form-label" for="max_shifts_per_week"
-                                        data-i18n="employees_max_shifts">
-                                        Max shifts / week
-                                    </label>
-                                    <input type="number" id="max_shifts_per_week" class="input" min="0" max="14"
-                                        required>
-                                </div>
-                            </div>
-
-                            <div class="helper-text" data-i18n="employees_shift_limits_hint">
-                                Make sure minimum, target, and maximum values are logically consistent.
-                            </div>
-
-                            <!-- Availability rules / Правила доступности -->
-                            <div class="rules-box">
-                                <h4 class="rules-title" data-i18n="employees_rules_title">Availability rules</h4>
-
-                                <div class="check-list">
-                                    <label class="check-row">
-                                        <input type="checkbox" id="can_work_night">
-                                        <span data-i18n="employees_can_work_night">Can work night shifts</span>
-                                    </label>
-
-                                    <label class="check-row">
-                                        <input type="checkbox" id="can_work_weekends">
-                                        <span data-i18n="employees_can_work_weekends">Can work weekends</span>
-                                    </label>
-
-                                    <label class="check-row">
-                                        <input type="checkbox" id="can_work_evenings_after_night">
-                                        <span data-i18n="employees_can_work_evenings_after_night">
-                                            Can work evening after night
-                                        </span>
-                                    </label>
-
-                                    <label class="check-row">
-                                        <input type="checkbox" id="can_work_mornings_and_evenings">
-                                        <span data-i18n="employees_can_work_mornings_and_evenings">
-                                            Can work morning and evening on the same day
-                                        </span>
-                                    </label>
-                                </div>
-                            </div>
-
-                            <!-- Submit button / Кнопка отправки -->
-                            <button type="submit" class="btn btn-primary" id="submit-button"
-                                data-i18n="employees_add_button">
-                                Add employee
-                            </button>
-                        </form>
-                    </div>
-                </section>
-
-                <!--
-                    RIGHT COLUMN / ПРАВАЯ КОЛОНКА
-                    Employee list and notes.
-                    Список сотрудников и заметки.
-                -->
                 <section>
                     <div class="panel">
                         <div class="panel-body">
@@ -571,6 +485,10 @@
                                         Current employees available in the system.
                                     </p>
                                 </div>
+                                <button id="open-employee-modal-btn" class="btn btn-primary" type="button"
+                                    data-i18n="employees_add_button">
+                                    Add employee
+                                </button>
                             </div>
 
                             <div class="employees-table-shell">
@@ -619,6 +537,106 @@
                     </div>
                 </section>
             </div>
+
+            <div id="employee-modal-overlay" class="app-modal-overlay" aria-hidden="true">
+                <div class="app-modal employee-modal" role="dialog" aria-modal="true" aria-labelledby="employee-modal-title">
+                    <div class="app-modal-header">
+                        <h2 id="employee-modal-title" class="app-modal-title" data-i18n="employees_form_title">Employee form</h2>
+                        <button id="employee-modal-close" class="app-modal-close" type="button" aria-label="Close">×</button>
+                    </div>
+                    <div class="app-modal-body">
+                        <p class="subsection-text" data-i18n="employees_form_subtitle">
+                            Fill in the employee data and save it to the system.
+                        </p>
+
+                        <form id="employee-form" class="form-grid">
+                            <div>
+                                <label class="form-label" for="full_name" data-i18n="employees_full_name">Full name</label>
+                                <input type="text" id="full_name" class="input"
+                                    data-i18n-placeholder="employees_full_name_placeholder"
+                                    placeholder="Enter full name" required>
+                            </div>
+
+                            <div>
+                                <label class="form-label" for="sex" data-i18n="employees_sex">Sex</label>
+                                <select id="sex" class="select" required>
+                                    <option value="" data-i18n="employees_select_sex">Select sex</option>
+                                    <option value="male" data-i18n="employees_sex_male">Male</option>
+                                    <option value="female" data-i18n="employees_sex_female">Female</option>
+                                </select>
+                            </div>
+
+                            <div class="triple-grid">
+                                <div>
+                                    <label class="form-label" for="min_shifts_per_week" data-i18n="employees_min_shifts">
+                                        Min shifts / week
+                                    </label>
+                                    <input type="number" id="min_shifts_per_week" class="input" min="0" max="14" required>
+                                </div>
+
+                                <div>
+                                    <label class="form-label" for="target_shifts_per_week" data-i18n="employees_target_shifts">
+                                        Target shifts / week
+                                    </label>
+                                    <input type="number" id="target_shifts_per_week" class="input" min="0" max="14" required>
+                                </div>
+
+                                <div>
+                                    <label class="form-label" for="max_shifts_per_week" data-i18n="employees_max_shifts">
+                                        Max shifts / week
+                                    </label>
+                                    <input type="number" id="max_shifts_per_week" class="input" min="0" max="14" required>
+                                </div>
+                            </div>
+
+                            <div class="helper-text" data-i18n="employees_shift_limits_hint">
+                                Make sure minimum, target, and maximum values are logically consistent.
+                            </div>
+
+                            <div class="rules-box">
+                                <h4 class="rules-title" data-i18n="employees_rules_title">Availability rules</h4>
+
+                                <div class="check-list">
+                                    <label class="check-row">
+                                        <input type="checkbox" id="can_work_night">
+                                        <span data-i18n="employees_can_work_night">Can work night shifts</span>
+                                    </label>
+
+                                    <label class="check-row">
+                                        <input type="checkbox" id="can_work_weekends">
+                                        <span data-i18n="employees_can_work_weekends">Can work weekends</span>
+                                    </label>
+
+                                    <label class="check-row">
+                                        <input type="checkbox" id="can_work_evenings_after_night">
+                                        <span data-i18n="employees_can_work_evenings_after_night">
+                                            Can work evening after night
+                                        </span>
+                                    </label>
+
+                                    <label class="check-row">
+                                        <input type="checkbox" id="can_work_mornings_and_evenings">
+                                        <span data-i18n="employees_can_work_mornings_and_evenings">
+                                            Can work morning and evening on the same day
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="employee-modal-actions">
+                                <button id="employee-modal-cancel" type="button" class="btn btn-secondary"
+                                    data-i18n="common_cancel">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="btn btn-primary" id="submit-button"
+                                    data-i18n="employees_add_button">
+                                    Add employee
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -631,14 +649,14 @@
            ========================================================= */
 
         function getSavedSidebarState() {
-            return localStorage.getItem("scheduleAppSidebar") || "expanded";
+            return localStorage.getItem("scheduleAppSidebar");
         }
 
         function applySidebarState(state) {
             document.body.classList.remove("sidebar-collapsed", "mobile-sidebar-hidden");
 
             if (window.innerWidth <= 920) {
-                if (state === "hidden") {
+                if (state !== "expanded") {
                     document.body.classList.add("mobile-sidebar-hidden");
                 }
                 return;
@@ -692,130 +710,61 @@
             renderPageMessage("message-box", text, type || "info");
         };
 
-        /* =========================================================
-           TABLE RENDER OVERRIDE / ПЕРЕОПРЕДЕЛЕНИЕ ОТРИСОВКИ ТАБЛИЦЫ
-           =========================================================
-           We keep the backend logic, but render rows in the new visual style.
-           Мы сохраняем backend-логику, но рисуем таблицу в новом стиле.
+        if (typeof window.openEmployeeModal !== "function") {
+            window.openEmployeeModal = function () {
+                const overlay = document.getElementById("employee-modal-overlay");
+                if (!overlay) return;
+                overlay.classList.add("is-open");
+                overlay.setAttribute("aria-hidden", "false");
+                const firstInput = document.getElementById("full_name");
+                if (firstInput) {
+                    firstInput.focus();
+                }
+            };
+        }
+
+        if (typeof window.closeEmployeeModal !== "function") {
+            window.closeEmployeeModal = function () {
+                const overlay = document.getElementById("employee-modal-overlay");
+                if (!overlay) return;
+                overlay.classList.remove("is-open");
+                overlay.setAttribute("aria-hidden", "true");
+            };
+        }
+
+        /*
+            Safety binding for browsers that still have an older cached employees.js.
+            The real implementation lives in static/js/employees.js.
         */
-
-        function boolBadge(value) {
-            const yesText = typeof translate === "function" ? translate("common_yes") : "Yes";
-            const noText = typeof translate === "function" ? translate("common_no") : "No";
-
-            return value
-                ? `<span class="mini-badge yes">${yesText}</span>`
-                : `<span class="mini-badge no">${noText}</span>`;
-        }
-
-        function employeeSexLabel(sex) {
-            if (typeof translate !== "function") {
-                return sex;
-            }
-
-            if (sex === "male") return translate("employees_sex_male");
-            if (sex === "female") return translate("employees_sex_female");
-            return sex;
-        }
-
-        function renderEmployeesTable(employees) {
-            const tableBody = document.getElementById("employees-table-body");
-
-            if (!tableBody) return;
-
-            if (employees.length === 0) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="9" class="employee-meta-cell">
-                            ${typeof renderEmptyState === "function"
-                                ? renderEmptyState({
-                                    title: translate("employees_empty_state_title"),
-                                    text: translate("employees_empty_state_text")
-                                })
-                                : (typeof translate === "function" ? translate("employees_empty_list") : "No employees yet")}
-                        </td>
-                    </tr>
-                `;
+        document.addEventListener("click", (event) => {
+            const addButton = event.target.closest("#open-employee-modal-btn");
+            if (addButton) {
+                if (addButton.dataset.employeeModalBound === "1") return;
+                if (typeof resetForm === "function") {
+                    resetForm();
+                }
+                openEmployeeModal("add");
                 return;
             }
 
-            tableBody.innerHTML = employees.map(employee => `
-                <tr>
-                    <td>${Number(employee.id)}</td>
-                    <td class="employee-name-cell">${escapeHtml(employee.full_name)}</td>
-                    <td>${escapeHtml(employeeSexLabel(employee.sex))}</td>
-                    <td>${Number(employee.min_shifts_per_week)} / ${Number(employee.target_shifts_per_week)} / ${Number(employee.max_shifts_per_week)}</td>
-                    <td>${boolBadge(employee.can_work_night)}</td>
-                    <td>${boolBadge(employee.can_work_weekends)}</td>
-                    <td>${boolBadge(employee.can_work_evenings_after_night)}</td>
-                    <td>${boolBadge(employee.can_work_mornings_and_evenings)}</td>
-                    <td>
-                        <div class="table-actions">
-                            <button
-                                class="table-btn edit"
-                                data-action="edit"
-                                data-employee-id="${Number(employee.id)}"
-                                type="button"
-                            >
-                                ${typeof translate === "function" ? translate("employees_edit_button") : "Edit"}
-                            </button>
+            const editButton = event.target.closest('[data-action="edit"][data-employee-id]');
+            if (editButton && typeof currentEmployees !== "undefined") {
+                const employeeId = Number(editButton.dataset.employeeId);
+                const employee = currentEmployees.find(item => item.id === employeeId);
+                if (employee && typeof editEmployee === "function") {
+                    editEmployee(employee);
+                }
+                openEmployeeModal("edit");
+                return;
+            }
 
-                            <button
-                                class="table-btn delete"
-                                data-action="delete"
-                                data-employee-id="${Number(employee.id)}"
-                                type="button"
-                            >
-                                ${typeof translate === "function" ? translate("employees_delete_button") : "Delete"}
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-            `).join("");
-        }
-
-        /* =========================================================
-           FORM BUTTON TEXT / ТЕКСТ КНОПКИ ФОРМЫ
-           ========================================================= */
-
-        document.addEventListener("app-language-changed", () => {
-            const submitButton = document.getElementById("submit-button");
-            if (!submitButton) return;
-
-            if (typeof editingEmployeeId !== "undefined" && editingEmployeeId !== null) {
-                submitButton.textContent = translate("employees_update_button");
-            } else {
-                submitButton.textContent = translate("employees_add_button");
+            const overlay = document.getElementById("employee-modal-overlay");
+            const closeButton = event.target.closest("#employee-modal-close, #employee-modal-cancel");
+            if (closeButton || event.target === overlay) {
+                closeEmployeeModal();
             }
         });
 
-        /*
-            Patch resetForm and editEmployee button texts after employees.js loads.
-            Подправляем resetForm и editEmployee после загрузки employees.js.
-        */
-        window.addEventListener("load", () => {
-            if (typeof resetForm === "function") {
-                const originalResetForm = resetForm;
-                window.resetForm = function () {
-                    originalResetForm();
-                    const submitButton = document.getElementById("submit-button");
-                    if (submitButton && typeof translate === "function") {
-                        submitButton.textContent = translate("employees_add_button");
-                    }
-                };
-            }
-
-            if (typeof editEmployee === "function") {
-                const originalEditEmployee = editEmployee;
-                window.editEmployee = function (employee) {
-                    originalEditEmployee(employee);
-                    const submitButton = document.getElementById("submit-button");
-                    if (submitButton && typeof translate === "function") {
-                        submitButton.textContent = translate("employees_update_button");
-                    }
-                };
-            }
-        });
     </script>
 
     <!--

@@ -157,53 +157,27 @@
 
                         <div class="toolbar-actions">
                             <div class="toolbar-command-group">
-                                <div class="toolbar-group-label" data-i18n="schedule_toolbar_generate">Generate</div>
-                                <div class="toolbar-command-row">
-                                    <button id="auto-generate-btn" class="btn btn-secondary" type="button"
-                                        data-i18n="schedule_generate_btn">
-                                        Auto generate
-                                    </button>
-
-                                    <button id="auto-generate-all-btn" class="btn btn-secondary" type="button"
-                                        data-i18n="schedule_generate_all_btn">
-                                        Auto generate all
-                                    </button>
-                                </div>
+                                <button id="open-generation-actions-btn" class="btn btn-secondary toolbar-modal-btn"
+                                    type="button" data-action-modal="generation-actions-modal"
+                                    data-i18n="schedule_toolbar_generate">
+                                    Generate
+                                </button>
                             </div>
 
                             <div class="toolbar-command-group">
-                                <div class="toolbar-group-label" data-i18n="schedule_toolbar_output">Output</div>
-                                <div class="toolbar-command-row">
-                                    <button id="export-excel-btn" class="btn btn-soft" type="button"
-                                        data-i18n="schedule_export_btn">
-                                        Export Excel
-                                    </button>
-
-                                    <button id="export-all-excel-btn" class="btn btn-soft" type="button"
-                                        data-i18n="schedule_export_all_btn">
-                                        Export all Excel
-                                    </button>
-
-                                    <button id="clear-message-btn" class="btn btn-secondary" type="button"
-                                        data-i18n="schedule_clear_message_btn">
-                                        Clear message
-                                    </button>
-                                </div>
+                                <button id="open-output-actions-btn" class="btn btn-soft toolbar-modal-btn"
+                                    type="button" data-action-modal="output-actions-modal"
+                                    data-i18n="schedule_toolbar_output">
+                                    Output
+                                </button>
                             </div>
 
                             <div class="toolbar-command-group toolbar-danger-group">
-                                <div class="toolbar-group-label" data-i18n="schedule_toolbar_danger">Danger zone</div>
-                                <div class="toolbar-command-row">
-                                    <button id="clear-week-btn" class="btn btn-danger" type="button"
-                                        data-i18n="schedule_clear_btn">
-                                        Clear week
-                                    </button>
-
-                                    <button id="clear-all-week-btn" class="btn btn-danger" type="button"
-                                        data-i18n="schedule_clear_all_btn">
-                                        Clear all week
-                                    </button>
-                                </div>
+                                <button id="open-danger-actions-btn" class="btn btn-danger toolbar-modal-btn"
+                                    type="button" data-action-modal="danger-actions-modal"
+                                    data-i18n="schedule_toolbar_danger">
+                                    Danger zone
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -241,8 +215,6 @@
 
                     <div id="schedule-status-strip" class="schedule-status-strip" aria-live="polite"></div>
 
-                    <div id="schedule-workspace-hint" class="schedule-workspace-hint"></div>
-
                     <div id="schedule-floating-header" class="schedule-floating-header" hidden aria-hidden="true">
                         <div id="schedule-floating-header-scroller" class="schedule-floating-header-scroller">
                             <table class="schedule-table schedule-floating-table" aria-hidden="true">
@@ -279,6 +251,75 @@
                     </div>
                 </div>
             </section>
+
+            <div id="generation-actions-modal" class="app-modal-overlay schedule-action-modal-overlay" aria-hidden="true">
+                <div class="app-modal schedule-action-modal" role="dialog" aria-modal="true" aria-labelledby="generation-actions-title">
+                    <div class="app-modal-header">
+                        <h2 id="generation-actions-title" class="app-modal-title" data-i18n="schedule_toolbar_generate">Generate</h2>
+                        <button class="app-modal-close" type="button" data-close-action-modal aria-label="Close">×</button>
+                    </div>
+                    <div class="app-modal-body schedule-action-modal-body">
+                        <button id="auto-generate-btn" class="btn btn-secondary schedule-action-option" type="button"
+                            data-i18n="schedule_generate_btn">
+                            Auto generate
+                        </button>
+                        <button id="auto-generate-all-btn" class="btn btn-secondary schedule-action-option" type="button"
+                            data-i18n="schedule_generate_all_btn">
+                            Auto generate all
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="output-actions-modal" class="app-modal-overlay schedule-action-modal-overlay" aria-hidden="true">
+                <div class="app-modal schedule-action-modal" role="dialog" aria-modal="true" aria-labelledby="output-actions-title">
+                    <div class="app-modal-header">
+                        <h2 id="output-actions-title" class="app-modal-title" data-i18n="schedule_toolbar_output">Output</h2>
+                        <button class="app-modal-close" type="button" data-close-action-modal aria-label="Close">×</button>
+                    </div>
+                    <div class="app-modal-body schedule-action-modal-body">
+                        <button id="export-excel-btn" class="btn btn-soft schedule-action-option" type="button"
+                            data-i18n="schedule_export_btn">
+                            Export Excel
+                        </button>
+                        <button id="export-all-excel-btn" class="btn btn-soft schedule-action-option" type="button"
+                            data-i18n="schedule_export_all_btn">
+                            Export all Excel
+                        </button>
+                        <button id="export-word-btn" class="btn btn-soft schedule-action-option" type="button"
+                            data-i18n="schedule_export_word_btn">
+                            Export Word
+                        </button>
+                        <button id="export-all-word-btn" class="btn btn-soft schedule-action-option" type="button"
+                            data-i18n="schedule_export_all_word_btn">
+                            Export all Word
+                        </button>
+                        <button id="clear-message-btn" class="btn btn-secondary schedule-action-option" type="button"
+                            data-i18n="schedule_clear_message_btn">
+                            Clear message
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="danger-actions-modal" class="app-modal-overlay schedule-action-modal-overlay" aria-hidden="true">
+                <div class="app-modal schedule-action-modal" role="dialog" aria-modal="true" aria-labelledby="danger-actions-title">
+                    <div class="app-modal-header">
+                        <h2 id="danger-actions-title" class="app-modal-title" data-i18n="schedule_toolbar_danger">Danger zone</h2>
+                        <button class="app-modal-close" type="button" data-close-action-modal aria-label="Close">×</button>
+                    </div>
+                    <div class="app-modal-body schedule-action-modal-body">
+                        <button id="clear-week-btn" class="btn btn-danger schedule-action-option" type="button"
+                            data-i18n="schedule_clear_btn">
+                            Clear week
+                        </button>
+                        <button id="clear-all-week-btn" class="btn btn-danger schedule-action-option" type="button"
+                            data-i18n="schedule_clear_all_btn">
+                            Clear all week
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <div id="shift-picker-overlay" class="shift-picker-overlay" aria-hidden="true">
                 <div class="shift-picker-modal" role="dialog" aria-modal="true" aria-labelledby="shift-picker-title">

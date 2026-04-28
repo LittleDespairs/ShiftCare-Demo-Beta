@@ -20,15 +20,16 @@ from urllib.parse import urlparse
 from typing import Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
+from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.13.8_beta"
+APP_VERSION = "0.14.1_beta"
 APP_TITLE = f"Schedule App - Nursing Staff Scheduling {APP_VERSION}"
 GITHUB_REPO_OWNER = "LittleDespairs"
 GITHUB_REPO_NAME = "Schedule_app_releases"
@@ -37,15 +38,15 @@ GITHUB_RELEASE_ASSET_PATTERN = re.compile(r"^ScheduleApp_Setup_(?P<version>\d+\.
 
 tags_metadata = [
     {"name": "Auth", "description": "Authorization and organization access / Авторизация и доступ к организации"},
-    {"name": "Pages", "description": "Frontend pages / HTML СЃС‚СЂР°РЅРёС†С‹"},
-    {"name": "Employees", "description": "Employee management / РЎРѕС‚СЂСѓРґРЅРёРєРё"},
-    {"name": "Positions", "description": "Position management / Р”РѕР»Р¶РЅРѕСЃС‚Рё"},
-    {"name": "Assignments", "description": "Employee-position assignments / РџСЂРёРІСЏР·РєРё"},
-    {"name": "Shift Templates", "description": "Shift templates / РЁР°Р±Р»РѕРЅС‹ СЃРјРµРЅ"},
-    {"name": "Preferences", "description": "Employee preferences / РџРѕР¶РµР»Р°РЅРёСЏ"},
-    {"name": "Weekly Preferences", "description": "Weekly preferences / РќРµРґРµР»СЊРЅС‹Рµ РїРѕР¶РµР»Р°РЅРёСЏ"},
-    {"name": "Requirements", "description": "Shift and coverage requirements / РўСЂРµР±РѕРІР°РЅРёСЏ"},
-    {"name": "Schedule", "description": "Schedule management / Р Р°СЃРїРёСЃР°РЅРёРµ"},
+    {"name": "Pages", "description": "Frontend pages / HTML страницы"},
+    {"name": "Employees", "description": "Employee management / Сотрудники"},
+    {"name": "Positions", "description": "Position management / Должности"},
+    {"name": "Assignments", "description": "Employee-position assignments / Привязки"},
+    {"name": "Shift Templates", "description": "Shift templates / Шаблоны смен"},
+    {"name": "Preferences", "description": "Employee preferences / Пожелания"},
+    {"name": "Weekly Preferences", "description": "Weekly preferences / Недельные пожелания"},
+    {"name": "Requirements", "description": "Shift and coverage requirements / Требования"},
+    {"name": "Schedule", "description": "Schedule management / Расписание"},
 ]
 
 app = FastAPI(
@@ -84,6 +85,15 @@ DEFAULT_SCHEDULE_COLORS = {
     "schedule_night_color": "#eef2ff",
     "schedule_status_color": "#f5f3ff",
 }
+
+
+@app.get("/service-worker.js", include_in_schema=False)
+async def service_worker():
+    return FileResponse(
+        BASE_PATH / "static" / "service-worker.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # =========================
@@ -5075,6 +5085,84 @@ def export_all_schedules_excel(week_start_date: str, lang: str = "en"):
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    finally:
+        connection.close()
+
+
+@app.get("/api/schedule/export-word", tags=["Schedule"])
+def export_schedule_word(week_start_date: str, position_id: int, lang: str = "en"):
+    connection = get_connection()
+    try:
+        if lang not in {"en", "ru", "he"}:
+            lang = "en"
+        week_dates = build_week_dates(week_start_date)
+        cursor = connection.cursor()
+        position_row = fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (position_id,), "Position not found")
+        position = row_to_position_dict(position_row)
+        employees = load_position_employees(connection, position_id)
+        employee_ids = {employee["id"] for employee in employees}
+        entries = [
+            entry
+            for entry in get_schedule_entries(connection, dates=week_dates)
+            if entry["employee_id"] in employee_ids
+        ]
+        day_status_map = get_employee_day_status_map(connection, [employee["id"] for employee in employees], week_dates)
+        output = build_schedule_export_document(
+            position=position,
+            week_start_date=week_start_date,
+            week_dates=week_dates,
+            employees=employees,
+            entries=entries,
+            day_status_map=day_status_map,
+            lang=lang,
+        )
+        safe_position_name = position["name"].replace(" ", "_")
+        filename = f"schedule_{safe_position_name}_{week_start_date}.docx"
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    finally:
+        connection.close()
+
+
+@app.get("/api/schedule/export-word-all", tags=["Schedule"])
+def export_all_schedules_word(week_start_date: str, lang: str = "en"):
+    connection = get_connection()
+    try:
+        if lang not in {"en", "ru", "he"}:
+            lang = "en"
+        week_dates = build_week_dates(week_start_date)
+        cursor = connection.cursor()
+        cursor.execute("SELECT * FROM positions ORDER BY id")
+        positions = [row_to_position_dict(row) for row in cursor.fetchall()]
+        employees_by_position = {
+            position["id"]: load_position_employees(connection, position["id"])
+            for position in positions
+        }
+        employee_ids = sorted({
+            employee["id"]
+            for employees in employees_by_position.values()
+            for employee in employees
+        })
+        entries = get_schedule_entries(connection, dates=week_dates)
+        day_status_map = get_employee_day_status_map(connection, employee_ids, week_dates) if employee_ids else {}
+        output = build_all_schedule_export_document(
+            positions=positions,
+            week_start_date=week_start_date,
+            week_dates=week_dates,
+            employees_by_position=employees_by_position,
+            entries=entries,
+            day_status_map=day_status_map,
+            lang=lang,
+        )
+        filename = f"schedule_all_{week_start_date}.docx"
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     finally:

@@ -61,6 +61,21 @@
             margin-top: 8px;
         }
 
+        .guide-note {
+            margin-top: 14px;
+            padding: 12px 14px;
+            border: 1px solid #bfdbfe;
+            border-radius: 14px;
+            background: #eff6ff;
+            color: #1e3a8a;
+            line-height: 1.55;
+            font-size: 0.92rem;
+        }
+
+        .guide-note strong {
+            color: #1d4ed8;
+        }
+
         .guide-link-row {
             display: flex;
             flex-wrap: wrap;
@@ -197,16 +212,60 @@
                             Fill in the basic information once, then update it only when something changes.
                         </p>
                         <ol class="guide-steps">
-                            <li data-i18n="guide_setup_step_1">Open Employees and add every person who can appear in the schedule.</li>
-                            <li data-i18n="guide_setup_step_2">Open Settings, then Positions, and create the job roles used in your department.</li>
-                            <li data-i18n="guide_setup_step_3">Open Shift templates and add the real shift times, such as morning, evening, night, or split shifts.</li>
-                            <li data-i18n="guide_setup_step_4">Open Assignments and connect each employee to the roles they can work.</li>
-                            <li data-i18n="guide_setup_step_5">Open Coverage requirements and write how many people are needed during each time period.</li>
+                            <li data-i18n="guide_setup_step_1">Create employees.</li>
+                            <li data-i18n="guide_setup_step_2">Create positions.</li>
+                            <li data-i18n="guide_setup_step_3">Create shift templates.</li>
+                            <li data-i18n="guide_setup_step_4">Assign employees to positions.</li>
+                            <li data-i18n="guide_setup_step_5">Define coverage requirements.</li>
+                            <li data-i18n="guide_setup_step_6">Collect weekly preferences.</li>
+                            <li data-i18n="guide_setup_step_7">Load, generate, review, edit, and export the schedule.</li>
                         </ol>
+                        <div class="guide-note" data-i18n="guide_setup_note">
+                            Recommended order: finish setup screens first, then generate the schedule. Most generation problems are caused by missing assignments, inactive shift templates, or coverage requirements that need more staff than are available.
+                        </div>
                         <div class="guide-link-row">
                             <a class="btn btn-secondary" href="/employees" data-i18n="guide_open_employees">Open employees</a>
                             <a class="btn btn-secondary" href="/settings" data-i18n="guide_open_settings">Open settings</a>
                         </div>
+                    </section>
+
+                    <section id="employees" class="guide-section">
+                        <h3 data-i18n="guide_employees_title">Employees</h3>
+                        <p data-i18n="guide_employees_text">
+                            The Employees page contains the staff list. Use Add employee to open the modal form. Use Edit in the table to open the same modal with the employee data already filled in.
+                        </p>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_employees_step_1">Enter the full name exactly as it should appear in exports.</li>
+                            <li data-i18n="guide_employees_step_2">Choose sex when gender-specific coverage is used.</li>
+                            <li data-i18n="guide_employees_step_3">Set minimum, target, and maximum shifts per week. Target should be between minimum and maximum.</li>
+                            <li data-i18n="guide_employees_step_4">Enable only the work rules that are allowed for that employee, such as nights, weekends, evening after night, or morning plus evening on the same day.</li>
+                        </ol>
+                    </section>
+
+                    <section id="positions" class="guide-section">
+                        <h3 data-i18n="guide_positions_title">Positions, assignments, and shift templates</h3>
+                        <p data-i18n="guide_positions_text">
+                            Positions describe where people can work. Shift templates describe the real shift times. Assignments connect employees to the positions they can cover.
+                        </p>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_positions_step_1">Create every role that needs its own schedule, such as caregiver, nurse, or coordinator.</li>
+                            <li data-i18n="guide_positions_step_2">Create active shift templates for each position. A template must cover the time interval required by coverage rules.</li>
+                            <li data-i18n="guide_positions_step_3">Assign employees to every position they are allowed to work. The generator ignores employees who are not assigned to the selected position.</li>
+                            <li data-i18n="guide_positions_step_4">Use generation limits on positions only when a role needs stricter rules than the global settings.</li>
+                        </ol>
+                    </section>
+
+                    <section id="coverage" class="guide-section">
+                        <h3 data-i18n="guide_coverage_title">Coverage requirements</h3>
+                        <p data-i18n="guide_coverage_text">
+                            Coverage requirements tell the app how many people are needed during each part of the day. They are the main input for automatic generation and coverage warnings.
+                        </p>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_coverage_step_1">Choose the position and day of week.</li>
+                            <li data-i18n="guide_coverage_step_2">Enter start and end times for the required interval.</li>
+                            <li data-i18n="guide_coverage_step_3">Set the total required staff and optional female or male minimums.</li>
+                            <li data-i18n="guide_coverage_step_4">Keep requirements realistic. If the required number is higher than assigned available employees, the generator will report a shortage.</li>
+                        </ol>
                     </section>
 
                     <section id="requests" class="guide-section">
@@ -214,6 +273,11 @@
                         <p data-i18n="guide_requests_text">
                             Before planning the week, open Preferences and mark days off, vacations, preferred shifts, and restrictions. This helps the system avoid assigning people when they are unavailable.
                         </p>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_requests_step_1">Select the week and employee.</li>
+                            <li data-i18n="guide_requests_step_2">Mark days off, vacation, sickness, or preferred shifts before running generation.</li>
+                            <li data-i18n="guide_requests_step_3">Clear a preference when it no longer applies. The schedule can then be regenerated or edited manually.</li>
+                        </ol>
                         <div class="guide-link-row">
                             <a class="btn btn-secondary" href="/weekly-preferences" data-i18n="guide_open_requests">Open preferences</a>
                         </div>
@@ -228,8 +292,9 @@
                             <li data-i18n="guide_schedule_step_1">Choose the first day of the week.</li>
                             <li data-i18n="guide_schedule_step_2">Choose the position you want to schedule.</li>
                             <li data-i18n="guide_schedule_step_3">Click Load to see the current schedule.</li>
-                            <li data-i18n="guide_schedule_step_4">Click Auto generate if you want the app to fill missing shifts.</li>
-                            <li data-i18n="guide_schedule_step_5">Check warnings and coverage rows before you finish.</li>
+                            <li data-i18n="guide_schedule_step_4">Open Generate and choose whether to generate the selected position or all positions.</li>
+                            <li data-i18n="guide_schedule_step_5">Check the generation summary, warnings, and coverage rows before you finish.</li>
+                            <li data-i18n="guide_schedule_step_6">Use Output to export files, or Danger zone only when you really need to clear schedule data.</li>
                         </ol>
                         <div class="guide-link-row">
                             <a class="btn btn-primary" href="/schedule" data-i18n="guide_open_schedule">Open schedule</a>
@@ -241,13 +306,35 @@
                         <p data-i18n="guide_manual_text">
                             You can add or delete shifts manually. You can also mark a person as sick, day off, or no-show. Use these options when the real situation changes after the schedule was created.
                         </p>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_manual_step_1">Click an empty day cell to choose an active shift template.</li>
+                            <li data-i18n="guide_manual_step_2">Use the status controls to mark day off, sickness, vacation, or no-show when needed.</li>
+                            <li data-i18n="guide_manual_step_3">After manual edits, check coverage again. Manual edits can create new shortages or rule warnings.</li>
+                        </ol>
                     </section>
 
                     <section id="export" class="guide-section">
                         <h3 data-i18n="guide_export_title">Share the schedule</h3>
                         <p data-i18n="guide_export_text">
-                            When the week looks correct, use Export Excel on the Schedule page. The file is meant for printing, sending, or keeping as a weekly record.
+                            When the week looks correct, open Output on the Schedule page and export the schedule. Excel is useful for editing and review. Word is useful for people who want a printable table without Excel.
                         </p>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_export_step_1">Export Excel for the selected position when you only need one schedule.</li>
+                            <li data-i18n="guide_export_step_2">Export all Excel when you need every position in one workbook.</li>
+                            <li data-i18n="guide_export_step_3">Export Word or Export all Word when you need a document with visible bordered tables.</li>
+                        </ol>
+                    </section>
+
+                    <section id="safety" class="guide-section">
+                        <h3 data-i18n="guide_safety_title">Backups and safe destructive actions</h3>
+                        <p data-i18n="guide_safety_text">
+                            The app creates recovery backups before destructive actions such as deleting employees, positions, assignments, templates, or clearing schedules. You can also create and restore manual backups from Settings.
+                        </p>
+                        <ol class="guide-steps">
+                            <li data-i18n="guide_safety_step_1">Before deleting, read the modal preview. It shows related records that can be affected.</li>
+                            <li data-i18n="guide_safety_step_2">Use Settings > Data safety to create a manual backup before major changes.</li>
+                            <li data-i18n="guide_safety_step_3">Restore a backup only when you are sure, because it replaces the current database. A pre-restore copy is created first.</li>
+                        </ol>
                     </section>
 
                     <section id="help" class="guide-section">
@@ -257,6 +344,7 @@
                             <li data-i18n="guide_help_step_2">Check that the employee is not blocked by a day off, vacation, sickness, or request.</li>
                             <li data-i18n="guide_help_step_3">Check that the shift template is active and has the correct time.</li>
                             <li data-i18n="guide_help_step_4">Check Coverage requirements to make sure the needed number of people is correct.</li>
+                            <li data-i18n="guide_help_step_5">If buttons or modals look stale after an update, refresh the page once so the browser loads the newest scripts.</li>
                         </ol>
                     </section>
                 </div>
@@ -267,10 +355,14 @@
                     <ul class="guide-aside-list">
                         <li><a href="#start" data-i18n="guide_contents_start">Purpose</a></li>
                         <li><a href="#setup" data-i18n="guide_contents_setup">Setup</a></li>
+                        <li><a href="#employees" data-i18n="guide_contents_employees">Employees</a></li>
+                        <li><a href="#positions" data-i18n="guide_contents_positions">Positions</a></li>
+                        <li><a href="#coverage" data-i18n="guide_contents_coverage">Coverage</a></li>
                         <li><a href="#requests" data-i18n="guide_contents_requests">Preferences</a></li>
                         <li><a href="#schedule" data-i18n="guide_contents_schedule">Schedule</a></li>
                         <li><a href="#manual" data-i18n="guide_contents_manual">Manual changes</a></li>
                         <li><a href="#export" data-i18n="guide_contents_export">Export</a></li>
+                        <li><a href="#safety" data-i18n="guide_contents_safety">Backups</a></li>
                         <li><a href="#help" data-i18n="guide_contents_help">Help</a></li>
                     </ul>
                 </aside>

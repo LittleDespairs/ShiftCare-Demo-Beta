@@ -1,6 +1,69 @@
 # Beta Changelog
 
-This file tracks beta builds across the `0.12.x_beta` and `0.13.x_beta` lines.
+This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
+
+## 0.14.1_beta - 2026-04-28
+
+### Release Focus
+
+Start the `0.14.x_beta` line with the first organization-based authorization foundation while carrying forward the latest beta UI, export, and packaging work.
+
+### What Changed
+
+- Added the initial authorization schema: organizations, users, organization memberships, invitations, auth sessions, and auth audit events.
+- Added organization scoping fields to the main scheduling tables as preparation for future cloud sync.
+- Added backend auth endpoints for first-owner bootstrap, login, logout, current user lookup, invitation creation, invitation acceptance, organization members, and organization invitations.
+- Added `/login`, `/organization`, and `/accept-invitation` screens for the desktop-hosted web UI.
+- Added local session token storage in the UI and a shared frontend auth client for authenticated API calls.
+- Added organization member and invitation management UI for owner/admin workflows.
+- Added Google Cloud `0.14.x_beta` setup notes and `.env.example` while keeping real secrets out of git.
+- Updated the release metadata, Windows packaging metadata, service worker cache version, and Android beta version name to `0.14.1_beta`.
+- Added Word `.docx` export endpoints for the selected schedule and all schedules.
+- Added Word export buttons to the schedule output toolbar.
+- Reused the existing Excel export labels and schedule cell payload logic for English, Russian, and Hebrew output.
+- Reworked Word exports to render as visible fixed-layout tables with borders, column widths, padding, and repeated header rows.
+- Reworked mobile sidebar behavior so narrow screens open with a compact app header instead of a full navigation panel, while keeping the toggle available.
+- Aligned duplicated sidebar state logic across setup pages so schedule, employees, positions, assignments, shift templates, weekly preferences, and settings behave consistently on mobile.
+- Simplified the schedule toolbar into three modal action groups and removed the duplicated empty schedule workspace panel above the table.
+- Hardened shared modal sizing so app modals stay within the viewport and scroll internally when content is tall.
+- Replaced native select dropdown interactions with a shared modal-select control across pages while keeping the underlying form selects and change events intact.
+- Reworked the Employees page so the employee form opens in a modal for add and edit actions, leaving the page focused on the employee table.
+- Fixed employee table action labels so Edit/Delete render through the shared translation keys.
+- Expanded the user guide with a detailed end-to-end workflow covering setup order, employees, positions, shift templates, assignments, coverage requirements, weekly preferences, generation, manual edits, Excel/Word exports, backups, and troubleshooting.
+- Added regression coverage for recovery backups on schedule clear actions.
+- Added regression coverage for the consecutive split-day generation limit and isolated generation report tests from shared database state.
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests`
+- FastAPI smoke test for `/login`, `/organization`, and `/accept-invitation`.
+- `.\.venv\Scripts\python.exe -m py_compile main.py excel_export.py word_export.py`
+- `.\.venv\Scripts\python.exe -m unittest discover tests`
+- FastAPI smoke test for `/`, `/schedule`, `/employees`, `/positions`, `/employee-positions`, `/shift-templates`, `/weekly-preferences`, `/coverage-requirements`, `/settings`, `/docs`, and `/guide`.
+- Word export endpoint checks: valid selected export, valid all-schedules export with fallback language, missing `position_id` validation, and missing position `404`.
+- Rendered a generated Word export through the documents renderer and visually confirmed the schedule and coordinator summary appear as bordered tables.
+- Verified mobile and desktop UI screenshots for schedule, employees, and settings, including Hebrew RTL mobile rendering.
+- Verified updated schedule toolbar screenshots on desktop and narrow mobile layouts.
+- Verified native browser dialog calls are absent and checked modal-select trigger rendering on schedule, employees, and settings.
+- Verified the Employees page desktop and mobile layouts after moving the form into a modal.
+- Verified the expanded guide page on desktop and narrow mobile layouts and checked that all guide translation keys are present.
+- Verified backup, restore, delete-impact, clear-week preview, and clear-week recovery backup regression tests.
+- Verified generation scenarios for enough staff, shortages, night shifts, split-day limits, weekend restrictions, manual edits after generation, and structured generation reports.
+- Verified the PyInstaller package build and generated installer:
+  - `dist\ScheduleApp_0.14.1_beta\ScheduleApp_0.14.1_beta.exe`
+  - `dist\installer\ScheduleApp_Setup_0.14.1-beta.exe`
+- Smoke-tested the packaged `.exe` on port `8014` and confirmed `/`, `/login`, `/organization`, `/accept-invitation`, and `/settings` return `200`.
+
+### UX Review Notes
+
+- `critical`: no open critical runtime or data-loss issue found in the verified core workflow.
+- `important`: schedule and employee screens were structurally simplified with modal action flows; remaining setup screens use the shared modal/select behavior and should be candidates for deeper form consolidation in a later UI pass.
+- `nice-to-have`: broaden screenshot coverage for every secondary setup page before a public visual release, especially with long Hebrew/Russian labels and dense real data.
+
+### Known Test Gaps Before Shipping
+
+- No blocking test gap remains for the local beta verification build.
+- Full public-release validation still needs the external release step: publish/tag the installer in the release channel if this build is shipped outside the local workspace.
 
 ## 0.13.8_beta - 2026-04-26
 

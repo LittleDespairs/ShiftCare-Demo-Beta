@@ -256,6 +256,12 @@
             }
 
             body.mobile-sidebar-hidden .sidebar {
+                gap: 0;
+                padding-block: 14px;
+            }
+
+            body.mobile-sidebar-hidden .sidebar > div:not(.sidebar-top-row),
+            body.mobile-sidebar-hidden .sidebar-footer {
                 display: none;
             }
         }
@@ -428,14 +434,14 @@
            ========================================================= */
 
         function getSavedSidebarState() {
-            return localStorage.getItem("scheduleAppSidebar") || "expanded";
+            return localStorage.getItem("scheduleAppSidebar");
         }
 
         function applySidebarState(state) {
             document.body.classList.remove("sidebar-collapsed", "mobile-sidebar-hidden");
 
             if (window.innerWidth <= 920) {
-                if (state === "hidden") {
+                if (state !== "expanded") {
                     document.body.classList.add("mobile-sidebar-hidden");
                 }
                 return;

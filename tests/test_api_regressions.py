@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
@@ -1045,6 +1046,97 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(worksheet["A3"].value, "Employee")
         self.assertEqual(worksheet["I5"].value, "0 / 0h")
 
+    def test_export_word_for_empty_week_has_headers_and_zero_total(self):
+        employee_id = self._create_employee(full_name="Employee A")
+        position_id = self._create_position()
+        response = self.client.post(
+            "/api/employee-positions",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        export_response = self.client.get(
+            "/api/schedule/export-word",
+            params={"week_start_date": "2026-04-20", "position_id": position_id, "lang": "en"},
+        )
+        self.assertEqual(export_response.status_code, 200)
+        self.assertEqual(
+            export_response.headers["content-type"],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+        with ZipFile(main.BytesIO(export_response.content)) as document:
+            document_xml = document.read("word/document.xml").decode("utf-8")
+        self.assertIn("<w:tblPr>", document_xml)
+        self.assertIn("<w:tblGrid>", document_xml)
+        self.assertIn("<w:tblBorders>", document_xml)
+        self.assertIn("<w:tblHeader/>", document_xml)
+        self.assertIn("<w:tblLayout w:type=\"fixed\"/>", document_xml)
+        self.assertIn("Schedule export - Nurse - week starting 2026-04-20", document_xml)
+        self.assertIn("Employee A", document_xml)
+        self.assertIn("0 / 0h", document_xml)
+
+    def test_export_word_keeps_shift_no_show_and_day_off_inside_table(self):
+        employee_id = self._create_employee(full_name="Employee A")
+        position_id = self._create_position()
+        morning_id = self._create_shift_template(position_id=position_id, name="Morning")
+        response = self.client.post(
+            "/api/employee-positions",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": morning_id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        entry_id = response.json()["schedule_entry"]["id"]
+        response = self.client.patch(f"/api/schedule/{entry_id}/status", json={"no_show": True})
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(
+            "/api/employee-day-statuses",
+            json={
+                "employee_id": employee_id,
+                "date": "2026-04-21",
+                "status_type": "day_off",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        export_response = self.client.get(
+            "/api/schedule/export-word",
+            params={"week_start_date": "2026-04-20", "position_id": position_id, "lang": "en"},
+        )
+        self.assertEqual(export_response.status_code, 200)
+
+        with ZipFile(main.BytesIO(export_response.content)) as document:
+            document_xml = document.read("word/document.xml").decode("utf-8")
+        first_table = document_xml[document_xml.index("<w:tbl>"):document_xml.index("</w:tbl>")]
+        self.assertIn("Morning - No-show", first_table)
+        self.assertIn("Day off", first_table)
+        self.assertIn("<w:tcW w:w=\"2200\" w:type=\"dxa\"/>", first_table)
+        self.assertIn("<w:tcW w:w=\"1600\" w:type=\"dxa\"/>", first_table)
+        self.assertIn("<w:tcW w:w=\"1998\" w:type=\"dxa\"/>", first_table)
+
     def test_export_excel_includes_shift_no_show_and_day_off_labels(self):
         employee_id = self._create_employee(full_name="Employee A")
         position_id = self._create_position()
@@ -1181,9 +1273,9 @@ class ApiRegressionTests(unittest.TestCase):
         worksheet = workbook.active
         self.assertEqual(worksheet["B5"].value, "Morning")
         self.assertIn("B5:B6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
-        self.assertEqual(worksheet["C5"].value, "Evening - РќРµСЏРІРєР°")
+        self.assertEqual(worksheet["C5"].value, "Evening - Неявка")
         self.assertIn("C5:C6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
-        self.assertEqual(worksheet["D5"].value, "Р’С‹С…РѕРґРЅРѕР№")
+        self.assertEqual(worksheet["D5"].value, "Выходной")
         self.assertIn("D5:D6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
         self.assertEqual(worksheet["E5"].value, "Reception: Other Morning")
         self.assertEqual(worksheet["E6"].value, "Night")
@@ -1191,16 +1283,16 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(worksheet["E5"].fill.fgColor.rgb, "FFFDE68A")
         self.assertEqual(worksheet["E6"].fill.fill_type, None)
         self.assertEqual(worksheet["F5"].value, "Morning")
-        self.assertEqual(worksheet["F6"].value, "Р‘РѕР»СЊРЅРёС‡РЅС‹Р№")
-        self.assertEqual(worksheet["I5"].value, "3 / 27С‡")
+        self.assertEqual(worksheet["F6"].value, "Больничный")
+        self.assertEqual(worksheet["I5"].value, "3 / 27ч")
         self.assertIn("A5:A6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
         self.assertIn("I5:I6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
         self.assertEqual(worksheet["A5"].border.left.style, "medium")
         self.assertEqual(worksheet["A5"].border.top.style, "medium")
         self.assertEqual(worksheet["I5"].border.right.style, "medium")
         self.assertEqual(worksheet["E6"].border.bottom.style, "medium")
-        summary_sheet = workbook["РЎРІРѕРґРєР° РєРѕРѕСЂРґРёРЅР°С‚РѕСЂР°"]
-        self.assertEqual(summary_sheet["A1"].value, "РЎРІРѕРґРєР° РєРѕРѕСЂРґРёРЅР°С‚РѕСЂР°")
+        summary_sheet = workbook["Сводка координатора"]
+        self.assertEqual(summary_sheet["A1"].value, "Сводка координатора")
         self.assertEqual(summary_sheet["B3"].value, "Nurse")
         self.assertEqual(summary_sheet["B6"].value, 5)
         self.assertEqual(summary_sheet["B8"].value, 1)
@@ -1386,6 +1478,79 @@ class ApiRegressionTests(unittest.TestCase):
                 "day_off_statuses": 1,
             },
         )
+
+    def test_clear_week_actions_return_recovery_backup_names(self):
+        employee_id = self._create_employee(full_name="Employee A")
+        position_id = self._create_position(name="Ward A")
+        template_id = self._create_shift_template(position_id=position_id)
+        response = self.client.post(
+            "/api/employee-positions",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": template_id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            "/api/employee-day-statuses",
+            json={
+                "employee_id": employee_id,
+                "date": "2026-04-21",
+                "status_type": "day_off",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        clear_response = self.client.post(
+            "/api/schedule/clear-week",
+            json={"position_id": position_id, "week_start_date": "2026-04-20"},
+        )
+        self.assertEqual(clear_response.status_code, 200)
+        self.assertEqual(clear_response.json()["deleted_count"], 1)
+        self.assertTrue(clear_response.json()["backup_name"])
+
+        response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-04-22",
+                "shift_template_id": template_id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            "/api/employee-day-statuses",
+            json={
+                "employee_id": employee_id,
+                "date": "2026-04-23",
+                "status_type": "day_off",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        clear_all_response = self.client.post(
+            "/api/schedule/clear-week-all",
+            json={"week_start_date": "2026-04-20"},
+        )
+        self.assertEqual(clear_all_response.status_code, 200)
+        self.assertEqual(clear_all_response.json()["deleted_count"], 1)
+        self.assertEqual(clear_all_response.json()["day_off_deleted_count"], 1)
+        self.assertTrue(clear_all_response.json()["backup_name"])
 
     def test_get_base_path_uses_meipass_in_frozen_mode(self):
         with patch.object(main.sys, "frozen", True, create=True), patch.object(

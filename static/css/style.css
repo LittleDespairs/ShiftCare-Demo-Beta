@@ -970,13 +970,13 @@ body.sidebar-collapsed .sidebar {
     }
 
     body.mobile-sidebar-hidden .sidebar {
-        display: none;
+        gap: 0;
+        padding-block: 14px;
     }
 
-    body.mobile-sidebar-hidden .app-layout,
-    body.ltr.mobile-sidebar-hidden .app-layout,
-    body.rtl.mobile-sidebar-hidden .app-layout {
-        flex-direction: column;
+    body.mobile-sidebar-hidden .sidebar > div:not(.sidebar-top-row),
+    body.mobile-sidebar-hidden .sidebar-footer {
+        display: none;
     }
 }
 
@@ -1083,10 +1083,13 @@ body.rtl .app-footer {
 
 .app-modal {
     width: min(440px, 100%);
+    max-height: calc(100vh - 40px);
     border-radius: 10px;
     background: #fff;
     box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .app-modal-header {
@@ -1120,6 +1123,7 @@ body.rtl .app-footer {
     padding: 20px;
     color: var(--muted);
     line-height: 1.5;
+    overflow: auto;
 }
 
 .app-modal-actions {
@@ -1127,6 +1131,91 @@ body.rtl .app-footer {
     justify-content: flex-end;
     gap: 10px;
     padding: 16px 20px 20px;
+}
+
+.app-native-select {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.app-select-trigger {
+    width: 100%;
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #ffffff;
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    text-align: start;
+    transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+.app-select-trigger::after {
+    content: "⌄";
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 1rem;
+}
+
+.app-select-trigger:hover,
+.app-select-trigger:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    outline: none;
+}
+
+.app-select-trigger:disabled {
+    cursor: not-allowed;
+    color: var(--muted);
+    background: #eef2f7;
+    box-shadow: none;
+}
+
+.app-select-trigger-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-select-modal {
+    width: min(520px, 100%);
+}
+
+.app-select-options {
+    display: grid;
+    gap: 8px;
+}
+
+.app-select-option {
+    width: 100%;
+    min-height: 44px;
+    justify-content: flex-start;
+    text-align: start;
+}
+
+.app-select-option.is-selected {
+    border-color: var(--primary);
+    background: #e8f0ff;
+    color: var(--primary);
+}
+
+body.rtl .app-select-trigger,
+body.rtl .app-select-option {
+    text-align: right;
 }
 
 /* Beta 0.12.1: shared mobile/RTL hardening for data-heavy pages. */

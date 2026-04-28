@@ -16,7 +16,7 @@
 
         .schedule-toolbar {
             display: grid;
-            grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.15fr);
+            grid-template-columns: minmax(520px, 1fr) minmax(420px, 0.95fr);
             gap: 18px;
             align-items: stretch;
         }
@@ -53,11 +53,9 @@
         }
 
         .toolbar-command-group {
-            display: grid;
-            align-content: start;
-            gap: 8px;
+            display: flex;
             min-width: 0;
-            padding: 12px;
+            padding: 10px;
             border: 1px solid var(--border);
             border-radius: 12px;
             background: #ffffff;
@@ -85,6 +83,28 @@
         .toolbar-command-row .btn {
             flex: 1 1 auto;
             min-width: max-content;
+        }
+
+        .toolbar-modal-btn {
+            width: 100%;
+            min-height: 48px;
+            padding-inline: 10px;
+            white-space: normal;
+        }
+
+        .schedule-action-modal {
+            width: min(520px, 100%);
+        }
+
+        .schedule-action-modal-body {
+            display: grid;
+            gap: 10px;
+        }
+
+        .schedule-action-option {
+            justify-content: center;
+            width: 100%;
+            min-height: 46px;
         }
 
         .schedule-stage-top {
@@ -192,10 +212,6 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-        }
-
-        .schedule-workspace-hint {
-            margin-bottom: 14px;
         }
 
         .schedule-floating-header {
@@ -1261,6 +1277,12 @@
             }
 
             body.mobile-sidebar-hidden .sidebar {
+                gap: 0;
+                padding-block: 14px;
+            }
+
+            body.mobile-sidebar-hidden .sidebar > div:not(.sidebar-top-row),
+            body.mobile-sidebar-hidden .sidebar-footer {
                 display: none;
             }
         }

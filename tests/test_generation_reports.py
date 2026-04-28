@@ -6,6 +6,22 @@ from tests.fixtures.fixed_week import WEEK_DATES, WEEK_START_DATE  # noqa: E402
 class GenerationReportTests(unittest.TestCase):
     def setUp(self):
         self.connection = database.get_connection()
+        cursor = self.connection.cursor()
+        for table in (
+            "schedule_entries",
+            "employee_day_statuses",
+            "employee_week_preferences",
+            "employee_preferences",
+            "coverage_requirements",
+            "shift_requirements",
+            "employee_positions",
+            "shift_templates",
+            "positions",
+            "employees",
+            "app_settings",
+        ):
+            cursor.execute(f"DELETE FROM {table}")
+        self.connection.commit()
 
     def tearDown(self):
         self.connection.close()
@@ -440,6 +456,106 @@ class GenerationReportTests(unittest.TestCase):
                 template,
                 WEEK_START_DATE,
             )
+        )
+
+    def test_consecutive_split_day_limit_blocks_third_split_day(self):
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM schedule_entries")
+        cursor.execute("DELETE FROM employee_day_statuses")
+        cursor.execute("DELETE FROM shift_templates")
+        cursor.execute("DELETE FROM employee_positions")
+        cursor.execute("DELETE FROM positions")
+        cursor.execute("DELETE FROM employees")
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (1, 'Employee A', 'female', 0, 5, 7, 1, 1, 1, 1)
+            """
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.execute(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (1, 1, 1, 100, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+            VALUES
+                (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0),
+                (2, 1, 'Evening', 'evening', '15:00', '20:00', 0, 1, 0)
+            """
+        )
+        cursor.executemany(
+            """
+            INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
+            VALUES (1, 1, ?, ?)
+            """,
+            [
+                (WEEK_DATES[0], 1),
+                (WEEK_DATES[0], 2),
+                (WEEK_DATES[1], 1),
+                (WEEK_DATES[1], 2),
+                (WEEK_DATES[2], 1),
+            ],
+        )
+        self.connection.commit()
+
+        employee = {
+            "id": 1,
+            "full_name": "Employee A",
+            "sex": "female",
+            "min_shifts_per_week": 0,
+            "target_shifts_per_week": 5,
+            "max_shifts_per_week": 7,
+            "can_work_night": True,
+            "can_work_weekends": True,
+            "can_work_evenings_after_night": True,
+            "can_work_mornings_and_evenings": True,
+        }
+        evening_template = {
+            "id": 2,
+            "name": "Evening",
+            "category": "evening",
+            "start_time": "15:00",
+            "end_time": "20:00",
+            "is_overnight": False,
+            "is_active": True,
+            "is_split_only": False,
+        }
+
+        self.assertFalse(
+            main.can_employee_take_template(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[2],
+                evening_template,
+                WEEK_START_DATE,
+            )
+        )
+        self.assertEqual(
+            main.explain_employee_template_rejection(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[2],
+                evening_template,
+                WEEK_START_DATE,
+            ),
+            "too many consecutive split shifts",
         )
 
     def test_allows_morning_and_night_on_same_day_as_separate_combo(self):

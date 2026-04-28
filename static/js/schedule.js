@@ -47,6 +47,7 @@
             bindShiftPicker();
             bindStatusPicker();
             bindSidebarToggle();
+            bindScheduleActionModals();
             bindScheduleFloatingHeader();
 
             // Apply remembered sidebar state / Применяем сохранённое состояние sidebar
@@ -80,16 +81,16 @@
 
         function getSavedSidebarState() {
             // Read saved sidebar mode / Читаем сохранённый режим меню
-            return localStorage.getItem("scheduleAppSidebar") || "expanded";
+            return localStorage.getItem("scheduleAppSidebar");
         }
 
         function applySidebarState(state) {
             // Reset old classes first / Сначала сбрасываем старые классы
             document.body.classList.remove("sidebar-collapsed", "mobile-sidebar-hidden");
 
-            // On mobile we can fully hide the sidebar / На мобильных можно скрывать меню полностью
+            // On mobile the sidebar defaults to a compact header / На мобильных меню по умолчанию компактное
             if (window.innerWidth <= 920) {
-                if (state === "hidden") {
+                if (state !== "expanded") {
                     document.body.classList.add("mobile-sidebar-hidden");
                 }
                 return;
@@ -590,6 +591,8 @@
             document.getElementById("clear-all-week-btn").addEventListener("click", clearAllWeekSchedules);
             document.getElementById("export-excel-btn").addEventListener("click", exportScheduleExcel);
             document.getElementById("export-all-excel-btn").addEventListener("click", exportAllSchedulesExcel);
+            document.getElementById("export-word-btn").addEventListener("click", exportScheduleWord);
+            document.getElementById("export-all-word-btn").addEventListener("click", exportAllSchedulesWord);
             document.getElementById("clear-message-btn").addEventListener("click", clearMessage);
             document.getElementById("schedule_coverage_display_mode").addEventListener("change", saveScheduleDisplayMode);
             document.getElementById("generation-summary-clear-btn").addEventListener("click", clearGenerationSummary);
@@ -597,10 +600,53 @@
             document.getElementById("position_select").addEventListener("change", updateScheduleActionAvailability);
         }
 
-        function setScheduleWorkspaceHint(html = "") {
-            const container = document.getElementById("schedule-workspace-hint");
-            if (!container) return;
-            container.innerHTML = html;
+        function bindScheduleActionModals() {
+            document.querySelectorAll("[data-action-modal]").forEach(button => {
+                button.addEventListener("click", () => {
+                    openScheduleActionModal(button.dataset.actionModal);
+                });
+            });
+
+            document.querySelectorAll(".schedule-action-modal-overlay").forEach(modal => {
+                modal.addEventListener("click", event => {
+                    if (event.target === modal || event.target.closest("[data-close-action-modal]")) {
+                        closeScheduleActionModal(modal);
+                    }
+                });
+            });
+
+            document.querySelectorAll(".schedule-action-option").forEach(button => {
+                button.addEventListener("click", () => {
+                    const modal = button.closest(".schedule-action-modal-overlay");
+                    if (modal) {
+                        closeScheduleActionModal(modal);
+                    }
+                });
+            });
+
+            document.addEventListener("keydown", event => {
+                if (event.key !== "Escape") return;
+                const openModal = document.querySelector(".schedule-action-modal-overlay.is-open");
+                if (openModal) {
+                    closeScheduleActionModal(openModal);
+                }
+            });
+        }
+
+        function openScheduleActionModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (!modal) return;
+            modal.classList.add("is-open");
+            modal.setAttribute("aria-hidden", "false");
+            const firstEnabledButton = modal.querySelector("button:not([disabled])");
+            if (firstEnabledButton) {
+                firstEnabledButton.focus();
+            }
+        }
+
+        function closeScheduleActionModal(modal) {
+            modal.classList.remove("is-open");
+            modal.setAttribute("aria-hidden", "true");
         }
 
         function renderScheduleWorkspaceEmptyState(options = {}) {
@@ -619,29 +665,11 @@
 
             scheduleDataLoaded = false;
             thead.innerHTML = "";
-            setScheduleWorkspaceHint(
-                renderScheduleWorkspaceEmptyState({
-                    title: t(
-                        hasPositions ? "schedule_workspace_ready_title" : "schedule_no_positions_title",
-                        hasPositions ? "Schedule workspace" : "Schedule needs positions"
-                    ),
-                    text: t(
-                        hasPositions ? "schedule_workspace_ready_text" : "schedule_no_positions_text",
-                        hasPositions
-                            ? "Choose a week and position, then load the table to start editing or generating."
-                            : "Create at least one position before loading or generating a weekly schedule."
-                    ),
-                    actionHtml
-                })
-            );
             tbody.innerHTML = `
                 <tr>
                     <td style="padding:24px;">
                         ${renderScheduleWorkspaceEmptyState({
-                            title: t(
-                                hasPositions ? "schedule_workspace_ready_title" : "schedule_no_positions_title",
-                                hasPositions ? "Schedule workspace" : "Schedule needs positions"
-                            ),
+                            title: hasPositions ? "" : t("schedule_no_positions_title", "Schedule needs positions"),
                             text: t(
                                 hasPositions ? "schedule_initial_hint" : "schedule_no_positions_text",
                                 hasPositions
@@ -755,6 +783,11 @@
             const clearAllButton = document.getElementById("clear-all-week-btn");
             const exportButton = document.getElementById("export-excel-btn");
             const exportAllButton = document.getElementById("export-all-excel-btn");
+            const exportWordButton = document.getElementById("export-word-btn");
+            const exportAllWordButton = document.getElementById("export-all-word-btn");
+            const generationActionsButton = document.getElementById("open-generation-actions-btn");
+            const outputActionsButton = document.getElementById("open-output-actions-btn");
+            const dangerActionsButton = document.getElementById("open-danger-actions-btn");
 
             loadButton.disabled = !hasPositions || !hasContext;
             generateButton.disabled = !scheduleDataLoaded || !hasContext;
@@ -763,6 +796,11 @@
             clearAllButton.disabled = !hasPositions || !hasWeek;
             exportButton.disabled = !scheduleDataLoaded || !hasContext;
             exportAllButton.disabled = !hasPositions || !hasWeek;
+            exportWordButton.disabled = !scheduleDataLoaded || !hasContext;
+            exportAllWordButton.disabled = !hasPositions || !hasWeek;
+            generationActionsButton.disabled = !hasPositions || !hasWeek;
+            outputActionsButton.disabled = !hasPositions || !hasWeek;
+            dangerActionsButton.disabled = !hasPositions || !hasWeek;
 
             loadButton.title = hasPositions ? "" : t("schedule_no_positions_text", "Create at least one position before loading or generating a weekly schedule.");
             generateButton.title = scheduleDataLoaded ? "" : t("schedule_action_generation_hint", "Generation is available after the selected week is loaded.");
@@ -771,6 +809,11 @@
             clearAllButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
             exportButton.title = scheduleDataLoaded ? "" : t("schedule_action_export_hint", "Export becomes available after the selected week is loaded.");
             exportAllButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
+            exportWordButton.title = scheduleDataLoaded ? "" : t("schedule_action_export_hint", "Export becomes available after the selected week is loaded.");
+            exportAllWordButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
+            generationActionsButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
+            outputActionsButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
+            dangerActionsButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
         }
 
         /* =========================================================
@@ -1001,16 +1044,46 @@
             const lang = localStorage.getItem("scheduleAppLanguage") || "en";
             const url = `/api/schedule/export-excel?week_start_date=${encodeURIComponent(weekStart)}&position_id=${positionId}&lang=${encodeURIComponent(lang)}`;
             const button = document.getElementById("export-excel-btn");
-            await downloadExcelExport(url, `schedule_${weekStart}.xlsx`, button);
+            await downloadFileExport(
+                url,
+                `schedule_${weekStart}.xlsx`,
+                button,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
         }
 
-        async function downloadExcelExport(url, fallbackFilename, button) {
+        async function exportScheduleWord() {
+            const weekStart = document.getElementById("week_start").value;
+            const positionId = Number(document.getElementById("position_select").value);
+
+            if (!weekStart) {
+                showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
+                return;
+            }
+
+            if (!positionId) {
+                showMessage(t("msg_select_position", "Please select a position."), "warning");
+                return;
+            }
+
+            const lang = localStorage.getItem("scheduleAppLanguage") || "en";
+            const url = `/api/schedule/export-word?week_start_date=${encodeURIComponent(weekStart)}&position_id=${positionId}&lang=${encodeURIComponent(lang)}`;
+            const button = document.getElementById("export-word-btn");
+            await downloadFileExport(
+                url,
+                `schedule_${weekStart}.docx`,
+                button,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            );
+        }
+
+        async function downloadFileExport(url, fallbackFilename, button, mediaType) {
             if (window.ScheduleAndroid && typeof window.ScheduleAndroid.downloadFile === "function") {
                 const absoluteUrl = new URL(url, window.location.href).href;
                 window.ScheduleAndroid.downloadFile(
                     absoluteUrl,
                     fallbackFilename,
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    mediaType
                 );
                 return;
             }
@@ -1056,7 +1129,31 @@
             const lang = localStorage.getItem("scheduleAppLanguage") || "en";
             const url = `/api/schedule/export-excel-all?week_start_date=${encodeURIComponent(weekStart)}&lang=${encodeURIComponent(lang)}`;
             const button = document.getElementById("export-all-excel-btn");
-            await downloadExcelExport(url, `schedule_all_${weekStart}.xlsx`, button);
+            await downloadFileExport(
+                url,
+                `schedule_all_${weekStart}.xlsx`,
+                button,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
+        }
+
+        async function exportAllSchedulesWord() {
+            const weekStart = document.getElementById("week_start").value;
+
+            if (!weekStart) {
+                showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
+                return;
+            }
+
+            const lang = localStorage.getItem("scheduleAppLanguage") || "en";
+            const url = `/api/schedule/export-word-all?week_start_date=${encodeURIComponent(weekStart)}&lang=${encodeURIComponent(lang)}`;
+            const button = document.getElementById("export-all-word-btn");
+            await downloadFileExport(
+                url,
+                `schedule_all_${weekStart}.docx`,
+                button,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            );
         }
 
         /* =========================================================
@@ -1230,6 +1327,11 @@
                 document.getElementById("clear-all-week-btn"),
                 document.getElementById("export-excel-btn"),
                 document.getElementById("export-all-excel-btn"),
+                document.getElementById("export-word-btn"),
+                document.getElementById("export-all-word-btn"),
+                document.getElementById("open-generation-actions-btn"),
+                document.getElementById("open-output-actions-btn"),
+                document.getElementById("open-danger-actions-btn"),
                 document.getElementById("schedule_coverage_display_mode")
             ];
 
@@ -2081,13 +2183,6 @@
                     `<a class="btn btn-secondary" href="/employees">${t("common_open_employees", "Open employees")}</a>`,
                     `<a class="btn btn-secondary" href="/employee-positions">${t("common_open_assignments", "Open assignments")}</a>`
                 ].join("");
-                setScheduleWorkspaceHint(
-                    renderScheduleWorkspaceEmptyState({
-                        title: t("schedule_no_employees_title", "This position has no assigned employees"),
-                        text: t("schedule_no_employees_text", "Add employees and link them to this position before filling the week."),
-                        actionHtml
-                    })
-                );
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="8" style="padding:24px;">
@@ -2104,15 +2199,6 @@
                 updateScheduleActionAvailability();
                 return;
             }
-
-            setScheduleWorkspaceHint(
-                renderScheduleWorkspaceEmptyState({
-                    title: t("schedule_workspace_ready_title", "Schedule workspace"),
-                    text: selectedPosition
-                        ? `${escapeHtml(selectedPosition.name)} · ${escapeHtml(weekDates[0] || "")}`
-                        : t("schedule_workspace_ready_text", "Choose a week and position, then load the table to start editing or generating.")
-                })
-            );
 
             tbody.innerHTML = employeesForPosition.map(employee => `
                 <tr>

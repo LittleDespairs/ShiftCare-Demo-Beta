@@ -1,4 +1,4 @@
-const CACHE_NAME = "schedule-app-0.13.8-beta-shell";
+const CACHE_NAME = "schedule-app-0.14.1-beta-shell-20260428-ui";
 
 const SHELL_ASSETS = [
   "/",
@@ -6,12 +6,12 @@ const SHELL_ASSETS = [
   "/employees",
   "/weekly-preferences",
   "/settings",
-  "/static/css/style.css?v=0.13.8_beta",
-  "/static/css/schedule.css?v=0.13.8_beta",
-  "/static/js/i18n.js?v=0.13.8_beta",
-  "/static/js/pwa.js?v=0.13.8_beta",
-  "/static/js/schedule.js?v=0.13.8_beta",
-  "/static/js/employees.js?v=0.13.8_beta",
+  "/static/css/style.css?v=0.14.1_beta",
+  "/static/css/schedule.css?v=0.14.1_beta",
+  "/static/js/i18n.js?v=0.14.1_beta",
+  "/static/js/pwa.js?v=0.14.1_beta",
+  "/static/js/schedule.js?v=0.14.1_beta",
+  "/static/js/employees.js?v=0.14.1_beta",
   "/static/manifest.webmanifest",
   "/static/icons/app-icon.svg"
 ];
@@ -38,6 +38,35 @@ self.addEventListener("fetch", (event) => {
   const requestUrl = new URL(event.request.url);
 
   if (requestUrl.pathname.startsWith("/api/")) {
+    return;
+  }
+
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  if (
+    requestUrl.pathname.startsWith("/static/js/") ||
+    requestUrl.pathname.startsWith("/static/css/")
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
 

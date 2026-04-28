@@ -16,6 +16,18 @@ function formatDeleteImpactList(items) {
     return rows ? `<ul>${rows}</ul>` : "";
 }
 
+function boolBadge(value) {
+    return value
+        ? `<span class="mini-badge yes">${employeeText("common_yes", "Yes")}</span>`
+        : `<span class="mini-badge no">${employeeText("common_no", "No")}</span>`;
+}
+
+function employeeSexLabel(sex) {
+    if (sex === "male") return employeeText("employees_sex_male", "Male");
+    if (sex === "female") return employeeText("employees_sex_female", "Female");
+    return sex || "";
+}
+
 // Initialize page / Инициализация страницы
 document.addEventListener("DOMContentLoaded", () => {
     const employeeForm = document.getElementById("employee-form");
@@ -27,9 +39,88 @@ document.addEventListener("DOMContentLoaded", () => {
     if (tableBody) {
         tableBody.addEventListener("click", handleEmployeesTableClick);
     }
+    bindEmployeeModal();
 
     loadEmployees();
 });
+
+document.addEventListener("app-language-changed", () => {
+    renderEmployeesTable(currentEmployees);
+    updateEmployeeModalTitle();
+    updateSubmitButtonText();
+});
+
+function bindEmployeeModal() {
+    const addButton = document.getElementById("open-employee-modal-btn");
+    const overlay = document.getElementById("employee-modal-overlay");
+    const closeButton = document.getElementById("employee-modal-close");
+    const cancelButton = document.getElementById("employee-modal-cancel");
+
+    if (addButton) {
+        addButton.dataset.employeeModalBound = "1";
+        addButton.addEventListener("click", () => {
+            resetForm();
+            openEmployeeModal("add");
+        });
+    }
+
+    [closeButton, cancelButton].forEach(button => {
+        if (button) {
+            button.addEventListener("click", closeEmployeeModal);
+        }
+    });
+
+    if (overlay) {
+        overlay.addEventListener("click", event => {
+            if (event.target === overlay) {
+                closeEmployeeModal();
+            }
+        });
+    }
+
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && overlay?.classList.contains("is-open")) {
+            closeEmployeeModal();
+        }
+    });
+}
+
+function openEmployeeModal(mode = "add") {
+    const overlay = document.getElementById("employee-modal-overlay");
+    if (!overlay) return;
+    overlay.dataset.mode = mode;
+    updateEmployeeModalTitle();
+    updateSubmitButtonText();
+    overlay.classList.add("is-open");
+    overlay.setAttribute("aria-hidden", "false");
+    const firstInput = document.getElementById("full_name");
+    if (firstInput) {
+        firstInput.focus();
+    }
+}
+
+function closeEmployeeModal() {
+    const overlay = document.getElementById("employee-modal-overlay");
+    if (!overlay) return;
+    overlay.classList.remove("is-open");
+    overlay.setAttribute("aria-hidden", "true");
+}
+
+function updateEmployeeModalTitle() {
+    const title = document.getElementById("employee-modal-title");
+    if (!title) return;
+    title.textContent = editingEmployeeId === null
+        ? employeeText("employees_add_button", "Add employee")
+        : employeeText("employees_update_button", "Update employee");
+}
+
+function updateSubmitButtonText() {
+    const submitButton = document.getElementById("submit-button");
+    if (!submitButton) return;
+    submitButton.textContent = editingEmployeeId === null
+        ? employeeText("employees_add_button", "Add employee")
+        : employeeText("employees_update_button", "Update employee");
+}
 
 
 // Load all employees / Загружаем всех сотрудников
@@ -142,6 +233,7 @@ async function handleEmployeeSubmit(event) {
         showMessage(`${result.message}${backupSuffix}`, "success");
 
         resetForm();
+        closeEmployeeModal();
         await loadEmployees();
     } catch (error) {
         console.error("Submit employee error:", error);
@@ -154,6 +246,7 @@ async function handleEmployeeSubmit(event) {
 function editEmployee(employee) {
     document.getElementById("full_name").value = employee.full_name;
     document.getElementById("sex").value = employee.sex;
+    document.getElementById("sex").dispatchEvent(new Event("change", { bubbles: true }));
     document.getElementById("min_shifts_per_week").value = employee.min_shifts_per_week;
     document.getElementById("target_shifts_per_week").value = employee.target_shifts_per_week;
     document.getElementById("max_shifts_per_week").value = employee.max_shifts_per_week;
@@ -170,7 +263,7 @@ function editEmployee(employee) {
         submitButton.textContent = employeeText("employees_update_button", "Update employee");
     }
 
-    showMessage(`${employeeText("msg_editing_employee", "Editing employee")}: ${employee.full_name}`, "info");
+    openEmployeeModal("edit");
 }
 
 
@@ -251,6 +344,7 @@ function resetForm() {
     if (submitButton) {
         submitButton.textContent = employeeText("employees_add_button", "Add employee");
     }
+    updateEmployeeModalTitle();
 }
 
 
@@ -265,7 +359,14 @@ function renderEmployeesTable(employees) {
     if (employees.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="9" class="text-center text-muted">${employeeText("employees_empty_list", "No employees yet")}</td>
+                <td colspan="9" class="employee-meta-cell">
+                    ${typeof renderEmptyState === "function"
+                        ? renderEmptyState({
+                            title: employeeText("employees_empty_state_title", "No employees yet"),
+                            text: employeeText("employees_empty_state_text", "Add employees to start building schedules.")
+                        })
+                        : employeeText("employees_empty_list", "No employees yet")}
+                </td>
             </tr>
         `;
         return;
@@ -274,28 +375,32 @@ function renderEmployeesTable(employees) {
     tableBody.innerHTML = employees.map(employee => `
         <tr>
             <td>${Number(employee.id)}</td>
-            <td>${escapeHtml(employee.full_name)}</td>
-            <td>${escapeHtml(employee.sex === "male" ? employeeText("employees_sex_male", "Male") : employeeText("employees_sex_female", "Female"))}</td>
+            <td class="employee-name-cell">${escapeHtml(employee.full_name)}</td>
+            <td>${escapeHtml(employeeSexLabel(employee.sex))}</td>
             <td>${Number(employee.min_shifts_per_week)} / ${Number(employee.target_shifts_per_week)} / ${Number(employee.max_shifts_per_week)}</td>
-            <td>${employee.can_work_night ? employeeText("common_yes", "Yes") : employeeText("common_no", "No")}</td>
-            <td>${employee.can_work_weekends ? employeeText("common_yes", "Yes") : employeeText("common_no", "No")}</td>
-            <td>${employee.can_work_evenings_after_night ? employeeText("common_yes", "Yes") : employeeText("common_no", "No")}</td>
-            <td>${employee.can_work_mornings_and_evenings ? employeeText("common_yes", "Yes") : employeeText("common_no", "No")}</td>
+            <td>${boolBadge(employee.can_work_night)}</td>
+            <td>${boolBadge(employee.can_work_weekends)}</td>
+            <td>${boolBadge(employee.can_work_evenings_after_night)}</td>
+            <td>${boolBadge(employee.can_work_mornings_and_evenings)}</td>
             <td>
-                <button
-                    class="table-btn edit"
-                    data-action="edit"
-                    data-employee-id="${Number(employee.id)}"
-                >
-                    ${employeeText("employees_edit_button", "Edit")}
-                </button>
-                <button
-                    class="table-btn delete"
-                    data-action="delete"
-                    data-employee-id="${Number(employee.id)}"
-                >
-                    ${employeeText("employees_delete_button", "Delete")}
-                </button>
+                <div class="table-actions">
+                    <button
+                        class="table-btn edit"
+                        data-action="edit"
+                        data-employee-id="${Number(employee.id)}"
+                        type="button"
+                    >
+                        ${employeeText("employees_edit_button", "Edit")}
+                    </button>
+                    <button
+                        class="table-btn delete"
+                        data-action="delete"
+                        data-employee-id="${Number(employee.id)}"
+                        type="button"
+                    >
+                        ${employeeText("employees_delete_button", "Delete")}
+                    </button>
+                </div>
             </td>
         </tr>
     `).join("");

@@ -110,6 +110,8 @@ const I18N_TRANSLATIONS = {
         schedule_clear_all_btn: "Clear all week",
         schedule_export_btn: "Export Excel",
         schedule_export_all_btn: "Export all Excel",
+        schedule_export_word_btn: "Export Word",
+        schedule_export_all_word_btn: "Export all Word",
         schedule_clear_message_btn: "Clear message",
         schedule_toolbar_generate: "Generate",
         schedule_toolbar_output: "Output",
@@ -427,8 +429,6 @@ const I18N_TRANSLATIONS = {
 
         common_yes: "Yes",
         common_no: "No",
-        schedule_workspace_ready_title: "Schedule workspace",
-        schedule_workspace_ready_text: "Choose a week and position, then load the table to start editing or generating.",
         schedule_no_positions_title: "Schedule needs positions",
         schedule_no_positions_text: "Create at least one position before loading or generating a weekly schedule.",
         schedule_no_employees_title: "This position has no assigned employees",
@@ -733,46 +733,87 @@ const I18N_TRANSLATIONS = {
         settings_note_3: "If needed later, this page can also include shift requirements and export settings.",
 
         guide_page_title: "User Guide",
-        guide_page_subtitle: "A simple explanation of how to prepare employees, collect preferences, create a schedule, and export it.",
+        guide_page_subtitle: "A detailed workflow for setup, weekly planning, generation, manual edits, export, and safe recovery.",
         guide_start_title: "What this app is for",
-        guide_start_text: "Schedule App helps you build a weekly work schedule. You enter employees, roles, shift times, staffing needs, and personal preferences. Then you can create the schedule automatically or adjust it by hand.",
+        guide_start_text: "Schedule App helps build and maintain a weekly staff schedule. It keeps employees, positions, shift templates, coverage needs, preferences, generation results, exports, and backups in one local workflow.",
         guide_setup_title: "Before creating a schedule",
-        guide_setup_text: "Fill in the basic information once, then update it only when something changes.",
-        guide_setup_step_1: "Open Employees and add every person who can appear in the schedule.",
-        guide_setup_step_2: "Open Settings, then Positions, and create the job roles used in your department.",
-        guide_setup_step_3: "Open Shift templates and add the real shift times, such as morning, evening, night, or split shifts.",
-        guide_setup_step_4: "Open Assignments and connect each employee to the roles they can work.",
-        guide_setup_step_5: "Open Coverage requirements and write how many people are needed during each time period.",
+        guide_setup_text: "Do the setup in order. After that, weekly planning becomes mostly loading the week, checking preferences, generating, reviewing, and exporting.",
+        guide_setup_step_1: "Create employees.",
+        guide_setup_step_2: "Create positions.",
+        guide_setup_step_3: "Create shift templates.",
+        guide_setup_step_4: "Assign employees to positions.",
+        guide_setup_step_5: "Define coverage requirements.",
+        guide_setup_step_6: "Collect weekly preferences.",
+        guide_setup_step_7: "Load, generate, review, edit, and export the schedule.",
+        guide_setup_note: "Recommended order: finish setup screens first, then generate the schedule. Most generation problems are caused by missing assignments, inactive shift templates, or coverage requirements that need more staff than are available.",
         guide_open_employees: "Open employees",
         guide_open_settings: "Open settings",
+        guide_employees_title: "Employees",
+        guide_employees_text: "The Employees page contains the staff list. Use Add employee to open the modal form. Use Edit in the table to open the same modal with the employee data already filled in.",
+        guide_employees_step_1: "Enter the full name exactly as it should appear in exports.",
+        guide_employees_step_2: "Choose sex when gender-specific coverage is used.",
+        guide_employees_step_3: "Set minimum, target, and maximum shifts per week. Target should be between minimum and maximum.",
+        guide_employees_step_4: "Enable only the work rules that are allowed for that employee, such as nights, weekends, evening after night, or morning plus evening on the same day.",
+        guide_positions_title: "Positions, assignments, and shift templates",
+        guide_positions_text: "Positions describe where people can work. Shift templates describe the real shift times. Assignments connect employees to the positions they can cover.",
+        guide_positions_step_1: "Create every role that needs its own schedule, such as caregiver, nurse, or coordinator.",
+        guide_positions_step_2: "Create active shift templates for each position. A template must cover the time interval required by coverage rules.",
+        guide_positions_step_3: "Assign employees to every position they are allowed to work. The generator ignores employees who are not assigned to the selected position.",
+        guide_positions_step_4: "Use generation limits on positions only when a role needs stricter rules than the global settings.",
+        guide_coverage_title: "Coverage requirements",
+        guide_coverage_text: "Coverage requirements tell the app how many people are needed during each part of the day. They are the main input for automatic generation and coverage warnings.",
+        guide_coverage_step_1: "Choose the position and day of week.",
+        guide_coverage_step_2: "Enter start and end times for the required interval.",
+        guide_coverage_step_3: "Set the total required staff and optional female or male minimums.",
+        guide_coverage_step_4: "Keep requirements realistic. If the required number is higher than assigned available employees, the generator will report a shortage.",
         guide_requests_title: "Collect weekly preferences",
         guide_requests_text: "Before planning the week, open Preferences and mark days off, vacations, preferred shifts, and restrictions. This helps the system avoid assigning people when they are unavailable.",
+        guide_requests_step_1: "Select the week and employee.",
+        guide_requests_step_2: "Mark days off, vacation, sickness, or preferred shifts before running generation.",
+        guide_requests_step_3: "Clear a preference when it no longer applies. The schedule can then be regenerated or edited manually.",
         guide_open_requests: "Open preferences",
         guide_schedule_title: "Create the weekly schedule",
-        guide_schedule_text: "Open Schedule, choose the week and position, then load the table. Use Auto generate to let the system fill shifts. Review the warnings, then make any manual changes you need.",
+        guide_schedule_text: "Open Schedule, choose the week and position, then load the table. The toolbar uses modal action groups so the page stays focused on the table.",
         guide_schedule_step_1: "Choose the first day of the week.",
         guide_schedule_step_2: "Choose the position you want to schedule.",
         guide_schedule_step_3: "Click Load to see the current schedule.",
-        guide_schedule_step_4: "Click Auto generate if you want the app to fill missing shifts.",
-        guide_schedule_step_5: "Check warnings and coverage rows before you finish.",
+        guide_schedule_step_4: "Open Generate and choose whether to generate the selected position or all positions.",
+        guide_schedule_step_5: "Check the generation summary, warnings, and coverage rows before you finish.",
+        guide_schedule_step_6: "Use Output to export files, or Danger zone only when you really need to clear schedule data.",
         guide_open_schedule: "Open schedule",
         guide_manual_title: "Manual changes",
         guide_manual_text: "You can add or delete shifts manually. You can also mark a person as sick, day off, or no-show. Use these options when the real situation changes after the schedule was created.",
+        guide_manual_step_1: "Click an empty day cell to choose an active shift template.",
+        guide_manual_step_2: "Use the status controls to mark day off, sickness, vacation, or no-show when needed.",
+        guide_manual_step_3: "After manual edits, check coverage again. Manual edits can create new shortages or rule warnings.",
         guide_export_title: "Share the schedule",
-        guide_export_text: "When the week looks correct, use Export Excel on the Schedule page. The file is meant for printing, sending, or keeping as a weekly record.",
+        guide_export_text: "When the week looks correct, open Output on the Schedule page and export the schedule. Excel is useful for editing and review. Word is useful for people who want a printable table without Excel.",
+        guide_export_step_1: "Export Excel for the selected position when you only need one schedule.",
+        guide_export_step_2: "Export all Excel when you need every position in one workbook.",
+        guide_export_step_3: "Export Word or Export all Word when you need a document with visible bordered tables.",
+        guide_safety_title: "Backups and safe destructive actions",
+        guide_safety_text: "The app creates recovery backups before destructive actions such as deleting employees, positions, assignments, templates, or clearing schedules. You can also create and restore manual backups from Settings.",
+        guide_safety_step_1: "Before deleting, read the modal preview. It shows related records that can be affected.",
+        guide_safety_step_2: "Use Settings > Data safety to create a manual backup before major changes.",
+        guide_safety_step_3: "Restore a backup only when you are sure, because it replaces the current database. A pre-restore copy is created first.",
         guide_help_title: "If something looks wrong",
         guide_help_step_1: "Check that the employee is assigned to the selected position.",
         guide_help_step_2: "Check that the employee is not blocked by a day off, vacation, sickness, or request.",
         guide_help_step_3: "Check that the shift template is active and has the correct time.",
         guide_help_step_4: "Check Coverage requirements to make sure the needed number of people is correct.",
+        guide_help_step_5: "If buttons or modals look stale after an update, refresh the page once so the browser loads the newest scripts.",
         guide_contents_title: "On this page",
         guide_contents_text: "Use these links to jump to the part you need.",
         guide_contents_start: "Purpose",
         guide_contents_setup: "Setup",
+        guide_contents_employees: "Employees",
+        guide_contents_positions: "Positions",
+        guide_contents_coverage: "Coverage",
         guide_contents_requests: "Preferences",
         guide_contents_schedule: "Schedule",
         guide_contents_manual: "Manual changes",
         guide_contents_export: "Export",
+        guide_contents_safety: "Backups",
         guide_contents_help: "Help",
 
         common_actions: "Actions",
@@ -783,6 +824,7 @@ const I18N_TRANSLATIONS = {
         common_delete: "Delete",
         common_cancel: "Cancel",
         common_confirm: "Confirm",
+        common_select: "Select",
         common_recovery_backup: "Recovery backup",
 
         coverage_page_title: "Coverage requirements",
@@ -946,8 +988,6 @@ const I18N_TRANSLATIONS = {
         summary_status_value: "База готова",
 
         summary_badge: "Поддерживается RTL для иврита",
-        schedule_workspace_ready_title: "Рабочая область расписания",
-        schedule_workspace_ready_text: "Выберите неделю и должность, затем загрузите таблицу для редактирования или генерации.",
         schedule_no_positions_title: "Для расписания нужны должности",
         schedule_no_positions_text: "Создайте хотя бы одну должность перед загрузкой или генерацией недельного расписания.",
         schedule_no_employees_title: "У этой должности нет назначенных сотрудников",
@@ -972,6 +1012,8 @@ const I18N_TRANSLATIONS = {
         schedule_clear_all_btn: "Очистить всю неделю",
         schedule_export_btn: "Экспорт Excel",
         schedule_export_all_btn: "Экспорт всех в Excel",
+        schedule_export_word_btn: "Экспорт Word",
+        schedule_export_all_word_btn: "Экспорт всех в Word",
         schedule_clear_message_btn: "Очистить сообщение",
         schedule_toolbar_generate: "Генерация",
         schedule_toolbar_output: "Вывод",
@@ -1537,46 +1579,87 @@ const I18N_TRANSLATIONS = {
         settings_note_3: "При необходимости позже сюда можно добавить требования к сменам и настройки экспорта.",
 
         guide_page_title: "Руководство пользователя",
-        guide_page_subtitle: "Простое объяснение, как подготовить сотрудников, собрать пожелания, создать расписание и выгрузить его.",
+        guide_page_subtitle: "Подробный порядок работы: настройка, недельное планирование, генерация, ручные правки, экспорт и восстановление.",
         guide_start_title: "Для чего нужно приложение",
-        guide_start_text: "Schedule App помогает составлять рабочее расписание на неделю. Вы вносите сотрудников, должности, время смен, нужное количество людей и личные пожелания. После этого расписание можно создать автоматически или поправить вручную.",
+        guide_start_text: "Schedule App помогает составлять и вести недельное расписание персонала. В одном локальном процессе хранятся сотрудники, должности, шаблоны смен, требования покрытия, пожелания, результаты генерации, экспорты и резервные копии.",
         guide_setup_title: "Перед созданием расписания",
-        guide_setup_text: "Основные данные заполняются один раз, а потом меняются только при необходимости.",
-        guide_setup_step_1: "Откройте Сотрудники и добавьте всех людей, которые могут появляться в расписании.",
-        guide_setup_step_2: "Откройте Настройки, затем Должности, и создайте роли, которые используются в отделении.",
-        guide_setup_step_3: "Откройте Шаблоны смен и добавьте реальное время смен: утро, вечер, ночь или разделённые смены.",
-        guide_setup_step_4: "Откройте Должности сотрудников и привяжите каждого сотрудника к ролям, в которых он может работать.",
-        guide_setup_step_5: "Откройте Требования покрытия и укажите, сколько людей нужно в каждый промежуток времени.",
+        guide_setup_text: "Выполните настройку по порядку. После этого еженедельная работа обычно сводится к загрузке недели, проверке пожеланий, генерации, просмотру результата и экспорту.",
+        guide_setup_step_1: "Создайте сотрудников.",
+        guide_setup_step_2: "Создайте должности.",
+        guide_setup_step_3: "Создайте шаблоны смен.",
+        guide_setup_step_4: "Назначьте сотрудников на должности.",
+        guide_setup_step_5: "Задайте требования покрытия.",
+        guide_setup_step_6: "Соберите недельные пожелания.",
+        guide_setup_step_7: "Загрузите, сгенерируйте, проверьте, поправьте и экспортируйте расписание.",
+        guide_setup_note: "Рекомендуемый порядок: сначала завершите экраны настройки, потом запускайте генерацию. Чаще всего проблемы генерации возникают из-за отсутствующих назначений, неактивных шаблонов смен или требований покрытия, где нужно больше сотрудников, чем доступно.",
         guide_open_employees: "Открыть сотрудников",
         guide_open_settings: "Открыть настройки",
+        guide_employees_title: "Сотрудники",
+        guide_employees_text: "Страница сотрудников содержит список персонала. Кнопка Добавить сотрудника открывает модальную форму. Кнопка Редактировать в таблице открывает ту же форму уже с заполненными данными сотрудника.",
+        guide_employees_step_1: "Введите полное имя так, как оно должно отображаться в экспортах.",
+        guide_employees_step_2: "Выберите пол, если используются требования покрытия по полу.",
+        guide_employees_step_3: "Задайте минимум, цель и максимум смен в неделю. Цель должна быть между минимумом и максимумом.",
+        guide_employees_step_4: "Включайте только те правила работы, которые разрешены этому сотруднику: ночи, выходные, вечер после ночи или утро плюс вечер в один день.",
+        guide_positions_title: "Должности, назначения и шаблоны смен",
+        guide_positions_text: "Должности описывают, где люди могут работать. Шаблоны смен описывают реальное время смен. Назначения связывают сотрудников с должностями, которые они могут закрывать.",
+        guide_positions_step_1: "Создайте каждую роль, для которой нужно отдельное расписание: caregiver, nurse, coordinator и так далее.",
+        guide_positions_step_2: "Создайте активные шаблоны смен для каждой должности. Шаблон должен покрывать временной интервал, заданный требованиями покрытия.",
+        guide_positions_step_3: "Назначьте сотрудников на все должности, где им разрешено работать. Генератор игнорирует сотрудников, не назначенных на выбранную должность.",
+        guide_positions_step_4: "Используйте лимиты генерации на должностях только тогда, когда для роли нужны более строгие правила, чем глобальные настройки.",
+        guide_coverage_title: "Требования покрытия",
+        guide_coverage_text: "Требования покрытия говорят приложению, сколько людей нужно в каждую часть дня. Это основной вход для автогенерации и предупреждений о недоборе.",
+        guide_coverage_step_1: "Выберите должность и день недели.",
+        guide_coverage_step_2: "Введите начало и конец нужного временного интервала.",
+        guide_coverage_step_3: "Укажите общее количество сотрудников и, при необходимости, минимумы женщин или мужчин.",
+        guide_coverage_step_4: "Держите требования реалистичными. Если нужно больше людей, чем назначено и доступно, генератор покажет нехватку.",
         guide_requests_title: "Соберите пожелания на неделю",
         guide_requests_text: "Перед планированием недели откройте Пожелания и отметьте выходные, отпуска, предпочтительные смены и ограничения. Так система не будет ставить людей туда, где они недоступны.",
+        guide_requests_step_1: "Выберите неделю и сотрудника.",
+        guide_requests_step_2: "До генерации отметьте выходные, отпуск, болезнь или предпочтительные смены.",
+        guide_requests_step_3: "Очистите пожелание, когда оно больше не актуально. После этого расписание можно сгенерировать заново или поправить вручную.",
         guide_open_requests: "Открыть пожелания",
         guide_schedule_title: "Создайте недельное расписание",
-        guide_schedule_text: "Откройте Расписание, выберите неделю и должность, затем загрузите таблицу. Нажмите Автогенерация, если хотите, чтобы система заполнила смены. После этого проверьте предупреждения и внесите ручные изменения, если они нужны.",
+        guide_schedule_text: "Откройте Расписание, выберите неделю и должность, затем загрузите таблицу. Панель действий использует модальные группы, чтобы страница оставалась сосредоточенной на таблице.",
         guide_schedule_step_1: "Выберите первый день недели.",
         guide_schedule_step_2: "Выберите должность, для которой нужно составить расписание.",
         guide_schedule_step_3: "Нажмите Загрузить, чтобы увидеть текущее расписание.",
-        guide_schedule_step_4: "Нажмите Автогенерация, если хотите заполнить недостающие смены.",
-        guide_schedule_step_5: "Перед завершением проверьте предупреждения и строки покрытия.",
+        guide_schedule_step_4: "Откройте Генерация и выберите генерацию выбранной должности или всех должностей.",
+        guide_schedule_step_5: "Перед завершением проверьте сводку генерации, предупреждения и строки покрытия.",
+        guide_schedule_step_6: "Используйте Вывод для экспорта файлов, а Опасные действия только когда действительно нужно очистить данные расписания.",
         guide_open_schedule: "Открыть расписание",
         guide_manual_title: "Ручные изменения",
         guide_manual_text: "Смены можно добавлять и удалять вручную. Также можно отметить болезнь, выходной или неявку. Используйте эти действия, когда реальная ситуация изменилась после составления расписания.",
+        guide_manual_step_1: "Нажмите пустую ячейку дня, чтобы выбрать активный шаблон смены.",
+        guide_manual_step_2: "Используйте статусы, чтобы отметить выходной, болезнь, отпуск или неявку.",
+        guide_manual_step_3: "После ручных правок снова проверьте покрытие. Ручные изменения могут создать новый недобор или предупреждения по правилам.",
         guide_export_title: "Передайте расписание",
-        guide_export_text: "Когда неделя выглядит правильно, нажмите Экспорт Excel на странице Расписание. Файл можно распечатать, отправить или сохранить как недельный отчёт.",
+        guide_export_text: "Когда неделя выглядит правильно, откройте Вывод на странице Расписание и экспортируйте расписание. Excel удобен для проверки и редактирования. Word удобен для печатной таблицы без Excel.",
+        guide_export_step_1: "Экспорт Excel для выбранной должности используйте, когда нужно только одно расписание.",
+        guide_export_step_2: "Экспорт всех в Excel используйте, когда нужны все должности в одной книге.",
+        guide_export_step_3: "Экспорт Word или Экспорт всех в Word используйте, когда нужен документ с видимыми табличными границами.",
+        guide_safety_title: "Резервные копии и безопасные опасные действия",
+        guide_safety_text: "Приложение создаёт recovery backup перед опасными действиями: удалением сотрудников, должностей, назначений, шаблонов или очисткой расписаний. В Настройках можно также создать и восстановить ручную резервную копию.",
+        guide_safety_step_1: "Перед удалением прочитайте preview в модальном окне. Там показаны связанные записи, которые могут быть затронуты.",
+        guide_safety_step_2: "Перед крупными изменениями используйте Настройки > Безопасность данных, чтобы создать ручную копию.",
+        guide_safety_step_3: "Восстанавливайте backup только когда уверены, потому что он заменяет текущую базу. Перед восстановлением создаётся отдельная pre-restore копия.",
         guide_help_title: "Если что-то выглядит неправильно",
         guide_help_step_1: "Проверьте, что сотрудник привязан к выбранной должности.",
         guide_help_step_2: "Проверьте, что сотрудник не заблокирован выходным, отпуском, болезнью или пожеланием.",
         guide_help_step_3: "Проверьте, что шаблон смены активен и в нём указано правильное время.",
         guide_help_step_4: "Проверьте Требования покрытия и убедитесь, что нужное количество людей указано правильно.",
+        guide_help_step_5: "Если после обновления кнопки или модальные окна выглядят устаревшими, обновите страницу один раз, чтобы браузер загрузил новые скрипты.",
         guide_contents_title: "На этой странице",
         guide_contents_text: "Используйте ссылки, чтобы перейти к нужной части.",
         guide_contents_start: "Назначение",
         guide_contents_setup: "Подготовка",
+        guide_contents_employees: "Сотрудники",
+        guide_contents_positions: "Должности",
+        guide_contents_coverage: "Покрытие",
         guide_contents_requests: "Пожелания",
         guide_contents_schedule: "Расписание",
         guide_contents_manual: "Ручные изменения",
         guide_contents_export: "Экспорт",
+        guide_contents_safety: "Backup",
         guide_contents_help: "Помощь",
 
         common_actions: "Действия",
@@ -1587,6 +1670,7 @@ const I18N_TRANSLATIONS = {
         common_delete: "Удалить",
         common_cancel: "Отмена",
         common_confirm: "Подтвердить",
+        common_select: "Выбор",
         common_recovery_backup: "Резервная копия для восстановления",
 
         coverage_page_title: "Требования покрытия",
@@ -1702,8 +1786,6 @@ const I18N_TRANSLATIONS = {
         summary_status_value: "התשתית מוכנה",
 
         summary_badge: "תמיכה מלאה ב-RTL בעברית",
-        schedule_workspace_ready_title: "מרחב העבודה של הסידור",
-        schedule_workspace_ready_text: "בחר שבוע ותפקיד, ואז טען את הטבלה כדי להתחיל לערוך או ליצור.",
         schedule_no_positions_title: "לסידור העבודה נדרשים תפקידים",
         schedule_no_positions_text: "צור לפחות תפקיד אחד לפני טעינה או יצירה של סידור שבועי.",
         schedule_no_employees_title: "אין עובדים משויכים לתפקיד הזה",
@@ -1728,6 +1810,8 @@ const I18N_TRANSLATIONS = {
         schedule_clear_all_btn: "נקה את כל השבוע",
         schedule_export_btn: "ייצוא לאקסל",
         schedule_export_all_btn: "ייצוא כללי לאקסל",
+        schedule_export_word_btn: "ייצוא לוורד",
+        schedule_export_all_word_btn: "ייצוא כללי לוורד",
         schedule_clear_message_btn: "נקה הודעה",
         schedule_toolbar_generate: "יצירה",
         schedule_toolbar_output: "פלט",
@@ -2341,46 +2425,87 @@ const I18N_TRANSLATIONS = {
         settings_note_3: "אם יהיה צורך בהמשך, ניתן להוסיף לעמוד הזה גם דרישות משמרת והגדרות ייצוא.",
 
         guide_page_title: "מדריך משתמש",
-        guide_page_subtitle: "הסבר פשוט על הכנת עובדים, איסוף העדפות, יצירת סידור עבודה וייצוא שלו.",
+        guide_page_subtitle: "תהליך עבודה מפורט להכנה, תכנון שבועי, יצירה, תיקונים ידניים, ייצוא ושחזור בטוח.",
         guide_start_title: "למה האפליקציה מיועדת",
-        guide_start_text: "Schedule App עוזרת לבנות סידור עבודה שבועי. מזינים עובדים, תפקידים, שעות משמרת, צרכי כוח אדם והעדפות אישיות. לאחר מכן אפשר ליצור את הסידור אוטומטית או לתקן אותו ידנית.",
+        guide_start_text: "Schedule App עוזרת לבנות ולנהל סידור עבודה שבועי לצוות. עובדים, תפקידים, תבניות משמרת, דרישות כיסוי, העדפות, תוצאות יצירה, ייצוא וגיבויים נמצאים בתהליך מקומי אחד.",
         guide_setup_title: "לפני יצירת סידור עבודה",
-        guide_setup_text: "ממלאים את המידע הבסיסי פעם אחת, ואז מעדכנים אותו רק כשמשהו משתנה.",
-        guide_setup_step_1: "פתח את עובדים והוסף כל אדם שיכול להופיע בסידור העבודה.",
-        guide_setup_step_2: "פתח את הגדרות, לאחר מכן תפקידים, וצור את התפקידים שמשמשים במחלקה.",
-        guide_setup_step_3: "פתח את תבניות משמרת והוסף את זמני המשמרות האמיתיים, כמו בוקר, ערב, לילה או משמרות מפוצלות.",
-        guide_setup_step_4: "פתח את שיוך עובדים לתפקידים וחבר כל עובד לתפקידים שבהם הוא יכול לעבוד.",
-        guide_setup_step_5: "פתח את דרישות כיסוי ורשום כמה עובדים נדרשים בכל טווח זמן.",
+        guide_setup_text: "בצע את ההגדרות לפי הסדר. לאחר מכן העבודה השבועית היא בעיקר טעינת השבוע, בדיקת העדפות, יצירה, סקירה וייצוא.",
+        guide_setup_step_1: "צור עובדים.",
+        guide_setup_step_2: "צור תפקידים.",
+        guide_setup_step_3: "צור תבניות משמרת.",
+        guide_setup_step_4: "שייך עובדים לתפקידים.",
+        guide_setup_step_5: "הגדר דרישות כיסוי.",
+        guide_setup_step_6: "אסוף העדפות שבועיות.",
+        guide_setup_step_7: "טען, צור, בדוק, ערוך וייצא את סידור העבודה.",
+        guide_setup_note: "סדר מומלץ: סיים קודם את מסכי ההגדרה ורק אחר כך הפעל יצירה. רוב בעיות היצירה נגרמות משיוכים חסרים, תבניות משמרת לא פעילות או דרישות כיסוי שדורשות יותר עובדים מהזמינים.",
         guide_open_employees: "פתח עובדים",
         guide_open_settings: "פתח הגדרות",
+        guide_employees_title: "עובדים",
+        guide_employees_text: "עמוד עובדים מכיל את רשימת הצוות. השתמש בהוסף עובד כדי לפתוח טופס במודל. עריכה בטבלה פותחת את אותו מודל עם פרטי העובד כבר מלאים.",
+        guide_employees_step_1: "הזן שם מלא בדיוק כפי שהוא צריך להופיע בייצוא.",
+        guide_employees_step_2: "בחר מין כאשר משתמשים בכיסוי לפי מגדר.",
+        guide_employees_step_3: "הגדר מינימום, יעד ומקסימום משמרות בשבוע. היעד צריך להיות בין המינימום למקסימום.",
+        guide_employees_step_4: "אפשר רק את כללי העבודה שמותרים לעובד: לילות, סופי שבוע, ערב אחרי לילה או בוקר וערב באותו יום.",
+        guide_positions_title: "תפקידים, שיוכים ותבניות משמרת",
+        guide_positions_text: "תפקידים מגדירים היכן אנשים יכולים לעבוד. תבניות משמרת מגדירות את שעות המשמרת האמיתיות. שיוכים מחברים עובדים לתפקידים שהם יכולים לכסות.",
+        guide_positions_step_1: "צור כל תפקיד שצריך סידור נפרד, כמו caregiver, nurse או coordinator.",
+        guide_positions_step_2: "צור תבניות משמרת פעילות לכל תפקיד. התבנית חייבת לכסות את טווח הזמן שנדרש לפי כללי הכיסוי.",
+        guide_positions_step_3: "שייך עובדים לכל תפקיד שמותר להם לעבוד בו. מחולל הסידור מתעלם מעובדים שלא משויכים לתפקיד שנבחר.",
+        guide_positions_step_4: "השתמש במגבלות יצירה על תפקידים רק כאשר לתפקיד דרושים כללים מחמירים יותר מההגדרות הגלובליות.",
+        guide_coverage_title: "דרישות כיסוי",
+        guide_coverage_text: "דרישות כיסוי אומרות לאפליקציה כמה אנשים דרושים בכל חלק של היום. זהו הקלט המרכזי ליצירה אוטומטית ולהתראות על חוסר כיסוי.",
+        guide_coverage_step_1: "בחר תפקיד ויום בשבוע.",
+        guide_coverage_step_2: "הזן שעת התחלה ושעת סיום לטווח הנדרש.",
+        guide_coverage_step_3: "הגדר את מספר העובדים הכולל ואת המינימום לנשים או גברים אם צריך.",
+        guide_coverage_step_4: "שמור על דרישות מציאותיות. אם הדרישה גבוהה ממספר העובדים המשויכים והזמינים, המחולל ידווח על חוסר.",
         guide_requests_title: "איסוף העדפות שבועיות",
         guide_requests_text: "לפני תכנון השבוע, פתח את העדפות וסמן ימי חופש, חופשות, משמרות מועדפות והגבלות. כך המערכת נמנעת משיבוץ אנשים כשהם לא זמינים.",
+        guide_requests_step_1: "בחר שבוע ועובד.",
+        guide_requests_step_2: "סמן ימי חופש, חופשה, מחלה או משמרות מועדפות לפני היצירה.",
+        guide_requests_step_3: "נקה העדפה כאשר היא כבר לא רלוונטית. לאחר מכן אפשר ליצור מחדש או לערוך ידנית.",
         guide_open_requests: "פתח העדפות",
         guide_schedule_title: "יצירת סידור העבודה השבועי",
-        guide_schedule_text: "פתח את סידור עבודה, בחר שבוע ותפקיד, ואז טען את הטבלה. השתמש ביצירה אוטומטית כדי לתת למערכת למלא משמרות. לאחר מכן בדוק התראות ובצע שינויים ידניים לפי הצורך.",
+        guide_schedule_text: "פתח את סידור עבודה, בחר שבוע ותפקיד, ואז טען את הטבלה. סרגל הפעולות משתמש בקבוצות מודליות כדי להשאיר את העמוד ממוקד בטבלה.",
         guide_schedule_step_1: "בחר את היום הראשון של השבוע.",
         guide_schedule_step_2: "בחר את התפקיד שעבורו רוצים לבנות סידור.",
         guide_schedule_step_3: "לחץ על טען כדי לראות את הסידור הנוכחי.",
-        guide_schedule_step_4: "לחץ על יצירה אוטומטית אם רוצים למלא משמרות חסרות.",
-        guide_schedule_step_5: "בדוק התראות ושורות כיסוי לפני סיום.",
+        guide_schedule_step_4: "פתח יצירה ובחר האם ליצור עבור התפקיד הנבחר או עבור כל התפקידים.",
+        guide_schedule_step_5: "בדוק את סיכום היצירה, ההתראות ושורות הכיסוי לפני סיום.",
+        guide_schedule_step_6: "השתמש בפלט לייצוא קבצים, ובפעולות מסוכנות רק כאשר באמת צריך למחוק נתוני סידור.",
         guide_open_schedule: "פתח סידור עבודה",
         guide_manual_title: "שינויים ידניים",
         guide_manual_text: "אפשר להוסיף או למחוק משמרות ידנית. אפשר גם לסמן עובד כחולה, ביום חופש או כאי הגעה. השתמש באפשרויות האלה כשהמצב בפועל משתנה אחרי יצירת הסידור.",
+        guide_manual_step_1: "לחץ על תא יום ריק כדי לבחור תבנית משמרת פעילה.",
+        guide_manual_step_2: "השתמש בסטטוסים כדי לסמן יום חופש, מחלה, חופשה או אי הגעה.",
+        guide_manual_step_3: "לאחר עריכה ידנית, בדוק שוב את הכיסוי. תיקונים ידניים יכולים ליצור חוסר חדש או התראות כללים.",
         guide_export_title: "שיתוף סידור העבודה",
-        guide_export_text: "כשהשבוע נראה נכון, השתמש בייצוא לאקסל בדף סידור עבודה. הקובץ מיועד להדפסה, שליחה או שמירה כרשומה שבועית.",
+        guide_export_text: "כאשר השבוע נראה נכון, פתח פלט בעמוד סידור העבודה וייצא את הסידור. Excel מתאים לבדיקה ועריכה. Word מתאים לטבלה להדפסה ללא Excel.",
+        guide_export_step_1: "ייצוא Excel לתפקיד הנבחר מתאים כאשר צריך רק סידור אחד.",
+        guide_export_step_2: "ייצוא כללי ל-Excel מתאים כאשר צריך את כל התפקידים בחוברת אחת.",
+        guide_export_step_3: "ייצוא Word או ייצוא כללי ל-Word מתאים כאשר צריך מסמך עם גבולות טבלה ברורים.",
+        guide_safety_title: "גיבויים ופעולות מסוכנות בטוחות",
+        guide_safety_text: "האפליקציה יוצרת גיבוי שחזור לפני פעולות מסוכנות כמו מחיקת עובדים, תפקידים, שיוכים, תבניות או ניקוי סידורים. אפשר גם ליצור ולשחזר גיבויים ידניים מהגדרות.",
+        guide_safety_step_1: "לפני מחיקה, קרא את התצוגה המקדימה במודל. היא מציגה רשומות קשורות שעלולות להיות מושפעות.",
+        guide_safety_step_2: "השתמש בהגדרות > בטיחות נתונים כדי ליצור גיבוי ידני לפני שינוי גדול.",
+        guide_safety_step_3: "שחזר גיבוי רק כשאתה בטוח, כי הוא מחליף את מסד הנתונים הנוכחי. לפני השחזור נוצרת עותק pre-restore.",
         guide_help_title: "אם משהו נראה לא תקין",
         guide_help_step_1: "בדוק שהעובד משויך לתפקיד שנבחר.",
         guide_help_step_2: "בדוק שהעובד אינו חסום בגלל יום חופש, חופשה, מחלה או בקשה.",
         guide_help_step_3: "בדוק שתבנית המשמרת פעילה ושזמן המשמרת נכון.",
         guide_help_step_4: "בדוק את דרישות הכיסוי וודא שמספר העובדים הנדרש נכון.",
+        guide_help_step_5: "אם כפתורים או מודלים נראים ישנים אחרי עדכון, רענן את העמוד פעם אחת כדי שהדפדפן יטען את הסקריפטים החדשים.",
         guide_contents_title: "בעמוד זה",
         guide_contents_text: "השתמש בקישורים כדי לעבור לחלק הדרוש.",
         guide_contents_start: "מטרה",
         guide_contents_setup: "הכנה",
+        guide_contents_employees: "עובדים",
+        guide_contents_positions: "תפקידים",
+        guide_contents_coverage: "כיסוי",
         guide_contents_requests: "העדפות",
         guide_contents_schedule: "סידור עבודה",
         guide_contents_manual: "שינויים ידניים",
         guide_contents_export: "ייצוא",
+        guide_contents_safety: "גיבויים",
         guide_contents_help: "עזרה",
 
         common_actions: "פעולות",
@@ -2391,6 +2516,7 @@ const I18N_TRANSLATIONS = {
         common_delete: "מחיקה",
         common_cancel: "ביטול",
         common_confirm: "אישור",
+        common_select: "בחירה",
         common_recovery_backup: "גיבוי שחזור",
 
         coverage_page_title: "דרישות כיסוי",
@@ -2517,6 +2643,183 @@ function bindLanguageSwitcher() {
             const lang = button.dataset.lang;
             setLanguage(lang);
         });
+    });
+}
+
+function getSelectLabel(select) {
+    if (!select) return translate("common_select");
+    if (select.getAttribute("aria-label")) {
+        return select.getAttribute("aria-label");
+    }
+    if (select.id) {
+        const label = document.querySelector(`label[for="${CSS.escape(select.id)}"]`);
+        if (label) {
+            return label.textContent.trim();
+        }
+    }
+    return select.title || translate("common_select");
+}
+
+function ensureSelectModal() {
+    let modal = document.getElementById("app-select-modal");
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+    modal.id = "app-select-modal";
+    modal.className = "app-modal-overlay";
+    modal.setAttribute("aria-hidden", "true");
+    modal.innerHTML = `
+        <div class="app-modal app-select-modal" role="dialog" aria-modal="true" aria-labelledby="app-select-title">
+            <div class="app-modal-header">
+                <h2 id="app-select-title" class="app-modal-title"></h2>
+                <button class="app-modal-close" type="button" data-select-close aria-label="Close">×</button>
+            </div>
+            <div class="app-modal-body">
+                <div id="app-select-options" class="app-select-options"></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function getSelectDisplayText(select) {
+    if (!select) return "";
+    const selected = select.selectedOptions && select.selectedOptions[0];
+    if (selected) {
+        return selected.textContent.trim();
+    }
+    const option = select.options[select.selectedIndex];
+    return option ? option.textContent.trim() : "";
+}
+
+function refreshSelectTrigger(select) {
+    const trigger = select?.nextElementSibling;
+    if (!trigger || !trigger.classList.contains("app-select-trigger")) return;
+    const text = trigger.querySelector(".app-select-trigger-text");
+    if (text) {
+        text.textContent = getSelectDisplayText(select);
+    }
+    trigger.disabled = select.disabled;
+    trigger.setAttribute("aria-disabled", select.disabled ? "true" : "false");
+}
+
+function openSelectModal(select) {
+    if (!select || select.disabled) return;
+
+    const modal = ensureSelectModal();
+    const title = modal.querySelector("#app-select-title");
+    const optionsBox = modal.querySelector("#app-select-options");
+    title.textContent = getSelectLabel(select);
+
+    optionsBox.innerHTML = Array.from(select.options).map((option, index) => `
+        <button
+            class="btn btn-secondary app-select-option ${option.selected ? "is-selected" : ""}"
+            type="button"
+            data-select-option-index="${index}"
+            ${option.disabled ? "disabled" : ""}
+        >
+            ${escapeHtml(option.textContent.trim())}
+        </button>
+    `).join("");
+
+    modal.classList.add("is-open");
+    modal.setAttribute("aria-hidden", "false");
+
+    const selectedButton = optionsBox.querySelector(".app-select-option.is-selected");
+    const firstButton = selectedButton || optionsBox.querySelector(".app-select-option:not([disabled])");
+    if (firstButton) {
+        firstButton.focus();
+    }
+
+    const finish = () => {
+        modal.classList.remove("is-open");
+        modal.setAttribute("aria-hidden", "true");
+        modal.removeEventListener("click", onModalClick);
+        document.removeEventListener("keydown", onKeyDown);
+    };
+
+    const onModalClick = event => {
+        const closeButton = event.target.closest("[data-select-close]");
+        if (closeButton || event.target === modal) {
+            finish();
+            return;
+        }
+
+        const optionButton = event.target.closest("[data-select-option-index]");
+        if (!optionButton) return;
+        const option = select.options[Number(optionButton.dataset.selectOptionIndex)];
+        if (!option || option.disabled) return;
+
+        select.value = option.value;
+        refreshSelectTrigger(select);
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        finish();
+    };
+
+    const onKeyDown = event => {
+        if (event.key === "Escape") {
+            finish();
+        }
+    };
+
+    modal.addEventListener("click", onModalClick);
+    document.addEventListener("keydown", onKeyDown);
+}
+
+function enhanceSelect(select) {
+    if (!select || select.dataset.appSelectEnhanced === "1" || select.multiple) return;
+    if (select.dataset.nativeSelect === "true") return;
+
+    select.dataset.appSelectEnhanced = "1";
+    select.classList.add("app-native-select");
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "app-select-trigger";
+    trigger.innerHTML = `<span class="app-select-trigger-text"></span>`;
+    trigger.addEventListener("click", () => openSelectModal(select));
+    select.insertAdjacentElement("afterend", trigger);
+
+    select.addEventListener("change", () => refreshSelectTrigger(select));
+
+    const observer = new MutationObserver(() => refreshSelectTrigger(select));
+    observer.observe(select, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["disabled", "label", "value", "selected"]
+    });
+
+    refreshSelectTrigger(select);
+}
+
+function enhanceSelects(root = document) {
+    root.querySelectorAll("select").forEach(enhanceSelect);
+}
+
+function bindModalSelects() {
+    enhanceSelects();
+
+    const observer = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+            mutation.addedNodes.forEach(node => {
+                if (!(node instanceof Element)) return;
+                if (node.matches("select")) {
+                    enhanceSelect(node);
+                }
+                enhanceSelects(node);
+            });
+        });
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    document.addEventListener("app-language-changed", () => {
+        document.querySelectorAll("select[data-app-select-enhanced='1']").forEach(refreshSelectTrigger);
     });
 }
 
@@ -2677,12 +2980,13 @@ document.addEventListener("DOMContentLoaded", () => {
     applyEmbeddedAdminMode();
     bindLanguageSwitcher();
     setLanguage(getSavedLanguage());
+    bindModalSelects();
     bindSidebarToggle();
     applySidebarState(getSavedSidebarState());
 });
 
 function getSavedSidebarState() {
-    return localStorage.getItem("scheduleAppSidebar") || "expanded";
+    return localStorage.getItem("scheduleAppSidebar");
 }
 
 function applySidebarState(state) {
@@ -2691,7 +2995,7 @@ function applySidebarState(state) {
     if (window.innerWidth <= 920) {
         document.body.classList.remove("mobile-sidebar-hidden");
 
-        if (state === "hidden") {
+        if (state !== "expanded") {
             document.body.classList.add("mobile-sidebar-hidden");
         }
         return;
