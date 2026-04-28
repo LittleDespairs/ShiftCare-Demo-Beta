@@ -571,6 +571,24 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(pending_invitation_response.status_code, 200)
         pending_invitation_id = pending_invitation_response.json()["invitation"]["id"]
+        original_pending_token = pending_invitation_response.json()["invitation_token"]
+
+        regenerated_response = self.client.post(
+            f"/api/organizations/1/invitations/{pending_invitation_id}/regenerate-token",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        self.assertEqual(regenerated_response.status_code, 200)
+        regenerated_token = regenerated_response.json()["invitation_token"]
+        self.assertNotEqual(regenerated_token, original_pending_token)
+        old_token_accept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": original_pending_token,
+                "full_name": "Pending User",
+                "password": "PendingPass123",
+            },
+        )
+        self.assertEqual(old_token_accept_response.status_code, 404)
 
         revoke_invitation_response = self.client.delete(
             f"/api/organizations/1/invitations/{pending_invitation_id}",
@@ -589,6 +607,11 @@ class ApiRegressionTests(unittest.TestCase):
             if invitation["id"] == pending_invitation_id
         )
         self.assertEqual(revoked_invitation["status"], "revoked")
+        regenerate_revoked_response = self.client.post(
+            f"/api/organizations/1/invitations/{pending_invitation_id}/regenerate-token",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        self.assertEqual(regenerate_revoked_response.status_code, 409)
 
     def test_login_page_returns_auth_shell(self):
         response = self.client.get("/login")

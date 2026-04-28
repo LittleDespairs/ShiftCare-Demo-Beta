@@ -2549,6 +2549,77 @@ def revoke_organization_invitation(
         connection.close()
 
 
+@app.post("/api/organizations/{organization_id}/invitations/{invitation_id}/regenerate-token", tags=["Auth"])
+def regenerate_organization_invitation_token(
+    organization_id: int,
+    invitation_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT id, email, employee_id, role, status
+            FROM organization_invitations
+            WHERE id = ? AND organization_id = ?
+            """,
+            (invitation_id, organization_id),
+        )
+        invitation = cursor.fetchone()
+        if not invitation:
+            raise HTTPException(status_code=404, detail="Invitation not found")
+        if invitation["status"] != "pending":
+            raise HTTPException(status_code=409, detail="Only pending invitations can receive a new link")
+
+        now = current_utc_timestamp()
+        expires_at = (datetime.now(UTC) + timedelta(days=7)).replace(tzinfo=None).isoformat(timespec="seconds")
+        invitation_token = secrets.token_urlsafe(32)
+        cursor.execute(
+            """
+            UPDATE organization_invitations
+            SET token_hash = ?, expires_at = ?
+            WHERE id = ? AND organization_id = ? AND status = 'pending'
+            """,
+            (hash_session_token(invitation_token), expires_at, invitation_id, organization_id),
+        )
+        write_auth_audit_event(
+            cursor,
+            "invitation_token_regenerated",
+            user_id=current_user["id"],
+            organization_id=organization_id,
+            metadata={
+                "invitation_id": invitation_id,
+                "email": invitation["email"],
+                "employee_id": invitation["employee_id"],
+                "role": invitation["role"],
+                "expires_at": expires_at,
+            },
+        )
+        connection.commit()
+        return {
+            "invitation": {
+                "id": invitation_id,
+                "organization_id": organization_id,
+                "email": invitation["email"],
+                "employee_id": invitation["employee_id"],
+                "role": invitation["role"],
+                "status": "pending",
+                "expires_at": expires_at,
+            },
+            "invitation_token": invitation_token,
+        }
+    except sqlite3.IntegrityError as exc:
+        connection.rollback()
+        raise HTTPException(status_code=409, detail="Invitation token collision") from exc
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 @app.get("/api/database/backups", tags=["Settings"])
 def get_database_backups(admin_context: dict | None = Depends(require_database_admin_if_auth_initialized)):
     return {"backups": database_module.list_database_backups()}

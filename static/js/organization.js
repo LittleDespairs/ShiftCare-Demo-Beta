@@ -162,6 +162,15 @@
                         >
                             ${text(uiText("org_revoke_invitation", "Revoke"))}
                         </button>
+                        <button
+                            class="organization-table-button"
+                            data-organization-action="regenerate-invitation"
+                            data-invitation-id="${Number(invitation.id)}"
+                            ${invitation.status !== "pending" ? "disabled" : ""}
+                            type="button"
+                        >
+                            ${text(uiText("org_regenerate_invitation", "New link"))}
+                        </button>
                     </div>
                 </td>
             </tr>
@@ -199,6 +208,25 @@
             await loadOrganizationData();
             renderEmployeeSelector();
             setMessage(uiText("org_msg_invitation_revoked", "Invitation revoked."), "success");
+        } catch (error) {
+            setMessage(error.message, "error");
+        }
+    }
+
+    async function regenerateInvitation(invitationId) {
+        setInviteResult("");
+        setMessage("", "");
+        try {
+            const response = await window.scheduleAuth.request(
+                `/api/organizations/${state.organizationId}/invitations/${invitationId}/regenerate-token`,
+                { method: "POST" },
+            );
+            const token = response.invitation_token;
+            const acceptUrl = `${window.location.origin}/accept-invitation?token=${encodeURIComponent(token)}`;
+            setInviteResult(acceptUrl);
+            await loadOrganizationData();
+            renderEmployeeSelector();
+            setMessage(uiText("org_msg_invitation_link_generated", "Invitation link generated."), "success");
         } catch (error) {
             setMessage(error.message, "error");
         }
@@ -376,9 +404,14 @@
             removeMember(Number(button.dataset.userId));
         });
         elements.invitationsBody.addEventListener("click", (event) => {
-            const button = event.target.closest('[data-organization-action="revoke-invitation"]');
+            const revokeButton = event.target.closest('[data-organization-action="revoke-invitation"]');
+            if (revokeButton && !revokeButton.disabled) {
+                revokeInvitation(Number(revokeButton.dataset.invitationId));
+                return;
+            }
+            const button = event.target.closest('[data-organization-action="regenerate-invitation"]');
             if (!button || button.disabled) return;
-            revokeInvitation(Number(button.dataset.invitationId));
+            regenerateInvitation(Number(button.dataset.invitationId));
         });
         elements.logout.addEventListener("click", async () => {
             try {
