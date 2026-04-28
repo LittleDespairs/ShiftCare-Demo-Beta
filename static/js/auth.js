@@ -1,6 +1,6 @@
 (function () {
-    const TOKEN_KEY = "schedule_app_auth_token";
-    const USER_KEY = "schedule_app_auth_user";
+    const TOKEN_KEY = window.scheduleAuth?.TOKEN_KEY || "schedule_app_auth_token";
+    const USER_KEY = window.scheduleAuth?.USER_KEY || "schedule_app_auth_user";
 
     const loginForm = document.getElementById("login-form");
     const bootstrapForm = document.getElementById("bootstrap-form");
@@ -34,14 +34,22 @@
     }
 
     function storeSession(payload) {
-        localStorage.setItem(TOKEN_KEY, payload.access_token);
-        localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
+        if (window.scheduleAuth) {
+            window.scheduleAuth.setSession(payload);
+        } else {
+            localStorage.setItem(TOKEN_KEY, payload.access_token);
+            localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
+        }
         renderSession();
     }
 
     function clearSession() {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
+        if (window.scheduleAuth) {
+            window.scheduleAuth.clearSession();
+        } else {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
+        }
         renderSession();
     }
 
@@ -100,6 +108,7 @@
             });
             storeSession(payload);
             setMessage("Login successful.", "success");
+            window.location.href = "/organization";
         } catch (error) {
             setMessage(error.message, "error");
         }
@@ -118,6 +127,7 @@
             storeSession(payload);
             setActiveTab("login");
             setMessage("Owner account created.", "success");
+            window.location.href = "/organization";
         } catch (error) {
             setMessage(error.message, "error");
         }

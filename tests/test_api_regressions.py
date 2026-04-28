@@ -266,6 +266,17 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("Create first owner", response.text)
         self.assertIn("/static/js/auth.js", response.text)
 
+    def test_organization_pages_return_auth_shells(self):
+        organization_response = self.client.get("/organization")
+        self.assertEqual(organization_response.status_code, 200)
+        self.assertIn("/static/js/organization.js", organization_response.text)
+        self.assertIn("Invite employee", organization_response.text)
+
+        invitation_response = self.client.get("/accept-invitation")
+        self.assertEqual(invitation_response.status_code, 200)
+        self.assertIn("/static/js/accept_invitation.js", invitation_response.text)
+        self.assertIn("Accept invitation", invitation_response.text)
+
     def _save_shift_requirement(self, **overrides):
         payload = {
             "position_id": overrides.pop("position_id"),

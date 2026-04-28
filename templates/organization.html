@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <title>Organization - Schedule App</title>
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}">
+</head>
+
+<body class="app-shell ltr">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">SA</div>
+                <div class="brand-text">
+                    <h1 class="brand-title">Schedule App</h1>
+                    <p class="brand-subtitle">Organization</p>
+                </div>
+            </div>
+            <nav class="nav-list">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">⌂</span>
+                    <span class="nav-label">Home</span>
+                </a>
+                <a href="/schedule" class="nav-item">
+                    <span class="nav-icon">🗓</span>
+                    <span class="nav-label">Schedule</span>
+                </a>
+                <a href="/organization" class="nav-item active">
+                    <span class="nav-icon">◎</span>
+                    <span class="nav-label">Organization</span>
+                </a>
+                <a href="/settings" class="nav-item">
+                    <span class="nav-icon">⚙</span>
+                    <span class="nav-label">Settings</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 id="organization-title" class="page-title">Organization</h2>
+                    <p class="page-subtitle">Members, roles, and employee invitation links.</p>
+                </div>
+                <div class="topbar-actions">
+                    <div id="organization-identity" class="organization-identity"></div>
+                    <button id="logout-btn" class="btn btn-secondary" type="button">Logout</button>
+                </div>
+            </header>
+
+            <section class="organization-grid">
+                <form id="invite-form" class="organization-panel">
+                    <div class="settings-section-header">
+                        <div>
+                            <h3 class="settings-section-title">Invite employee</h3>
+                            <p class="settings-section-text">Create a one-time invitation link.</p>
+                        </div>
+                    </div>
+
+                    <label class="form-field">
+                        <span>Email</span>
+                        <input id="invite-email" type="email" autocomplete="email" required>
+                    </label>
+
+                    <label class="form-field">
+                        <span>Role</span>
+                        <select id="invite-role" required>
+                            <option value="employee">Employee</option>
+                            <option value="scheduler">Scheduler</option>
+                            <option value="admin">Admin</option>
+                            <option value="manager">Manager</option>
+                            <option value="read_only">Read-only</option>
+                        </select>
+                    </label>
+
+                    <label class="form-field">
+                        <span>Expires in days</span>
+                        <input id="invite-days" type="number" min="1" max="30" value="7" required>
+                    </label>
+
+                    <button class="btn btn-primary" type="submit">Create invitation</button>
+
+                    <div id="invite-result-wrap" class="invite-result" hidden>
+                        <label class="form-field">
+                            <span>Invitation link</span>
+                            <textarea id="invite-result" rows="3" readonly></textarea>
+                        </label>
+                        <button id="copy-invite-btn" class="btn btn-secondary" type="button">Copy link</button>
+                    </div>
+                </form>
+
+                <section class="organization-panel">
+                    <div class="settings-section-header">
+                        <div>
+                            <h3 class="settings-section-title">Members</h3>
+                            <p class="settings-section-text">Active users and organization roles.</p>
+                        </div>
+                    </div>
+                    <div class="organization-table-wrap">
+                        <table class="organization-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Email verified</th>
+                                </tr>
+                            </thead>
+                            <tbody id="members-table-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="organization-panel organization-panel-wide">
+                    <div class="settings-section-header">
+                        <div>
+                            <h3 class="settings-section-title">Invitations</h3>
+                            <p class="settings-section-text">Pending, accepted, expired, and revoked links.</p>
+                        </div>
+                    </div>
+                    <div class="organization-table-wrap">
+                        <table class="organization-table">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Expires</th>
+                                    <th>Accepted</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invitations-table-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+
+            <div id="organization-message" class="organization-message" role="status" aria-live="polite"></div>
+        </main>
+    </div>
+
+    <script src="/static/js/i18n.js?v={{ app_version }}"></script>
+    <script src="/static/js/auth_client.js?v={{ app_version }}"></script>
+    <script src="/static/js/organization.js?v={{ app_version }}"></script>
+</body>
+
+</html>

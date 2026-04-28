@@ -79,8 +79,8 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
 - [x] Add login screen before opening organization data.
 - [ ] Add organization selection if the user belongs to multiple organizations.
 - [ ] Add account/profile screen.
-- [ ] Add organization members management screen.
-- [ ] Add invitation management UI for admins.
+- [x] Add organization members management screen.
+- [x] Add invitation management UI for admins.
 - [ ] Add clear offline/online state indicator.
 - [ ] Keep existing scheduling pages functional after login.
 - [ ] Hide or disable actions that the current role cannot perform.
@@ -244,8 +244,8 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
 - [x] Добавить экран входа перед открытием данных организации.
 - [ ] Добавить выбор организации, если пользователь состоит в нескольких организациях.
 - [ ] Добавить экран аккаунта/профиля.
-- [ ] Добавить экран управления участниками организации.
-- [ ] Добавить интерфейс управления invitation-ссылками для администраторов.
+- [x] Добавить экран управления участниками организации.
+- [x] Добавить интерфейс управления invitation-ссылками для администраторов.
 - [ ] Добавить понятный индикатор offline/online состояния.
 - [ ] Сохранить работоспособность текущих страниц расписания после входа.
 - [ ] Скрывать или отключать действия, которые недоступны текущей роли.

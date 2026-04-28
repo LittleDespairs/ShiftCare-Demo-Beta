@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <title>Accept Invitation - Schedule App</title>
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}">
+</head>
+
+<body class="app-shell ltr auth-page" data-app-version="{{ app_version }}">
+    <main class="auth-layout">
+        <section class="auth-panel" aria-labelledby="accept-title">
+            <div class="auth-brand">
+                <div class="brand-logo">SA</div>
+                <div>
+                    <h1 id="accept-title">Accept invitation</h1>
+                    <p>Create your account</p>
+                </div>
+            </div>
+
+            <form id="accept-form" class="auth-form">
+                <label class="form-field">
+                    <span>Invitation token</span>
+                    <textarea id="accept-token" rows="3" required></textarea>
+                </label>
+
+                <label class="form-field">
+                    <span>Your name</span>
+                    <input id="accept-name" type="text" autocomplete="name" required minlength="2">
+                </label>
+
+                <label class="form-field">
+                    <span>Password</span>
+                    <input id="accept-password" type="password" autocomplete="new-password" required minlength="8">
+                </label>
+
+                <button class="btn btn-primary auth-submit" type="submit">Accept invitation</button>
+            </form>
+
+            <div id="accept-message" class="auth-message" role="status" aria-live="polite"></div>
+        </section>
+
+        <aside class="auth-side">
+            <div class="auth-side-content">
+                <p class="auth-kicker">Employee access</p>
+                <h2>Join your organization</h2>
+                <p>
+                    Use the invitation link from your administrator to create your own account.
+                </p>
+            </div>
+        </aside>
+    </main>
+
+    <script src="/static/js/auth_client.js?v={{ app_version }}"></script>
+    <script src="/static/js/accept_invitation.js?v={{ app_version }}"></script>
+</body>
+
+</html>

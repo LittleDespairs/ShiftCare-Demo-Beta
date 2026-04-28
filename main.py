@@ -1976,6 +1976,16 @@ def login_page(request: Request):
     return templates.TemplateResponse(request=request, name="login.html", context={})
 
 
+@app.get("/organization", tags=["Pages"])
+def organization_page(request: Request):
+    return templates.TemplateResponse(request=request, name="organization.html", context={})
+
+
+@app.get("/accept-invitation", tags=["Pages"])
+def accept_invitation_page(request: Request):
+    return templates.TemplateResponse(request=request, name="accept_invitation.html", context={})
+
+
 @app.get("/employees", tags=["Pages"])
 def employees_page(request: Request):
     return templates.TemplateResponse(request=request, name="employees.html", context={})
