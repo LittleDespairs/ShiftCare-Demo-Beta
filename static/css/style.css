@@ -56,6 +56,26 @@ body.ltr {
     direction: ltr;
 }
 
+.online-status-indicator {
+    position: fixed;
+    inset-inline-end: 14px;
+    inset-block-end: 14px;
+    z-index: 1200;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--success-soft);
+    color: var(--success);
+    padding: 7px 10px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    box-shadow: var(--shadow-sm);
+}
+
+.online-status-indicator.offline {
+    background: var(--warning-soft);
+    color: var(--warning);
+}
+
 html.embedded-admin-root,
 body.embedded-admin {
     background: transparent;

@@ -2,8 +2,10 @@ import shutil
 import sqlite3
 import sys
 import os
+import json
 from datetime import datetime
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 # Base directory / Базовая папка проекта
 BASE_DIR = Path(__file__).resolve().parent
@@ -206,8 +208,44 @@ def create_database_backup(label: str = "manual") -> Path:
     return backup_path
 
 
+def create_schedule_backup(
+    label: str = "manual",
+    app_version: str = "",
+    schema_version: int = CURRENT_SCHEMA_VERSION,
+    organization_id: int = 1,
+    created_by: int | None = None,
+) -> Path:
+    source = DATABASE_PATH
+    if not source.exists():
+        raise FileNotFoundError(f"Database file does not exist: {source}")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_name = f"{source.stem}_{timestamp}_{_sanitize_backup_label(label)}.schedulebackup"
+    backup_path = get_backup_dir() / backup_name
+    metadata = {
+        "format": "schedulebackup",
+        "format_version": 1,
+        "app_version": app_version,
+        "schema_version": schema_version,
+        "organization_id": organization_id,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "created_by": created_by,
+        "contains_password_hashes": True,
+        "contains_access_tokens": False,
+        "contains_server_secrets": False,
+    }
+    with ZipFile(backup_path, "w", compression=ZIP_DEFLATED) as archive:
+        archive.write(source, "schedule_app.db")
+        archive.writestr("metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+    return backup_path
+
+
 def list_database_backups(limit: int = 20) -> list[dict]:
-    backups = sorted(get_backup_dir().glob("*.db"), key=lambda path: path.stat().st_mtime, reverse=True)
+    backups = sorted(
+        [*get_backup_dir().glob("*.db"), *get_backup_dir().glob("*.schedulebackup")],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     results = []
     for backup_path in backups[:limit]:
         stat = backup_path.stat()
@@ -216,9 +254,27 @@ def list_database_backups(limit: int = 20) -> list[dict]:
                 "name": backup_path.name,
                 "size_bytes": stat.st_size,
                 "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                "format": "schedulebackup" if backup_path.suffix == ".schedulebackup" else "sqlite",
             }
         )
     return results
+
+
+def _extract_schedule_backup(backup_path: Path) -> Path:
+    temp_path = backup_path.with_suffix(".restore.db")
+    with ZipFile(backup_path, "r") as archive:
+        names = set(archive.namelist())
+        if "schedule_app.db" not in names or "metadata.json" not in names:
+            raise ValueError("Schedule backup is missing required files")
+        with archive.open("schedule_app.db") as source_handle, temp_path.open("wb") as target_handle:
+            shutil.copyfileobj(source_handle, target_handle)
+    try:
+        validate_sqlite_file(temp_path)
+        return temp_path
+    except Exception:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
 
 
 def restore_database_backup(backup_name: str) -> dict:
@@ -229,13 +285,23 @@ def restore_database_backup(backup_name: str) -> dict:
     if not backup_path.exists():
         raise FileNotFoundError(f"Backup file does not exist: {backup_name}")
 
-    validate_sqlite_file(backup_path)
+    restore_source = backup_path
+    extracted_path = None
+    if backup_path.suffix == ".schedulebackup":
+        extracted_path = _extract_schedule_backup(backup_path)
+        restore_source = extracted_path
+    else:
+        validate_sqlite_file(backup_path)
     pre_restore_backup = create_database_backup("pre_restore")
-    shutil.copy2(backup_path, DATABASE_PATH)
-    return {
-        "restored_backup": backup_path.name,
-        "pre_restore_backup": pre_restore_backup.name,
-    }
+    try:
+        shutil.copy2(restore_source, DATABASE_PATH)
+        return {
+            "restored_backup": backup_path.name,
+            "pre_restore_backup": pre_restore_backup.name,
+        }
+    finally:
+        if extracted_path and extracted_path.exists():
+            extracted_path.unlink()
 
 
 def get_connection():
@@ -354,6 +420,30 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS auth_password_reset_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS auth_email_verification_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)")
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_memberships_user
@@ -370,6 +460,14 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active
         ON auth_sessions (user_id, expires_at, revoked_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_auth_password_reset_tokens_user
+        ON auth_password_reset_tokens (user_id, expires_at, used_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_auth_email_verification_tokens_user
+        ON auth_email_verification_tokens (user_id, expires_at, used_at)
     """)
 
     # =========================

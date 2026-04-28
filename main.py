@@ -128,6 +128,19 @@ class AuthPasswordChangeRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class AuthPasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class AuthPasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class AuthEmailVerificationRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+
+
 class AuthInvitationAcceptRequest(BaseModel):
     token: str = Field(min_length=32, max_length=512)
     full_name: str = Field(min_length=2, max_length=100)
@@ -756,6 +769,10 @@ def clear_login_failures(email: str, request: Request) -> None:
         AUTH_LOGIN_ATTEMPTS.pop(key, None)
 
 
+def token_expiration(days: int = 1) -> str:
+    return (datetime.now(UTC) + timedelta(days=days)).replace(tzinfo=None).isoformat(timespec="seconds")
+
+
 def build_auth_response(connection, user_id: int) -> dict:
     token = secrets.token_urlsafe(32)
     expires_at = (
@@ -895,6 +912,36 @@ def require_database_admin_if_auth_initialized(authorization: str | None = Heade
     if not membership:
         raise HTTPException(status_code=403, detail="Owner or admin permissions are required")
     return {"user": current_user, "membership": membership}
+
+
+def require_preference_access_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        has_active_users = active_user_count(cursor) > 0
+    finally:
+        connection.close()
+
+    if not has_active_users:
+        return None
+
+    current_user = get_current_user(authorization)
+    admin_membership = find_any_membership_with_role(current_user, {"owner", "admin", "scheduler", "manager"})
+    if admin_membership:
+        return {"user": current_user, "membership": admin_membership, "scope": "all"}
+
+    employee_membership = find_any_membership_with_role(current_user, {"employee"})
+    if employee_membership and employee_membership.get("employee_id"):
+        return {"user": current_user, "membership": employee_membership, "scope": "own"}
+
+    raise HTTPException(status_code=403, detail="Preference permissions are required")
+
+
+def require_employee_preference_scope(preference_context: dict | None, employee_id: int) -> None:
+    if not preference_context or preference_context["scope"] == "all":
+        return
+    if preference_context["membership"].get("employee_id") != employee_id:
+        raise HTTPException(status_code=403, detail="Employees can manage only their own preferences")
 
 
 def get_optional_current_user(authorization: str | None = Header(default=None)) -> dict | None:
@@ -1941,6 +1988,141 @@ def change_authenticated_password(
         connection.close()
 
 
+@app.post("/api/auth/request-password-reset", tags=["Auth"])
+def request_password_reset(request_data: AuthPasswordResetRequest, request: Request):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        email = str(request_data.email).strip().lower()
+        cursor.execute("SELECT id, status FROM users WHERE lower(email) = ?", (email,))
+        user_row = cursor.fetchone()
+        reset_token = None
+        if user_row and user_row["status"] == "active":
+            reset_token = secrets.token_urlsafe(32)
+            cursor.execute(
+                """
+                INSERT INTO auth_password_reset_tokens (user_id, token_hash, expires_at)
+                VALUES (?, ?, ?)
+                """,
+                (user_row["id"], hash_session_token(reset_token), token_expiration(days=1)),
+            )
+            write_auth_audit_event(
+                cursor,
+                "password_reset_requested",
+                user_id=user_row["id"],
+                metadata={"email": email, "ip": get_request_ip(request)},
+            )
+        connection.commit()
+        return {
+            "message": "If the account exists, password reset instructions were created.",
+            "reset_token": reset_token,
+        }
+    finally:
+        connection.close()
+
+
+@app.post("/api/auth/reset-password", tags=["Auth"])
+def reset_password(request_data: AuthPasswordResetConfirmRequest):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            SELECT id, user_id
+            FROM auth_password_reset_tokens
+            WHERE token_hash = ?
+              AND used_at IS NULL
+              AND expires_at > ?
+            """,
+            (hash_session_token(request_data.token), now),
+        )
+        token_row = cursor.fetchone()
+        if not token_row:
+            raise HTTPException(status_code=404, detail="Password reset token not found or expired")
+
+        cursor.execute(
+            "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+            (hash_password(request_data.new_password), now, token_row["user_id"]),
+        )
+        cursor.execute(
+            "UPDATE auth_password_reset_tokens SET used_at = ? WHERE id = ?",
+            (now, token_row["id"]),
+        )
+        cursor.execute(
+            "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+            (now, token_row["user_id"]),
+        )
+        write_auth_audit_event(cursor, "password_reset_completed", user_id=token_row["user_id"])
+        connection.commit()
+        return {"message": "Password reset successfully"}
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.post("/api/auth/request-email-verification", tags=["Auth"])
+def request_email_verification(current_user: dict = Depends(get_current_user)):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        verification_token = secrets.token_urlsafe(32)
+        cursor.execute(
+            """
+            INSERT INTO auth_email_verification_tokens (user_id, token_hash, expires_at)
+            VALUES (?, ?, ?)
+            """,
+            (current_user["id"], hash_session_token(verification_token), token_expiration(days=7)),
+        )
+        write_auth_audit_event(cursor, "email_verification_requested", user_id=current_user["id"])
+        connection.commit()
+        return {
+            "message": "Email verification token created.",
+            "verification_token": verification_token,
+        }
+    finally:
+        connection.close()
+
+
+@app.post("/api/auth/verify-email", tags=["Auth"])
+def verify_email(request_data: AuthEmailVerificationRequest):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            SELECT id, user_id
+            FROM auth_email_verification_tokens
+            WHERE token_hash = ?
+              AND used_at IS NULL
+              AND expires_at > ?
+            """,
+            (hash_session_token(request_data.token), now),
+        )
+        token_row = cursor.fetchone()
+        if not token_row:
+            raise HTTPException(status_code=404, detail="Email verification token not found or expired")
+        cursor.execute(
+            "UPDATE users SET email_verified = 1, updated_at = ? WHERE id = ?",
+            (now, token_row["user_id"]),
+        )
+        cursor.execute(
+            "UPDATE auth_email_verification_tokens SET used_at = ? WHERE id = ?",
+            (now, token_row["id"]),
+        )
+        write_auth_audit_event(cursor, "email_verified", user_id=token_row["user_id"])
+        connection.commit()
+        return {"message": "Email verified successfully"}
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 @app.post("/api/auth/accept-invitation", tags=["Auth"])
 def accept_invitation(request_data: AuthInvitationAcceptRequest):
     connection = get_connection()
@@ -2183,8 +2365,14 @@ def create_database_backup_endpoint(
     request_data: DatabaseBackupCreateRequest,
     admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
 ):
-    backup_path = database_module.create_database_backup(request_data.label)
     user_id, organization_id = audit_context_from_admin(admin_context)
+    backup_path = database_module.create_schedule_backup(
+        request_data.label,
+        app_version=APP_VERSION,
+        schema_version=database_module.CURRENT_SCHEMA_VERSION,
+        organization_id=organization_id or 1,
+        created_by=user_id,
+    )
     write_auth_audit_event_record(
         "database_backup_created",
         user_id=user_id,
@@ -3028,17 +3216,24 @@ def delete_coverage_requirement(requirement_id: int):
 
 
 @app.get("/api/employee-preferences", tags=["Preferences"])
-def get_employee_preferences():
+def get_employee_preferences(preference_context: dict | None = Depends(require_preference_access_if_auth_initialized)):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        params = ()
+        scope_filter = ""
+        if preference_context and preference_context["scope"] == "own":
+            scope_filter = "WHERE ep.employee_id = ?"
+            params = (preference_context["membership"]["employee_id"],)
         cursor.execute(
-            """
+            f"""
             SELECT ep.*, e.full_name AS employee_name
             FROM employee_preferences ep
             JOIN employees e ON e.id = ep.employee_id
+            {scope_filter}
             ORDER BY ep.employee_id
-            """
+            """,
+            params,
         )
         items = [dict(row) for row in cursor.fetchall()]
         for item in items:
@@ -3050,7 +3245,11 @@ def get_employee_preferences():
 
 
 @app.post("/api/employee-preferences", tags=["Preferences"])
-def save_employee_preference(preference: EmployeePreferenceCreate):
+def save_employee_preference(
+    preference: EmployeePreferenceCreate,
+    preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
+):
+    require_employee_preference_scope(preference_context, preference.employee_id)
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3074,6 +3273,15 @@ def save_employee_preference(preference: EmployeePreferenceCreate):
                 int(preference.allow_morning_evening_combo),
             ),
         )
+        user_id = preference_context["user"]["id"] if preference_context else None
+        organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
+        write_auth_audit_event(
+            cursor,
+            "employee_preference_saved",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={"employee_id": preference.employee_id},
+        )
         connection.commit()
         return {"message": "Employee preference saved successfully", "preference": preference.model_dump()}
     finally:
@@ -3081,19 +3289,28 @@ def save_employee_preference(preference: EmployeePreferenceCreate):
 
 
 @app.get("/api/employee-week-preferences", tags=["Weekly Preferences"])
-def get_employee_week_preferences(week_start_date: str):
+def get_employee_week_preferences(
+    week_start_date: str,
+    preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        params: tuple = (week_start_date,)
+        scope_filter = ""
+        if preference_context and preference_context["scope"] == "own":
+            scope_filter = "AND ewp.employee_id = ?"
+            params = (week_start_date, preference_context["membership"]["employee_id"])
         cursor.execute(
-            """
+            f"""
             SELECT ewp.*, e.full_name AS employee_name
             FROM employee_week_preferences ewp
             JOIN employees e ON e.id = ewp.employee_id
             WHERE ewp.week_start_date = ?
+            {scope_filter}
             ORDER BY ewp.employee_id, ewp.preference_date
             """,
-            (week_start_date,),
+            params,
         )
         return [dict(row) for row in cursor.fetchall()]
     finally:
@@ -3101,7 +3318,11 @@ def get_employee_week_preferences(week_start_date: str):
 
 
 @app.post("/api/employee-week-preferences", tags=["Weekly Preferences"])
-def save_employee_week_preference(preference: EmployeeWeekPreferenceCreate):
+def save_employee_week_preference(
+    preference: EmployeeWeekPreferenceCreate,
+    preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
+):
+    require_employee_preference_scope(preference_context, preference.employee_id)
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3122,6 +3343,20 @@ def save_employee_week_preference(preference: EmployeeWeekPreferenceCreate):
                 preference.preference_type,
             ),
         )
+        user_id = preference_context["user"]["id"] if preference_context else None
+        organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
+        write_auth_audit_event(
+            cursor,
+            "employee_week_preference_saved",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={
+                "employee_id": preference.employee_id,
+                "week_start_date": preference.week_start_date,
+                "preference_date": preference.preference_date,
+                "preference_type": preference.preference_type,
+            },
+        )
         connection.commit()
         return {"message": "Weekly preference saved successfully", "preference": preference.model_dump()}
     finally:
@@ -3129,7 +3364,12 @@ def save_employee_week_preference(preference: EmployeeWeekPreferenceCreate):
 
 
 @app.delete("/api/employee-week-preferences", tags=["Weekly Preferences"])
-def delete_employee_week_preference(employee_id: int, preference_date: str):
+def delete_employee_week_preference(
+    employee_id: int,
+    preference_date: str,
+    preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
+):
+    require_employee_preference_scope(preference_context, employee_id)
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3139,6 +3379,15 @@ def delete_employee_week_preference(employee_id: int, preference_date: str):
             WHERE employee_id = ? AND preference_date = ?
             """,
             (employee_id, preference_date),
+        )
+        user_id = preference_context["user"]["id"] if preference_context else None
+        organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
+        write_auth_audit_event(
+            cursor,
+            "employee_week_preference_deleted",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={"employee_id": employee_id, "preference_date": preference_date},
         )
         connection.commit()
         return {"message": "Weekly preference deleted successfully", "deleted_count": cursor.rowcount}

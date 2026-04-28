@@ -30,6 +30,8 @@ class ApiRegressionTests(unittest.TestCase):
     def _reset_database(self):
         cursor = self.connection.cursor()
         for table in (
+            "auth_email_verification_tokens",
+            "auth_password_reset_tokens",
             "auth_sessions",
             "auth_audit_events",
             "organization_invitations",
@@ -120,6 +122,8 @@ class ApiRegressionTests(unittest.TestCase):
             "organization_invitations",
             "auth_audit_events",
             "auth_sessions",
+            "auth_password_reset_tokens",
+            "auth_email_verification_tokens",
             "schema_metadata",
             "schema_migrations",
         ):
@@ -369,6 +373,81 @@ class ApiRegressionTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {second_token}"},
         )
         self.assertEqual(revoked_session_response.status_code, 401)
+
+    def test_password_reset_and_email_verification_flows(self):
+        bootstrap_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(bootstrap_response.status_code, 200)
+        token = bootstrap_response.json()["access_token"]
+
+        reset_request = self.client.post(
+            "/api/auth/request-password-reset",
+            json={"email": "owner@example.com"},
+        )
+        self.assertEqual(reset_request.status_code, 200)
+        reset_token = reset_request.json()["reset_token"]
+        self.assertTrue(reset_token)
+
+        reset_response = self.client.post(
+            "/api/auth/reset-password",
+            json={"token": reset_token, "new_password": "NewPassword123"},
+        )
+        self.assertEqual(reset_response.status_code, 200)
+
+        old_login = self.client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "CorrectHorse123"},
+        )
+        self.assertEqual(old_login.status_code, 401)
+        new_login = self.client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "NewPassword123"},
+        )
+        self.assertEqual(new_login.status_code, 200)
+
+        verification_request = self.client.post(
+            "/api/auth/request-email-verification",
+            headers={"Authorization": f"Bearer {new_login.json()['access_token']}"},
+        )
+        self.assertEqual(verification_request.status_code, 200)
+        verification_token = verification_request.json()["verification_token"]
+
+        verify_response = self.client.post(
+            "/api/auth/verify-email",
+            json={"token": verification_token},
+        )
+        self.assertEqual(verify_response.status_code, 200)
+
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT event_type
+            FROM auth_audit_events
+            WHERE event_type IN (
+                'password_reset_requested',
+                'password_reset_completed',
+                'email_verification_requested',
+                'email_verified'
+            )
+            ORDER BY id
+            """
+        )
+        self.assertEqual(
+            [row["event_type"] for row in cursor.fetchall()],
+            [
+                "password_reset_requested",
+                "password_reset_completed",
+                "email_verification_requested",
+                "email_verified",
+            ],
+        )
 
     def test_invitation_flow_creates_employee_membership_and_enforces_roles(self):
         owner_response = self.client.post(
@@ -636,6 +715,77 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(delete_response.json()["deleted_count"], 1)
+
+    def test_weekly_preference_permissions_after_auth_bootstrap(self):
+        employee_a = self._create_employee(full_name="Employee A")
+        employee_b = self._create_employee(full_name="Employee B")
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_token = owner_response.json()["access_token"]
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "employee@example.com", "role": "employee", "expires_in_days": 7},
+        )
+        employee_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "full_name": "Employee User",
+                "password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(employee_response.status_code, 200)
+        employee_user_id = employee_response.json()["user"]["id"]
+        employee_headers = {"Authorization": f"Bearer {employee_response.json()['access_token']}"}
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "UPDATE organization_memberships SET employee_id = ? WHERE user_id = ?",
+            (employee_a, employee_user_id),
+        )
+        self.connection.commit()
+
+        own_response = self.client.post(
+            "/api/employee-week-preferences",
+            headers=employee_headers,
+            json={
+                "employee_id": employee_a,
+                "week_start_date": "2026-04-20",
+                "preference_date": "2026-04-21",
+                "preference_type": "off_day",
+            },
+        )
+        self.assertEqual(own_response.status_code, 200)
+
+        other_response = self.client.post(
+            "/api/employee-week-preferences",
+            headers=employee_headers,
+            json={
+                "employee_id": employee_b,
+                "week_start_date": "2026-04-20",
+                "preference_date": "2026-04-22",
+                "preference_type": "off_day",
+            },
+        )
+        self.assertEqual(other_response.status_code, 403)
+
+        list_response = self.client.get(
+            "/api/employee-week-preferences",
+            headers=employee_headers,
+            params={"week_start_date": "2026-04-20"},
+        )
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual([item["employee_id"] for item in list_response.json()], [employee_a])
 
     def test_schedule_entry_status_and_clear_week_flow(self):
         employee_id = self._create_employee()
@@ -1868,6 +2018,16 @@ class ApiRegressionTests(unittest.TestCase):
         create_backup = self.client.post("/api/database/backups", json={"label": "manual"})
         self.assertEqual(create_backup.status_code, 200)
         backup_name = create_backup.json()["backup_name"]
+        self.assertTrue(backup_name.endswith(".schedulebackup"))
+        backup_path = database.get_backup_dir() / backup_name
+        with ZipFile(backup_path) as archive:
+            metadata = main.json.loads(archive.read("metadata.json").decode("utf-8"))
+            self.assertEqual(metadata["app_version"], main.APP_VERSION)
+            self.assertEqual(metadata["schema_version"], database.CURRENT_SCHEMA_VERSION)
+            self.assertEqual(metadata["organization_id"], 1)
+            self.assertIn("created_at", metadata)
+            self.assertFalse(metadata["contains_access_tokens"])
+            self.assertFalse(metadata["contains_server_secrets"])
 
         backup_list = self.client.get("/api/database/backups")
         self.assertEqual(backup_list.status_code, 200)

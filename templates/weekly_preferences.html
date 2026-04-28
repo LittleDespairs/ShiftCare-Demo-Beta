@@ -427,6 +427,7 @@
 
     <!-- Shared i18n / Общий перевод -->
 <script src="/static/js/i18n.js?v={{ app_version }}"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}"></script>
 
     <script>
         /* =========================================================
@@ -686,14 +687,7 @@
             weekDates = buildWeek(weekStart);
 
             try {
-                const response = await fetch(`/api/employee-week-preferences?week_start_date=${encodeURIComponent(weekStart)}`);
-
-                if (!response.ok) {
-                    showMessage(t("msg_failed_load_preferences", "Failed to load preferences."), "danger");
-                    return;
-                }
-
-                const preferences = await response.json();
+                const preferences = await window.scheduleAuth.request(`/api/employee-week-preferences?week_start_date=${encodeURIComponent(weekStart)}`);
 
                 preferencesMap = {};
                 preferences
@@ -804,11 +798,8 @@
             try {
                 const responses = await Promise.all(
                     Array.from(selects).map(select => {
-                        return fetch("/api/employee-week-preferences", {
+                        return window.scheduleAuth.request("/api/employee-week-preferences", {
                             method: "POST",
-                            headers: {
-                                "Content-Type": "application/json"
-                            },
                             body: JSON.stringify({
                                 employee_id: employeeId,
                                 week_start_date: weekStart,
@@ -818,13 +809,6 @@
                         });
                     })
                 );
-
-                const failed = responses.filter(response => !response.ok);
-
-                if (failed.length > 0) {
-                    showMessage(t("msg_some_preferences_not_saved", "Some preferences were not saved."), "warning");
-                    return;
-                }
 
                 showMessage(t("msg_preferences_saved", "Preferences saved successfully."), "success");
                 await loadWeekPreferences();
@@ -836,16 +820,10 @@
 
         async function deletePreference(employeeId, preferenceDate) {
             try {
-                const response = await fetch(
+                await window.scheduleAuth.request(
                     `/api/employee-week-preferences?employee_id=${employeeId}&preference_date=${encodeURIComponent(preferenceDate)}`,
                     { method: "DELETE" }
                 );
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    showMessage(errorData.detail || t("msg_failed_delete_preference", "Failed to clear preference."), "danger");
-                    return;
-                }
 
                 delete preferencesMap[preferenceDate];
                 renderTable(employeeId);
@@ -867,6 +845,7 @@
                 </div>
             </footer>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
+<script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 
 </html>

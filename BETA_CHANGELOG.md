@@ -11,6 +11,14 @@ Start the `0.14.x_beta` line with the first organization-based authorization fou
 ### What Changed
 
 - Added the initial authorization schema: organizations, users, organization memberships, invitations, auth sessions, and auth audit events.
+- Added password reset and email verification beta token flows.
+- Added role-aware weekly preference access so employees can manage only their linked employee record after authorization is initialized.
+- Added `.schedulebackup` backup packages with metadata for app version, schema version, organization ID, created date, and creator ID.
+- Added local schema metadata and migration history for `0.13.x` to `0.14.x` upgrades.
+- Added stable public IDs for organization-owned data to prepare future cloud synchronization.
+- Added account/profile editing, password change, organization selection, and owner/admin backup/restore controls.
+- Added online/offline status indicator across app pages.
+- Added `AUTHORIZATION_0.14_DECISIONS.md` with product scope, onboarding flows, roles, cloud ownership, cache/backup policy, compliance drafts, and migration strategy.
 - Added organization scoping fields to the main scheduling tables as preparation for future cloud sync.
 - Added backend auth endpoints for first-owner bootstrap, login, logout, current user lookup, invitation creation, invitation acceptance, organization members, and organization invitations.
 - Added `/login`, `/organization`, and `/accept-invitation` screens for the desktop-hosted web UI.
