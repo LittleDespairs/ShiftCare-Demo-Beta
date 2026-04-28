@@ -51,6 +51,17 @@ def get_database_path() -> Path:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
+PUBLIC_ID_TABLE_PREFIXES = {
+    "employees": "emp",
+    "positions": "pos",
+    "shift_templates": "tpl",
+    "schedule_entries": "sch",
+    "shift_requirements": "shr",
+    "employee_preferences": "prf",
+    "employee_week_preferences": "wpr",
+    "employee_day_statuses": "dst",
+    "coverage_requirements": "cov",
+}
 
 
 def _table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
@@ -61,6 +72,37 @@ def _table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
 def _add_column_if_missing(cursor: sqlite3.Cursor, table_name: str, column_name: str, definition: str) -> None:
     if column_name not in _table_columns(cursor, table_name):
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def _ensure_public_ids(cursor: sqlite3.Cursor, table_name: str, prefix: str) -> None:
+    _add_column_if_missing(cursor, table_name, "public_id", "TEXT")
+    cursor.execute(
+        f"""
+        UPDATE {table_name}
+        SET public_id = ? || '_' || lower(hex(randomblob(16)))
+        WHERE public_id IS NULL OR public_id = ''
+        """,
+        (prefix,),
+    )
+    cursor.execute(
+        f"""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_{table_name}_public_id
+        ON {table_name} (public_id)
+        """
+    )
+    cursor.execute(
+        f"""
+        CREATE TRIGGER IF NOT EXISTS trg_{table_name}_public_id
+        AFTER INSERT ON {table_name}
+        FOR EACH ROW
+        WHEN NEW.public_id IS NULL OR NEW.public_id = ''
+        BEGIN
+            UPDATE {table_name}
+            SET public_id = '{prefix}_' || lower(hex(randomblob(16)))
+            WHERE id = NEW.id;
+        END
+        """
+    )
 
 
 def get_backup_dir() -> Path:
@@ -643,6 +685,7 @@ def init_db():
     )
     for table_name in organization_owned_tables:
         _add_column_if_missing(cursor, table_name, "organization_id", "INTEGER NOT NULL DEFAULT 1")
+        _ensure_public_ids(cursor, table_name, PUBLIC_ID_TABLE_PREFIXES[table_name])
         _add_column_if_missing(cursor, table_name, "created_at", "TEXT")
         _add_column_if_missing(cursor, table_name, "updated_at", "TEXT")
         _add_column_if_missing(cursor, table_name, "updated_by", "INTEGER")

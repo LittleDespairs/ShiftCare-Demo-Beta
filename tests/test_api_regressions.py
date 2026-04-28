@@ -147,7 +147,14 @@ class ApiRegressionTests(unittest.TestCase):
             cursor.execute(f"PRAGMA table_info({table_name})")
             columns = {row["name"] for row in cursor.fetchall()}
             self.assertIn("organization_id", columns, table_name)
+            self.assertIn("public_id", columns, table_name)
             self.assertIn("updated_by", columns, table_name)
+
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?",
+                (f"idx_{table_name}_public_id",),
+            )
+            self.assertIsNotNone(cursor.fetchone(), table_name)
 
         cursor.execute("PRAGMA table_info(app_settings)")
         app_settings_columns = {row["name"] for row in cursor.fetchall()}
@@ -188,6 +195,41 @@ class ApiRegressionTests(unittest.TestCase):
 
         revoked_response = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(revoked_response.status_code, 401)
+
+    def test_new_organization_owned_records_receive_public_ids(self):
+        employee_id = self._create_employee()
+        position_id = self._create_position()
+        template_id = self._create_shift_template(position_id=position_id)
+
+        self.client.post(
+            "/api/employee-positions",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        )
+        schedule_response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": template_id,
+            },
+        )
+        self.assertEqual(schedule_response.status_code, 200)
+
+        cursor = self.connection.cursor()
+        for table_name, prefix in database.PUBLIC_ID_TABLE_PREFIXES.items():
+            cursor.execute(f"SELECT public_id FROM {table_name} WHERE public_id IS NOT NULL LIMIT 1")
+            public_id_row = cursor.fetchone()
+            if table_name in {"shift_requirements", "employee_preferences", "employee_week_preferences", "employee_day_statuses", "coverage_requirements"}:
+                continue
+            self.assertIsNotNone(public_id_row, table_name)
+            self.assertRegex(public_id_row["public_id"], rf"^{prefix}_[0-9a-f]{{32}}$")
 
     def test_auth_login_rejects_invalid_password(self):
         self.client.post(

@@ -56,7 +56,7 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
   - [x] Weekly preferences.
   - [x] Generated schedule assignments.
   - [x] Settings.
-- [ ] Add stable IDs for records that will be synchronized later.
+- [x] Add stable IDs for records that will be synchronized later.
 - [x] Add `created_at`, `updated_at`, and `updated_by` where needed.
 - [ ] Add schema migration path from existing local databases.
 
@@ -221,7 +221,7 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
   - [x] Недельные пожелания.
   - [x] Сгенерированные назначения в расписании.
   - [x] Настройки.
-- [ ] Добавить стабильные ID для записей, которые позже будут синхронизироваться.
+- [x] Добавить стабильные ID для записей, которые позже будут синхронизироваться.
 - [x] Добавить `created_at`, `updated_at` и `updated_by` там, где это нужно.
 - [ ] Подготовить путь миграции из существующих локальных баз.
 
