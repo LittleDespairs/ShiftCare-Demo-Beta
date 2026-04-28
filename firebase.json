@@ -1,0 +1,19 @@
+{
+  "hosting": {
+    "public": "static/firebase-placeholder",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "schedule-app-beta-api",
+          "region": "me-west1"
+        }
+      }
+    ]
+  }
+}

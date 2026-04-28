@@ -4,6 +4,7 @@ substitutions:
   _REPOSITORY: schedule-app
   _IMAGE: schedule-app-api
   _TAG: manual
+  _PUBLIC_APP_BASE_URL: https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -32,7 +33,7 @@ steps:
       - managed
       - --allow-unauthenticated
       - --set-env-vars
-      - APP_ENV=staging,DATABASE_ENGINE=sqlite,SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db,PUBLIC_APP_BASE_URL=https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app,SCHEDULE_APP_DEFAULT_API_BASE_URL=https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app
+      - APP_ENV=staging,DATABASE_ENGINE=sqlite,SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db,PUBLIC_APP_BASE_URL=${_PUBLIC_APP_BASE_URL},SCHEDULE_APP_DEFAULT_API_BASE_URL=${_PUBLIC_APP_BASE_URL}
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_TAG}

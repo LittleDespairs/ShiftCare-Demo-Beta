@@ -146,6 +146,12 @@ Smoke deployment command from the repository root:
 gcloud builds submit --config cloudbuild.yaml --project schedule-app-beta --substitutions=_TAG=0.14.2-beta
 ```
 
+When the Firebase Hosting domain `app.shiftcare.co.il` is verified, deploy Cloud Run with the public app URL:
+
+```bash
+gcloud builds submit --config cloudbuild.yaml --project schedule-app-beta --substitutions=_TAG=0.14.5-beta,_PUBLIC_APP_BASE_URL=https://app.shiftcare.co.il
+```
+
 After deployment:
 
 ```bash
@@ -168,6 +174,47 @@ SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db
 ```
 
 This is intentionally non-production because Cloud Run container storage is ephemeral.
+
+## Firebase Hosting Custom Domain
+
+Cloud Run direct custom domain mapping is not available in `me-west1`. The beta uses Firebase Hosting as the public HTTPS entry point and rewrites all traffic to the Tel Aviv Cloud Run service.
+
+Firebase files:
+
+```text
+.firebaserc
+firebase.json
+static/firebase-placeholder/index.html
+```
+
+Firebase Hosting target:
+
+```text
+Project: schedule-app-beta
+Custom domain: app.shiftcare.co.il
+Rewrite target: Cloud Run service schedule-app-beta-api in me-west1
+```
+
+Registrar DNS record after Firebase asks for it:
+
+```text
+Type: CNAME
+Host/name: app
+Target/value: schedule-app-beta-1ab9d.web.app
+```
+
+After DNS verification, deploy Hosting from the repository root:
+
+```bash
+firebase deploy --only hosting --project schedule-app-beta
+```
+
+Then verify:
+
+```text
+https://app.shiftcare.co.il/login
+https://app.shiftcare.co.il/api/client-config
+```
 
 ## Cloud SQL PostgreSQL Preparation
 
