@@ -580,45 +580,54 @@ def init_db():
     # ==========================================
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS app_settings (
+            organization_id INTEGER NOT NULL DEFAULT 1,
             key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
+            value TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
         )
     """)
 
+    _add_column_if_missing(cursor, "app_settings", "organization_id", "INTEGER NOT NULL DEFAULT 1")
+
     cursor.execute("""
-        INSERT OR IGNORE INTO app_settings (key, value)
+        INSERT OR IGNORE INTO app_settings (organization_id, key, value)
         VALUES
-            ('min_rest_minutes_between_morning_and_evening', '0'),
-            ('min_rest_minutes_after_night_before_evening', '480'),
-            ('schedule_coverage_display_mode', 'interval'),
-            ('schedule_morning_color', '#ecfeff'),
-            ('schedule_evening_color', '#fff7ed'),
-            ('schedule_night_color', '#eef2ff'),
-            ('schedule_status_color', '#f5f3ff'),
-            ('max_work_days_per_week', '6'),
-            ('max_consecutive_nights', '2'),
-            ('emergency_max_consecutive_nights', '3'),
-            ('max_consecutive_split_days', '2'),
-            ('emergency_max_consecutive_split_days', '3'),
-            ('allow_multiple_positions_per_day', '0'),
-            ('after_night_evening_penalty', '1200'),
-            ('consecutive_night_penalty', '500'),
-            ('consecutive_split_penalty', '450'),
-            ('coverage_shortage_gain_weight', '100'),
-            ('coverage_overage_penalty_weight', '25'),
-            ('target_gender_bonus_weight', '250'),
-            ('wrong_gender_penalty_weight', '120'),
-            ('balance_missing_min_weight', '300'),
-            ('balance_target_distance_weight', '70'),
-            ('balance_over_target_weight', '80'),
-            ('balance_over_max_weight', '10000'),
-            ('balance_worked_day_weight', '15'),
-            ('balance_night_weight', '60'),
-            ('balance_split_weight', '55'),
-            ('balance_consecutive_night_weight', '120'),
-            ('balance_consecutive_split_weight', '100'),
-            ('balance_excess_night_weight', '2000'),
-            ('balance_excess_split_weight', '1800')
+            (1, 'min_rest_minutes_between_morning_and_evening', '0'),
+            (1, 'min_rest_minutes_after_night_before_evening', '480'),
+            (1, 'schedule_coverage_display_mode', 'interval'),
+            (1, 'schedule_morning_color', '#ecfeff'),
+            (1, 'schedule_evening_color', '#fff7ed'),
+            (1, 'schedule_night_color', '#eef2ff'),
+            (1, 'schedule_status_color', '#f5f3ff'),
+            (1, 'max_work_days_per_week', '6'),
+            (1, 'max_consecutive_nights', '2'),
+            (1, 'emergency_max_consecutive_nights', '3'),
+            (1, 'max_consecutive_split_days', '2'),
+            (1, 'emergency_max_consecutive_split_days', '3'),
+            (1, 'allow_multiple_positions_per_day', '0'),
+            (1, 'after_night_evening_penalty', '1200'),
+            (1, 'consecutive_night_penalty', '500'),
+            (1, 'consecutive_split_penalty', '450'),
+            (1, 'coverage_shortage_gain_weight', '100'),
+            (1, 'coverage_overage_penalty_weight', '25'),
+            (1, 'target_gender_bonus_weight', '250'),
+            (1, 'wrong_gender_penalty_weight', '120'),
+            (1, 'balance_missing_min_weight', '300'),
+            (1, 'balance_target_distance_weight', '70'),
+            (1, 'balance_over_target_weight', '80'),
+            (1, 'balance_over_max_weight', '10000'),
+            (1, 'balance_worked_day_weight', '15'),
+            (1, 'balance_night_weight', '60'),
+            (1, 'balance_split_weight', '55'),
+            (1, 'balance_consecutive_night_weight', '120'),
+            (1, 'balance_consecutive_split_weight', '100'),
+            (1, 'balance_excess_night_weight', '2000'),
+            (1, 'balance_excess_split_weight', '1800')
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_app_settings_organization
+        ON app_settings (organization_id, key)
     """)
 
     organization_owned_tables = (

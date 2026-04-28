@@ -149,6 +149,10 @@ class ApiRegressionTests(unittest.TestCase):
             self.assertIn("organization_id", columns, table_name)
             self.assertIn("updated_by", columns, table_name)
 
+        cursor.execute("PRAGMA table_info(app_settings)")
+        app_settings_columns = {row["name"] for row in cursor.fetchall()}
+        self.assertIn("organization_id", app_settings_columns)
+
     def test_auth_bootstrap_login_me_and_logout_flow(self):
         payload = {
             "organization_name": "Beta Clinic",
@@ -782,6 +786,18 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(direct_read["coverage_shortage_gain_weight"], 180)
         self.assertEqual(direct_read["balance_target_distance_weight"], 95)
         self.assertEqual(direct_read["after_night_evening_penalty"], 1600)
+
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT organization_id, value
+            FROM app_settings
+            WHERE key = 'schedule_coverage_display_mode'
+            """
+        )
+        coverage_display_row = cursor.fetchone()
+        self.assertEqual(coverage_display_row["organization_id"], 1)
+        self.assertEqual(coverage_display_row["value"], "category")
 
         color_position_id = self._create_position(name="Color Test", color="#fde68a")
         reset_response = self.client.post("/api/app-settings/reset-colors")

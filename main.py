@@ -447,9 +447,9 @@ def get_week_end_date(week_start_date: str) -> str:
     return build_week_dates(week_start_date)[-1]
 
 
-def get_app_settings(connection) -> dict:
+def get_app_settings(connection, organization_id: int = 1) -> dict:
     cursor = connection.cursor()
-    cursor.execute("SELECT key, value FROM app_settings")
+    cursor.execute("SELECT key, value FROM app_settings WHERE organization_id = ?", (organization_id,))
     raw_settings = {row["key"]: row["value"] for row in cursor.fetchall()}
 
     def read_int(key: str, default: int) -> int:
@@ -539,8 +539,13 @@ def apply_position_generation_limits(settings: dict, position: dict | sqlite3.Ro
     return effective_settings
 
 
-def get_position_app_settings(connection, position_id: int, base_settings: dict | None = None) -> dict:
-    settings = base_settings or get_app_settings(connection)
+def get_position_app_settings(
+    connection,
+    position_id: int,
+    base_settings: dict | None = None,
+    organization_id: int = 1,
+) -> dict:
+    settings = base_settings or get_app_settings(connection, organization_id=organization_id)
     cursor = connection.cursor()
     cursor.execute(
         """
@@ -554,31 +559,33 @@ def get_position_app_settings(connection, position_id: int, base_settings: dict 
     return apply_position_generation_limits(settings, cursor.fetchone())
 
 
-def save_app_settings(connection, settings: AppSettingsUpdate) -> None:
+def save_app_settings(connection, settings: AppSettingsUpdate, organization_id: int = 1) -> None:
     cursor = connection.cursor()
     for key, value in settings.model_dump(exclude_none=True).items():
         cursor.execute(
             """
-            INSERT INTO app_settings (key, value)
-            VALUES (?, ?)
+            INSERT INTO app_settings (organization_id, key, value)
+            VALUES (?, ?, ?)
             ON CONFLICT(key)
-            DO UPDATE SET value = excluded.value
+            DO UPDATE SET organization_id = excluded.organization_id,
+                          value = excluded.value
             """,
-            (key, str(value)),
+            (organization_id, key, str(value)),
         )
 
 
-def reset_visual_color_settings(connection) -> int:
+def reset_visual_color_settings(connection, organization_id: int = 1) -> int:
     cursor = connection.cursor()
     for key, value in DEFAULT_SCHEDULE_COLORS.items():
         cursor.execute(
             """
-            INSERT INTO app_settings (key, value)
-            VALUES (?, ?)
+            INSERT INTO app_settings (organization_id, key, value)
+            VALUES (?, ?, ?)
             ON CONFLICT(key)
-            DO UPDATE SET value = excluded.value
+            DO UPDATE SET organization_id = excluded.organization_id,
+                          value = excluded.value
             """,
-            (key, value),
+            (organization_id, key, value),
         )
     cursor.execute("UPDATE positions SET color = ?", (DEFAULT_POSITION_COLOR,))
     return cursor.rowcount
