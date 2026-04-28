@@ -5,6 +5,7 @@
         organizationName: "",
         membership: null,
         employees: [],
+        clientConfig: null,
     };
 
     const elements = {};
@@ -41,6 +42,24 @@
     function setInviteResult(value) {
         elements.inviteResult.value = value || "";
         elements.inviteResultWrap.hidden = !value;
+    }
+
+    function configuredPublicBaseUrl() {
+        return String(state.clientConfig?.public_app_base_url || "").replace(/\/+$/, "");
+    }
+
+    function employeePortalUrl() {
+        const configuredUrl = String(state.clientConfig?.employee_portal_url || "").trim();
+        if (configuredUrl) return configuredUrl;
+        const publicBaseUrl = configuredPublicBaseUrl();
+        return `${publicBaseUrl || window.location.origin}/login`;
+    }
+
+    function invitationUrlFromResponse(response) {
+        if (response.invitation_url) return response.invitation_url;
+        const token = response.invitation_token || "";
+        const publicBaseUrl = configuredPublicBaseUrl();
+        return `${publicBaseUrl || window.location.origin}/accept-invitation?token=${encodeURIComponent(token)}`;
     }
 
     function activeMemberships() {
@@ -96,6 +115,11 @@
         elements.profileEmail.value = state.user.email || "";
     }
 
+    function renderEmployeePortal() {
+        if (!elements.employeePortalUrl) return;
+        elements.employeePortalUrl.value = employeePortalUrl();
+    }
+
     function renderPermissions() {
         elements.inviteForm.hidden = !canManageInvitations();
         if (!canManageInvitations()) {
@@ -116,6 +140,7 @@
             <tr>
                 <td>${text(member.full_name)}</td>
                 <td>${text(member.email)}</td>
+                <td>${text(member.employee_name || "")}</td>
                 <td>${text(member.role)}</td>
                 <td>${text(member.membership_status)}</td>
                 <td>${member.email_verified ? "Yes" : "No"}</td>
@@ -221,9 +246,7 @@
                 `/api/organizations/${state.organizationId}/invitations/${invitationId}/regenerate-token`,
                 { method: "POST" },
             );
-            const token = response.invitation_token;
-            const acceptUrl = `${window.location.origin}/accept-invitation?token=${encodeURIComponent(token)}`;
-            setInviteResult(acceptUrl);
+            setInviteResult(invitationUrlFromResponse(response));
             await loadOrganizationData();
             renderEmployeeSelector();
             setMessage(uiText("org_msg_invitation_link_generated", "Invitation link generated."), "success");
@@ -322,9 +345,7 @@
                         expires_in_days: Number(elements.inviteDays.value),
                     }),
                 });
-                const token = response.invitation_token;
-                const acceptUrl = `${window.location.origin}/accept-invitation?token=${encodeURIComponent(token)}`;
-                setInviteResult(acceptUrl);
+                setInviteResult(invitationUrlFromResponse(response));
                 elements.inviteForm.reset();
                 elements.inviteDays.value = "7";
                 await loadOrganizationData();
@@ -397,6 +418,11 @@
             await navigator.clipboard.writeText(elements.inviteResult.value);
             setMessage("Invitation link copied.", "success");
         });
+        elements.copyEmployeePortal?.addEventListener("click", async () => {
+            if (!elements.employeePortalUrl.value) return;
+            await navigator.clipboard.writeText(elements.employeePortalUrl.value);
+            setMessage(uiText("org_msg_employee_portal_copied", "Employee portal link copied."), "success");
+        });
         elements.inviteRole.addEventListener("change", renderEmployeeSelector);
         elements.membersBody.addEventListener("click", (event) => {
             const button = event.target.closest('[data-organization-action="remove-member"]');
@@ -447,6 +473,8 @@
             inviteResult: document.getElementById("invite-result"),
             inviteResultWrap: document.getElementById("invite-result-wrap"),
             copyInvite: document.getElementById("copy-invite-btn"),
+            employeePortalUrl: document.getElementById("employee-portal-url"),
+            copyEmployeePortal: document.getElementById("copy-employee-portal-btn"),
             logout: document.getElementById("logout-btn"),
         });
 
@@ -456,9 +484,11 @@
         bindProfileForms();
         bindActions();
         try {
+            state.clientConfig = await window.scheduleAuth.request("/api/client-config");
             await refreshCurrentUser();
             renderOrganizationSelector();
             renderIdentity();
+            renderEmployeePortal();
             renderPermissions();
             await loadOrganizationData();
             await loadEmployeesForInvitations();

@@ -5,6 +5,8 @@ ENV PYTHONUNBUFFERED=1
 ENV APP_ENV=staging
 ENV DATABASE_ENGINE=sqlite
 ENV SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db
+ENV PUBLIC_APP_BASE_URL=https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app
+ENV SCHEDULE_APP_DEFAULT_API_BASE_URL=https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app
 
 WORKDIR /app
 

@@ -188,6 +188,15 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(ready_payload["database"]["status"], "ok")
         self.assertEqual(ready_payload["runtime"]["database_engine"], "sqlite")
 
+    def test_client_config_exposes_public_employee_portal_url(self):
+        with patch.dict(os.environ, {"PUBLIC_APP_BASE_URL": "https://shiftcare.example.com/"}, clear=False):
+            response = self.client.get("/api/client-config")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["public_app_base_url"], "https://shiftcare.example.com")
+        self.assertEqual(payload["employee_portal_url"], "https://shiftcare.example.com/login")
+        self.assertEqual(payload["employee_invitation_url_base"], "https://shiftcare.example.com/accept-invitation")
+
     def test_health_readiness_blocks_unsupported_database_engine(self):
         with patch.dict(os.environ, {"DATABASE_ENGINE": "postgresql"}):
             response = self.client.get("/api/health/ready")
@@ -492,19 +501,24 @@ class ApiRegressionTests(unittest.TestCase):
 
         owner_headers = {"Authorization": f"Bearer {owner_token}"}
         employee_record_id = self._create_employee(headers=owner_headers, full_name="Employee User")
-        invitation_response = self.client.post(
-            "/api/organizations/1/invitations",
-            headers={"Authorization": f"Bearer {owner_token}"},
-            json={
-                "email": "employee@example.com",
-                "employee_id": employee_record_id,
-                "role": "employee",
-                "expires_in_days": 7,
-            },
-        )
+        with patch.dict(os.environ, {"PUBLIC_APP_BASE_URL": "https://shiftcare.example.com"}, clear=False):
+            invitation_response = self.client.post(
+                "/api/organizations/1/invitations",
+                headers={"Authorization": f"Bearer {owner_token}"},
+                json={
+                    "email": "employee@example.com",
+                    "employee_id": employee_record_id,
+                    "role": "employee",
+                    "expires_in_days": 7,
+                },
+            )
         self.assertEqual(invitation_response.status_code, 200)
         self.assertEqual(invitation_response.json()["invitation"]["employee_id"], employee_record_id)
         invitation_token = invitation_response.json()["invitation_token"]
+        self.assertEqual(
+            invitation_response.json()["invitation_url"],
+            f"https://shiftcare.example.com/accept-invitation?token={invitation_token}",
+        )
 
         accept_response = self.client.post(
             "/api/auth/accept-invitation",

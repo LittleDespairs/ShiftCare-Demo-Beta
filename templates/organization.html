@@ -92,6 +92,23 @@
                     </form>
                 </section>
 
+                <section id="employee-portal-panel" class="organization-panel">
+                    <div class="settings-section-header">
+                        <div>
+                            <h3 class="settings-section-title">Employee portal</h3>
+                            <p class="settings-section-text">Public login page for employees.</p>
+                        </div>
+                    </div>
+
+                    <div class="invite-result">
+                        <label class="form-field">
+                            <span>Employee site address</span>
+                            <textarea id="employee-portal-url" rows="2" readonly></textarea>
+                        </label>
+                        <button id="copy-employee-portal-btn" class="btn btn-secondary" type="button">Copy link</button>
+                    </div>
+                </section>
+
                 <form id="invite-form" class="organization-panel">
                     <div class="settings-section-header">
                         <div>
@@ -176,6 +193,7 @@
                             <thead>
                                 <tr>
                                     <th>Email</th>
+                                    <th>Employee</th>
                                     <th>Role</th>
                                     <th>Status</th>
                                     <th>Expires</th>

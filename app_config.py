@@ -24,6 +24,7 @@ class AppConfig:
     google_cloud_region: str
     auth_token_secret: str
     cloud_run_service: str
+    public_app_base_url: str
 
     @property
     def is_cloud_run(self) -> bool:
@@ -50,6 +51,7 @@ def get_app_config() -> AppConfig:
         google_cloud_region=os.environ.get("GOOGLE_CLOUD_REGION", "").strip(),
         auth_token_secret=os.environ.get("AUTH_TOKEN_SECRET", "").strip(),
         cloud_run_service=os.environ.get("K_SERVICE", "").strip(),
+        public_app_base_url=os.environ.get("PUBLIC_APP_BASE_URL", "").strip().rstrip("/"),
     )
 
 

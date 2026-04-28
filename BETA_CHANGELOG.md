@@ -2,6 +2,20 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
 
+## 0.14.5_beta - 2026-04-29
+
+### What Changed
+
+- Added `PUBLIC_APP_BASE_URL` so deployed builds can expose a stable employee-facing web address.
+- Added employee portal URL metadata to `/api/client-config`.
+- Returned ready-to-copy public invitation links from invitation creation and regeneration APIs.
+- Updated the organization page to show the employee portal address and copy it from the UI.
+- Kept local development fallback behavior so local-only invitation links still use the current local origin when no public URL is configured.
+
+### Release Artifact
+
+- `dist\installer\ShiftCare_Setup_0.14.5-beta.exe`
+
 ## 0.14.4_beta - 2026-04-29
 
 ### What Changed

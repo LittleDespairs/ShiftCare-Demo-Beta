@@ -34,6 +34,9 @@
             org_role: "Role",
             org_expires: "Expires in days",
             org_create_invitation: "Create invitation",
+            org_employee_portal: "Employee portal",
+            org_employee_portal_text: "Public login page for employees.",
+            org_employee_site_address: "Employee site address",
             org_members: "Members",
             org_members_text: "Active users and organization roles.",
             org_invitations: "Invitations",
@@ -60,6 +63,7 @@
             org_msg_member_removed: "Member access removed.",
             org_msg_invitation_revoked: "Invitation revoked.",
             org_msg_invitation_link_generated: "Invitation link generated.",
+            org_msg_employee_portal_copied: "Employee portal link copied.",
             common_delete: "Delete",
         },
         ru: {
@@ -96,6 +100,9 @@
             org_role: "Роль",
             org_expires: "Действует дней",
             org_create_invitation: "Создать приглашение",
+            org_employee_portal: "Портал сотрудников",
+            org_employee_portal_text: "Публичная страница входа для сотрудников.",
+            org_employee_site_address: "Адрес сайта для сотрудников",
             org_members: "Участники",
             org_members_text: "Активные пользователи и роли организации.",
             org_invitations: "Приглашения",
@@ -122,6 +129,7 @@
             org_msg_member_removed: "Доступ участника удалён.",
             org_msg_invitation_revoked: "Приглашение отозвано.",
             org_msg_invitation_link_generated: "Ссылка приглашения создана.",
+            org_msg_employee_portal_copied: "Ссылка портала сотрудников скопирована.",
             common_delete: "Удалить",
         },
         he: {
@@ -158,6 +166,9 @@
             org_role: "תפקיד",
             org_expires: "תוקף בימים",
             org_create_invitation: "צור הזמנה",
+            org_employee_portal: "פורטל עובדים",
+            org_employee_portal_text: "עמוד כניסה ציבורי לעובדים.",
+            org_employee_site_address: "כתובת אתר לעובדים",
             org_members: "חברים",
             org_members_text: "משתמשים פעילים ותפקידי הארגון.",
             org_invitations: "הזמנות",
@@ -184,6 +195,7 @@
             org_msg_member_removed: "גישת החבר הוסרה.",
             org_msg_invitation_revoked: "ההזמנה בוטלה.",
             org_msg_invitation_link_generated: "קישור ההזמנה נוצר.",
+            org_msg_employee_portal_copied: "קישור פורטל העובדים הועתק.",
             common_delete: "מחיקה",
         },
     };
@@ -237,15 +249,20 @@
         setText("#invite-form .settings-section-title", "org_invite");
         setText("#invite-form .settings-section-text", "org_invite_text");
         setText("#invite-form label:nth-of-type(1) span", "org_employee");
-        setText("#invite-form label:nth-of-type(2) span, .organization-table th:nth-child(2)", "auth_email");
-        setText("#invite-form label:nth-of-type(3) span, .organization-table th:nth-child(3)", "org_role");
+        setText("#invite-form label:nth-of-type(2) span", "auth_email");
+        setText("#invite-form label:nth-of-type(3) span", "org_role");
         setText("#invite-form label:nth-of-type(4) span", "org_expires");
         setText("#invite-form > .btn", "org_create_invitation");
+        setText("#employee-portal-panel .settings-section-title", "org_employee_portal");
+        setText("#employee-portal-panel .settings-section-text", "org_employee_portal_text");
+        setText("#employee-portal-panel label span", "org_employee_site_address");
+        setText("#copy-employee-portal-btn", "org_copy_link");
         setText("#invite-result-wrap label span", "org_invitation_link");
         setText("#copy-invite-btn", "org_copy_link");
         const panels = Array.from(document.querySelectorAll(".organization-panel"));
         const panelKeys = [
             ["org_account", "org_account_text"],
+            ["org_employee_portal", "org_employee_portal_text"],
             ["org_invite", "org_invite_text"],
             ["org_members", "org_members_text"],
             ["org_invitations", "org_invitations_text"],
@@ -270,7 +287,7 @@
         const membersTable = document.getElementById("members-table-body")?.closest("table");
         const invitationsTable = document.getElementById("invitations-table-body")?.closest("table");
         [
-            [membersTable, ["org_table_name", "auth_email", "org_role", "org_table_status", "org_email_verified", "org_table_actions"]],
+            [membersTable, ["org_table_name", "auth_email", "org_employee", "org_role", "org_table_status", "org_email_verified", "org_table_actions"]],
             [invitationsTable, ["auth_email", "org_employee", "org_role", "org_table_status", "org_expires", "org_table_accepted", "org_table_actions"]],
         ].forEach(([table, keys]) => {
             if (!table) return;

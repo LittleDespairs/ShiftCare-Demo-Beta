@@ -32,7 +32,7 @@ steps:
       - managed
       - --allow-unauthenticated
       - --set-env-vars
-      - APP_ENV=staging,DATABASE_ENGINE=sqlite,SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db
+      - APP_ENV=staging,DATABASE_ENGINE=sqlite,SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db,PUBLIC_APP_BASE_URL=https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app,SCHEDULE_APP_DEFAULT_API_BASE_URL=https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_TAG}

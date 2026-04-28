@@ -17,7 +17,7 @@ from datetime import UTC, date as Date, datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
 from time import monotonic
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from typing import Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -34,7 +34,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.14.4_beta"
+APP_VERSION = "0.14.5_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app"
 GITHUB_REPO_OWNER = "LittleDespairs"
@@ -89,6 +89,39 @@ init_db()
 app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 templates.env.globals["app_version"] = APP_VERSION
+
+
+def normalize_public_app_base_url(value: str) -> str:
+    trimmed = (value or "").strip().rstrip("/")
+    if not trimmed:
+        return ""
+    parsed = urlparse(trimmed)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def get_public_app_base_url() -> str:
+    config = get_app_config()
+    configured_url = normalize_public_app_base_url(config.public_app_base_url)
+    if configured_url:
+        return configured_url
+    if config.is_deployed_env:
+        return DEFAULT_CLOUD_API_BASE_URL
+    return ""
+
+
+def build_public_app_url(path: str) -> str:
+    base_url = get_public_app_base_url()
+    if not base_url:
+        return ""
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    return f"{base_url}{normalized_path}"
+
+
+def build_invitation_url(invitation_token: str) -> str:
+    return build_public_app_url(f"/accept-invitation?token={quote(invitation_token)}")
+
 
 MAX_WORK_DAYS_PER_WEEK = 6
 MAX_CONSECUTIVE_NIGHTS = 2
@@ -167,10 +200,14 @@ def health_ready():
 
 @app.get("/api/client-config", tags=["Health"])
 def client_config():
+    public_app_base_url = get_public_app_base_url()
     return {
         "app_version": APP_VERSION,
         "default_api_base_url": os.environ.get("SCHEDULE_APP_DEFAULT_API_BASE_URL", DEFAULT_CLOUD_API_BASE_URL).strip(),
         "local_api_base_url": "",
+        "public_app_base_url": public_app_base_url,
+        "employee_portal_url": f"{public_app_base_url}/login" if public_app_base_url else "",
+        "employee_invitation_url_base": f"{public_app_base_url}/accept-invitation" if public_app_base_url else "",
         "environment": get_app_config().app_env,
     }
 
@@ -2298,9 +2335,11 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
         cursor.execute(
             """
             SELECT u.id, u.email, u.full_name, u.status AS user_status, u.email_verified,
+                   e.full_name AS employee_name,
                    om.role, om.status AS membership_status, om.employee_id, om.created_at, om.updated_at
             FROM organization_memberships om
             JOIN users u ON u.id = om.user_id
+            LEFT JOIN employees e ON e.id = om.employee_id
             WHERE om.organization_id = ? AND om.status = 'active'
             ORDER BY u.full_name, u.email
             """,
@@ -2317,6 +2356,7 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
                     "role": row["role"],
                     "membership_status": row["membership_status"],
                     "employee_id": row["employee_id"],
+                    "employee_name": row["employee_name"],
                     "created_at": row["created_at"],
                     "updated_at": row["updated_at"],
                 }
@@ -2457,6 +2497,7 @@ def create_organization_invitation(
                 "expires_at": expires_at,
             },
             "invitation_token": invitation_token,
+            "invitation_url": build_invitation_url(invitation_token),
         }
     except sqlite3.IntegrityError as exc:
         connection.rollback()
@@ -2665,6 +2706,7 @@ def regenerate_organization_invitation_token(
                 "expires_at": expires_at,
             },
             "invitation_token": invitation_token,
+            "invitation_url": build_invitation_url(invitation_token),
         }
     except sqlite3.IntegrityError as exc:
         connection.rollback()
