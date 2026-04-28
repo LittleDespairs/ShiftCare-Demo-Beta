@@ -4,6 +4,7 @@
         organizationId: null,
         organizationName: "",
         membership: null,
+        employees: [],
     };
 
     const elements = {};
@@ -124,6 +125,7 @@
                             class="organization-table-button danger"
                             data-organization-action="remove-member"
                             data-user-id="${Number(member.user_id)}"
+                            data-linked-employee-id="${Number(member.employee_id || 0)}"
                             ${member.user_id === state.user.id || member.membership_status !== "active" ? "disabled" : ""}
                             type="button"
                         >
@@ -137,12 +139,13 @@
 
     function renderInvitations(invitations, emptyMessage = "No invitations found.") {
         if (!invitations.length) {
-            elements.invitationsBody.innerHTML = `<tr><td colspan="6">${text(emptyMessage)}</td></tr>`;
+            elements.invitationsBody.innerHTML = `<tr><td colspan="7">${text(emptyMessage)}</td></tr>`;
             return;
         }
         elements.invitationsBody.innerHTML = invitations.map((invitation) => `
             <tr>
                 <td>${text(invitation.email)}</td>
+                <td>${text(invitation.employee_name || "")}</td>
                 <td>${text(invitation.role)}</td>
                 <td>${text(invitation.status)}</td>
                 <td>${text(invitation.expires_at)}</td>
@@ -153,6 +156,7 @@
                             class="organization-table-button danger"
                             data-organization-action="revoke-invitation"
                             data-invitation-id="${Number(invitation.id)}"
+                            data-pending-employee-id="${Number(invitation.employee_id || 0)}"
                             ${invitation.status !== "pending" ? "disabled" : ""}
                             type="button"
                         >
@@ -177,6 +181,7 @@
             renderIdentity();
             renderPermissions();
             await loadOrganizationData();
+            renderEmployeeSelector();
             setMessage(uiText("org_msg_member_removed", "Member access removed."), "success");
         } catch (error) {
             setMessage(error.message, "error");
@@ -192,6 +197,7 @@
                 method: "DELETE",
             });
             await loadOrganizationData();
+            renderEmployeeSelector();
             setMessage(uiText("org_msg_invitation_revoked", "Invitation revoked."), "success");
         } catch (error) {
             setMessage(error.message, "error");
@@ -223,6 +229,55 @@
         }
     }
 
+    async function loadEmployeesForInvitations() {
+        if (!canManageInvitations()) {
+            state.employees = [];
+            renderEmployeeSelector();
+            return;
+        }
+        try {
+            state.employees = await window.scheduleAuth.request("/api/employees");
+            renderEmployeeSelector();
+        } catch (error) {
+            state.employees = [];
+            renderEmployeeSelector();
+            setMessage(error.message, "error");
+        }
+    }
+
+    function linkedEmployeeIds() {
+        const ids = new Set();
+        elements.membersBody.querySelectorAll("[data-linked-employee-id]").forEach((element) => {
+            const employeeId = Number(element.dataset.linkedEmployeeId);
+            if (employeeId) ids.add(employeeId);
+        });
+        elements.invitationsBody.querySelectorAll("[data-pending-employee-id]").forEach((element) => {
+            if (element.disabled) return;
+            const employeeId = Number(element.dataset.pendingEmployeeId);
+            if (employeeId) ids.add(employeeId);
+        });
+        return ids;
+    }
+
+    function renderEmployeeSelector() {
+        if (!elements.inviteEmployee) return;
+        const linkedIds = linkedEmployeeIds();
+        const currentValue = elements.inviteEmployee.value;
+        const employeeLinkEnabled = elements.inviteRole?.value === "employee";
+        elements.inviteEmployee.innerHTML = [
+            `<option value="">${text(uiText("org_no_employee_link", "No employee link"))}</option>`,
+            ...state.employees.map((employee) => {
+                const disabled = linkedIds.has(Number(employee.id)) ? "disabled" : "";
+                const selected = String(employee.id) === currentValue ? "selected" : "";
+                return `<option value="${Number(employee.id)}" ${disabled} ${selected}>${text(employee.full_name)}</option>`;
+            }),
+        ].join("");
+        elements.inviteEmployee.disabled = !employeeLinkEnabled;
+        if (!employeeLinkEnabled) {
+            elements.inviteEmployee.value = "";
+        }
+    }
+
     function bindInviteForm() {
         elements.inviteForm.addEventListener("submit", async (event) => {
             event.preventDefault();
@@ -234,6 +289,7 @@
                     method: "POST",
                     body: JSON.stringify({
                         email: elements.inviteEmail.value,
+                        employee_id: elements.inviteEmployee.value ? Number(elements.inviteEmployee.value) : null,
                         role: elements.inviteRole.value,
                         expires_in_days: Number(elements.inviteDays.value),
                     }),
@@ -244,6 +300,7 @@
                 elements.inviteForm.reset();
                 elements.inviteDays.value = "7";
                 await loadOrganizationData();
+                renderEmployeeSelector();
                 setMessage("Invitation created.", "success");
             } catch (error) {
                 setMessage(error.message, "error");
@@ -302,6 +359,7 @@
             setMessage("", "");
             try {
                 await loadOrganizationData();
+                await loadEmployeesForInvitations();
             } catch (error) {
                 setMessage(error.message, "error");
             }
@@ -311,6 +369,7 @@
             await navigator.clipboard.writeText(elements.inviteResult.value);
             setMessage("Invitation link copied.", "success");
         });
+        elements.inviteRole.addEventListener("change", renderEmployeeSelector);
         elements.membersBody.addEventListener("click", (event) => {
             const button = event.target.closest('[data-organization-action="remove-member"]');
             if (!button || button.disabled) return;
@@ -348,6 +407,7 @@
             membersBody: document.getElementById("members-table-body"),
             invitationsBody: document.getElementById("invitations-table-body"),
             inviteForm: document.getElementById("invite-form"),
+            inviteEmployee: document.getElementById("invite-employee"),
             inviteEmail: document.getElementById("invite-email"),
             inviteRole: document.getElementById("invite-role"),
             inviteDays: document.getElementById("invite-days"),
@@ -368,6 +428,7 @@
             renderIdentity();
             renderPermissions();
             await loadOrganizationData();
+            await loadEmployeesForInvitations();
         } catch (error) {
             setMessage(error.message, "error");
         }

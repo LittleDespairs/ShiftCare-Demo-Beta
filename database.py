@@ -381,6 +381,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             organization_id INTEGER NOT NULL,
             email TEXT NOT NULL,
+            employee_id INTEGER,
             role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'scheduler', 'employee', 'manager', 'read_only')),
             token_hash TEXT NOT NULL UNIQUE,
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired', 'revoked')),
@@ -389,6 +390,7 @@ def init_db():
             created_by_user_id INTEGER,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL,
             FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
         )
     """)
@@ -853,6 +855,8 @@ def init_db():
         _add_column_if_missing(cursor, table_name, "created_at", "TEXT")
         _add_column_if_missing(cursor, table_name, "updated_at", "TEXT")
         _add_column_if_missing(cursor, table_name, "updated_by", "INTEGER")
+
+    _add_column_if_missing(cursor, "organization_invitations", "employee_id", "INTEGER")
 
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_employees_org

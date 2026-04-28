@@ -470,12 +470,19 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(members_response.status_code, 200)
         self.assertEqual(len(members_response.json()["members"]), 1)
 
+        employee_record_id = self._create_employee(full_name="Employee User")
         invitation_response = self.client.post(
             "/api/organizations/1/invitations",
             headers={"Authorization": f"Bearer {owner_token}"},
-            json={"email": "employee@example.com", "role": "employee", "expires_in_days": 7},
+            json={
+                "email": "employee@example.com",
+                "employee_id": employee_record_id,
+                "role": "employee",
+                "expires_in_days": 7,
+            },
         )
         self.assertEqual(invitation_response.status_code, 200)
+        self.assertEqual(invitation_response.json()["invitation"]["employee_id"], employee_record_id)
         invitation_token = invitation_response.json()["invitation_token"]
 
         accept_response = self.client.post(
@@ -492,6 +499,7 @@ class ApiRegressionTests(unittest.TestCase):
         employee_memberships = accept_response.json()["user"]["memberships"]
         self.assertEqual(employee_memberships[0]["role"], "employee")
         self.assertEqual(employee_memberships[0]["organization_id"], 1)
+        self.assertEqual(employee_memberships[0]["employee_id"], employee_record_id)
 
         forbidden_members_response = self.client.get(
             "/api/organizations/1/members",
@@ -512,6 +520,7 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(invitations_response.status_code, 200)
         self.assertEqual(invitations_response.json()["invitations"][0]["status"], "accepted")
+        self.assertEqual(invitations_response.json()["invitations"][0]["employee_name"], "Employee User")
 
         remove_self_response = self.client.delete(
             f"/api/organizations/1/members/{owner_user_id}",

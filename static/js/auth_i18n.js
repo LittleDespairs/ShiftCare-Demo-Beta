@@ -44,6 +44,8 @@
             nav_settings: "Settings",
             org_selector: "Organization",
             org_invitation_link: "Invitation link",
+            org_employee: "Employee",
+            org_no_employee_link: "No employee link",
             org_copy_link: "Copy link",
             org_table_name: "Name",
             org_table_status: "Status",
@@ -102,6 +104,8 @@
             nav_settings: "Настройки",
             org_selector: "Организация",
             org_invitation_link: "Ссылка приглашения",
+            org_employee: "Сотрудник",
+            org_no_employee_link: "Без привязки к сотруднику",
             org_copy_link: "Копировать ссылку",
             org_table_name: "Имя",
             org_table_status: "Статус",
@@ -160,6 +164,8 @@
             nav_settings: "הגדרות",
             org_selector: "ארגון",
             org_invitation_link: "קישור הזמנה",
+            org_employee: "עובד",
+            org_no_employee_link: "ללא קישור לעובד",
             org_copy_link: "העתק קישור",
             org_table_name: "שם",
             org_table_status: "סטטוס",
@@ -217,15 +223,17 @@
         setText(".nav-item[href='/settings'] .nav-label", "nav_settings");
         setText("#organization-selector-wrap span", "org_selector");
         setText("#profile-form label:nth-of-type(1) span", "org_full_name");
-        setText("#profile-form label:nth-of-type(2) span, #invite-form label:nth-of-type(1) span, .organization-table th:nth-child(2)", "auth_email");
+        setText("#profile-form label:nth-of-type(2) span", "auth_email");
         setText("#profile-form .btn", "org_save_profile");
         setText("#password-form label:nth-of-type(1) span", "org_current_password");
         setText("#password-form label:nth-of-type(2) span", "org_new_password");
         setText("#password-form .btn", "org_change_password");
         setText("#invite-form .settings-section-title", "org_invite");
         setText("#invite-form .settings-section-text", "org_invite_text");
-        setText("#invite-form label:nth-of-type(2) span, .organization-table th:nth-child(3)", "org_role");
-        setText("#invite-form label:nth-of-type(3) span", "org_expires");
+        setText("#invite-form label:nth-of-type(1) span", "org_employee");
+        setText("#invite-form label:nth-of-type(2) span, .organization-table th:nth-child(2)", "auth_email");
+        setText("#invite-form label:nth-of-type(3) span, .organization-table th:nth-child(3)", "org_role");
+        setText("#invite-form label:nth-of-type(4) span", "org_expires");
         setText("#invite-form > .btn", "org_create_invitation");
         setText("#invite-result-wrap label span", "org_invitation_link");
         setText("#copy-invite-btn", "org_copy_link");
@@ -248,15 +256,16 @@
         setText(".organization-table th:nth-child(4)", "org_table_status");
         setText(".organization-table:first-of-type th:nth-child(5)", "org_email_verified");
         setText(".organization-table:first-of-type th:nth-child(6)", "org_table_actions");
-        setText(".organization-panel-wide .organization-table th:nth-child(4)", "org_expires");
-        setText(".organization-panel-wide .organization-table th:nth-child(5)", "org_table_accepted");
-        setText(".organization-panel-wide .organization-table th:nth-child(6)", "org_table_actions");
+        setText(".organization-panel-wide .organization-table th:nth-child(2)", "org_employee");
+        setText(".organization-panel-wide .organization-table th:nth-child(5)", "org_expires");
+        setText(".organization-panel-wide .organization-table th:nth-child(6)", "org_table_accepted");
+        setText(".organization-panel-wide .organization-table th:nth-child(7)", "org_table_actions");
 
         const membersTable = document.getElementById("members-table-body")?.closest("table");
         const invitationsTable = document.getElementById("invitations-table-body")?.closest("table");
         [
             [membersTable, ["org_table_name", "auth_email", "org_role", "org_table_status", "org_email_verified", "org_table_actions"]],
-            [invitationsTable, ["auth_email", "org_role", "org_table_status", "org_expires", "org_table_accepted", "org_table_actions"]],
+            [invitationsTable, ["auth_email", "org_employee", "org_role", "org_table_status", "org_expires", "org_table_accepted", "org_table_actions"]],
         ].forEach(([table, keys]) => {
             if (!table) return;
             table.querySelectorAll("th").forEach((header, index) => {

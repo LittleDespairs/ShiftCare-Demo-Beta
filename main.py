@@ -149,6 +149,7 @@ class AuthInvitationAcceptRequest(BaseModel):
 
 class OrganizationInvitationCreate(BaseModel):
     email: EmailStr
+    employee_id: int | None = Field(default=None, ge=1)
     role: Literal["admin", "scheduler", "employee", "manager", "read_only"] = "employee"
     expires_in_days: int = Field(default=7, ge=1, le=30)
 
@@ -2132,7 +2133,7 @@ def accept_invitation(request_data: AuthInvitationAcceptRequest):
         token_hash = hash_session_token(request_data.token)
         cursor.execute(
             """
-            SELECT id, organization_id, email, role
+            SELECT id, organization_id, email, role, employee_id
             FROM organization_invitations
             WHERE token_hash = ?
               AND status = 'pending'
@@ -2164,10 +2165,17 @@ def accept_invitation(request_data: AuthInvitationAcceptRequest):
         user_id = cursor.lastrowid
         cursor.execute(
             """
-            INSERT INTO organization_memberships (organization_id, user_id, role, status, created_at, updated_at)
-            VALUES (?, ?, ?, 'active', ?, ?)
+            INSERT INTO organization_memberships (organization_id, user_id, role, status, employee_id, created_at, updated_at)
+            VALUES (?, ?, ?, 'active', ?, ?, ?)
             """,
-            (invitation["organization_id"], user_id, invitation["role"], now, now),
+            (
+                invitation["organization_id"],
+                user_id,
+                invitation["role"],
+                invitation["employee_id"],
+                now,
+                now,
+            ),
         )
         cursor.execute(
             """
@@ -2182,7 +2190,11 @@ def accept_invitation(request_data: AuthInvitationAcceptRequest):
             "invitation_accepted",
             user_id=user_id,
             organization_id=invitation["organization_id"],
-            metadata={"invitation_id": invitation["id"], "role": invitation["role"]},
+            metadata={
+                "invitation_id": invitation["id"],
+                "role": invitation["role"],
+                "employee_id": invitation["employee_id"],
+            },
         )
         auth_response = build_auth_response(connection, user_id)
         connection.commit()
@@ -2267,10 +2279,13 @@ def get_organization_invitations(organization_id: int, current_user: dict = Depe
         cursor = connection.cursor()
         cursor.execute(
             """
-            SELECT id, email, role, status, expires_at, accepted_at, created_by_user_id, created_at
-            FROM organization_invitations
-            WHERE organization_id = ?
-            ORDER BY created_at DESC
+            SELECT oi.id, oi.email, oi.employee_id, e.full_name AS employee_name,
+                   oi.role, oi.status, oi.expires_at, oi.accepted_at,
+                   oi.created_by_user_id, oi.created_at
+            FROM organization_invitations oi
+            LEFT JOIN employees e ON e.id = oi.employee_id
+            WHERE oi.organization_id = ?
+            ORDER BY oi.created_at DESC
             """,
             (organization_id,),
         )
@@ -2303,6 +2318,41 @@ def create_organization_invitation(
         if cursor.fetchone():
             raise HTTPException(status_code=409, detail="User is already a member of this organization")
 
+        employee_id = request_data.employee_id
+        if employee_id is not None:
+            if request_data.role != "employee":
+                raise HTTPException(status_code=400, detail="Employee link is only available for employee invitations")
+            cursor.execute(
+                """
+                SELECT id
+                FROM employees
+                WHERE id = ? AND organization_id = ?
+                """,
+                (employee_id, organization_id),
+            )
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Employee not found in this organization")
+            cursor.execute(
+                """
+                SELECT 1
+                FROM organization_memberships
+                WHERE organization_id = ? AND employee_id = ? AND status = 'active'
+                """,
+                (organization_id, employee_id),
+            )
+            if cursor.fetchone():
+                raise HTTPException(status_code=409, detail="Employee is already linked to an active user")
+            cursor.execute(
+                """
+                SELECT 1
+                FROM organization_invitations
+                WHERE organization_id = ? AND employee_id = ? AND status = 'pending'
+                """,
+                (organization_id, employee_id),
+            )
+            if cursor.fetchone():
+                raise HTTPException(status_code=409, detail="Employee already has a pending invitation")
+
         now = current_utc_timestamp()
         expires_at = (datetime.now(UTC) + timedelta(days=request_data.expires_in_days)).replace(tzinfo=None).isoformat(
             timespec="seconds"
@@ -2311,13 +2361,14 @@ def create_organization_invitation(
         cursor.execute(
             """
             INSERT INTO organization_invitations (
-                organization_id, email, role, token_hash, status, expires_at, created_by_user_id, created_at
+                organization_id, email, employee_id, role, token_hash, status, expires_at, created_by_user_id, created_at
             )
-            VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
             """,
             (
                 organization_id,
                 email,
+                employee_id,
                 request_data.role,
                 hash_session_token(invitation_token),
                 expires_at,
@@ -2331,7 +2382,12 @@ def create_organization_invitation(
             "invitation_created",
             user_id=current_user["id"],
             organization_id=organization_id,
-            metadata={"invitation_id": invitation_id, "email": email, "role": request_data.role},
+            metadata={
+                "invitation_id": invitation_id,
+                "email": email,
+                "role": request_data.role,
+                "employee_id": employee_id,
+            },
         )
         connection.commit()
         return {
@@ -2339,6 +2395,7 @@ def create_organization_invitation(
                 "id": invitation_id,
                 "organization_id": organization_id,
                 "email": email,
+                "employee_id": employee_id,
                 "role": request_data.role,
                 "status": "pending",
                 "expires_at": expires_at,

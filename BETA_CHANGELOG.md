@@ -25,6 +25,7 @@ Start the `0.14.x_beta` line with the first organization-based authorization fou
 - Added local session token storage in the UI and a shared frontend auth client for authenticated API calls.
 - Added organization member and invitation management UI for owner/admin workflows.
 - Added owner/admin organization actions to remove member access and revoke pending invitation links.
+- Added employee selection to organization invitations so employee accounts are linked to existing employee records.
 - Added Google Cloud `0.14.x_beta` setup notes and `.env.example` while keeping real secrets out of git.
 - Updated the release metadata, Windows packaging metadata, service worker cache version, and Android beta version name to `0.14.1_beta`.
 - Added Word `.docx` export endpoints for the selected schedule and all schedules.

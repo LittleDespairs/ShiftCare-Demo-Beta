@@ -76,7 +76,9 @@
     color: var(--text);
 }
 
-.form-field input {
+.form-field input,
+.form-field select,
+.form-field textarea {
     width: 100%;
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -85,7 +87,13 @@
     color: var(--text);
 }
 
-.form-field input:focus {
+.form-field textarea {
+    resize: vertical;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
     outline: 3px solid var(--primary-soft);
     border-color: var(--primary);
 }
