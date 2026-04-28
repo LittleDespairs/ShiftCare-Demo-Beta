@@ -53,6 +53,40 @@ $env:SCHEDULE_APP_PORT = "8010"
 .\.venv\Scripts\python.exe launcher.py
 ```
 
+## Backend Health Checks
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/api/health/live
+Invoke-RestMethod http://127.0.0.1:8000/api/health/ready
+```
+
+`/api/health/ready` checks runtime configuration and database connectivity.
+
+## Cloud Run Smoke Container
+
+The Cloud Run container uses backend-only dependencies:
+
+```text
+requirements-cloud.txt
+```
+
+Local Docker smoke test:
+
+```powershell
+docker build -t schedule-app-api:local .
+docker run --rm -p 8080:8080 schedule-app-api:local
+```
+
+Then check:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/api/health/live
+Invoke-RestMethod http://127.0.0.1:8080/api/health/ready
+```
+
+Important: `0.14.1_beta` Cloud Run deployment is a smoke backend only. The data layer still uses SQLite.
+Do not use it for production organization data until PostgreSQL/Cloud SQL support is implemented and tested.
+
 ## Android Standalone APK
 
 The standalone Android wrapper is in `android/`.

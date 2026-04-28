@@ -176,6 +176,26 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIsNotNone(migration_row)
         self.assertEqual(migration_row["to_version"], database.CURRENT_SCHEMA_VERSION)
 
+    def test_health_endpoints_report_runtime_readiness(self):
+        live_response = self.client.get("/api/health/live")
+        self.assertEqual(live_response.status_code, 200)
+        self.assertEqual(live_response.json()["status"], "ok")
+
+        ready_response = self.client.get("/api/health/ready")
+        self.assertEqual(ready_response.status_code, 200)
+        ready_payload = ready_response.json()
+        self.assertEqual(ready_payload["status"], "ok")
+        self.assertEqual(ready_payload["database"]["status"], "ok")
+        self.assertEqual(ready_payload["runtime"]["database_engine"], "sqlite")
+
+    def test_health_readiness_blocks_unsupported_database_engine(self):
+        with patch.dict(os.environ, {"DATABASE_ENGINE": "postgresql"}):
+            response = self.client.get("/api/health/ready")
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()["detail"]
+        self.assertEqual(payload["status"], "blocked")
+        self.assertTrue(payload["runtime"]["issues"])
+
     def test_auth_bootstrap_login_me_and_logout_flow(self):
         payload = {
             "organization_name": "Beta Clinic",
@@ -895,7 +915,13 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in employee_list_response.json()], [employee_a])
 
         employee_schedule_response = self.client.get("/api/schedule", headers=employee_headers)
-        self.assertEqual(employee_schedule_response.status_code, 403)
+        self.assertEqual(employee_schedule_response.status_code, 200)
+        denied_day_status = self.client.post(
+            "/api/employee-day-statuses",
+            headers=employee_headers,
+            json={"employee_id": employee_a, "date": "2026-04-20", "status_type": "sick"},
+        )
+        self.assertEqual(denied_day_status.status_code, 403)
 
         owner_employee_list_response = self.client.get("/api/employees", headers=owner_headers)
         self.assertEqual(owner_employee_list_response.status_code, 200)
@@ -941,6 +967,12 @@ class ApiRegressionTests(unittest.TestCase):
             json={"employee_id": 1, "position_id": 1, "date": "2026-04-20", "shift_template_id": 1},
         )
         self.assertEqual(denied_create.status_code, 403)
+        denied_day_status = self.client.post(
+            "/api/employee-day-statuses",
+            headers=read_only_headers,
+            json={"employee_id": 1, "date": "2026-04-20", "status_type": "sick"},
+        )
+        self.assertEqual(denied_day_status.status_code, 403)
 
     def test_schedule_entry_status_and_clear_week_flow(self):
         employee_id = self._create_employee()

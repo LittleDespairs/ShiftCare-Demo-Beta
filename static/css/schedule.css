@@ -166,7 +166,9 @@
 
         .schedule-display-control {
             display: flex;
+            flex-wrap: wrap;
             justify-content: flex-end;
+            gap: 12px;
         }
 
         body.rtl .schedule-display-control {
@@ -174,7 +176,7 @@
         }
 
         .schedule-display-field {
-            width: min(320px, 100%);
+            width: min(260px, 100%);
         }
 
         .schedule-status-strip {
@@ -772,6 +774,19 @@
             font-size: 0.66rem;
             color: var(--muted);
             line-height: 1.25;
+        }
+
+        .schedule-panel.card-display-compact .entry-card {
+            padding-top: 5px;
+            padding-bottom: 5px;
+        }
+
+        .schedule-panel.card-display-compact .entry-title {
+            margin-bottom: 0;
+        }
+
+        .schedule-panel.card-display-compact .entry-meta {
+            display: none;
         }
 
         .entry-delete {

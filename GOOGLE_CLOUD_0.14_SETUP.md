@@ -16,6 +16,33 @@ For Google Cloud deployment, the intended backend path is:
 Cloud Run API -> Cloud SQL PostgreSQL
 ```
 
+## Current Implementation Status
+
+As of `0.14.1_beta`, the deployable Cloud Run container is suitable for backend smoke tests only.
+The application data layer is still SQLite-based (`sqlite3`, SQLite DDL, SQLite backup/restore).
+Do not connect production organization data to Cloud Run until the PostgreSQL adapter and migrations are implemented.
+
+Current working beta path:
+
+```text
+Cloud Run API smoke test -> ephemeral SQLite in /tmp
+```
+
+Production target path:
+
+```text
+Cloud Run API -> Cloud SQL PostgreSQL
+```
+
+Readiness endpoint:
+
+```text
+/api/health/ready
+```
+
+It returns HTTP `503` when the configured runtime is blocked, for example when `DATABASE_ENGINE=postgresql`
+is set before PostgreSQL support exists.
+
 ## Google Cloud Resources
 
 ```text
@@ -101,3 +128,53 @@ AUTH_TOKEN_SECRET
 ```
 
 Keep `.env` private. It is ignored by git.
+
+## Cloud Run Smoke Deployment
+
+The repository includes:
+
+```text
+Dockerfile
+requirements-cloud.txt
+cloudbuild.yaml
+```
+
+Smoke deployment command from the repository root:
+
+```bash
+gcloud builds submit --config cloudbuild.yaml --project schedule-app-beta
+```
+
+After deployment:
+
+```bash
+gcloud run services describe schedule-app-beta-api --region me-west1 --project schedule-app-beta --format="value(status.url)"
+```
+
+Open:
+
+```text
+<service-url>/api/health/live
+<service-url>/api/health/ready
+```
+
+The smoke deployment uses:
+
+```text
+APP_ENV=staging
+DATABASE_ENGINE=sqlite
+SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db
+```
+
+This is intentionally non-production because Cloud Run container storage is ephemeral.
+
+## PostgreSQL Migration Blockers
+
+Before using Cloud SQL for real beta organizations, complete these items:
+
+- Replace direct `sqlite3` calls with a database abstraction that supports PostgreSQL placeholders and row access.
+- Add PostgreSQL DDL migrations for every table currently created in `database.py`.
+- Replace SQLite-specific `PRAGMA`, `AUTOINCREMENT`, `randomblob`, and trigger syntax.
+- Replace SQLite file backup/restore for deployed mode with logical exports or Cloud SQL backups.
+- Add integration tests that run against a disposable PostgreSQL database.
+- Add Cloud SQL connection configuration to Cloud Run only after the PostgreSQL integration tests pass.

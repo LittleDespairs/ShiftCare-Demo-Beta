@@ -26,8 +26,8 @@
             canEditSchedule: false,
         },
         employee: {
-            pages: new Set(["/", "/weekly-preferences", "/organization", "/guide", "/docs"]),
-            nav: new Set(["/", "/weekly-preferences", "/organization"]),
+            pages: new Set(["/", "/schedule", "/weekly-preferences", "/organization", "/guide", "/docs"]),
+            nav: new Set(["/", "/schedule", "/weekly-preferences", "/organization"]),
             canEditSchedule: false,
         },
     };

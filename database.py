@@ -23,6 +23,12 @@ def get_windows_app_data_dir() -> Path:
 
 
 def get_database_path() -> Path:
+    configured_path = os.environ.get("SCHEDULE_APP_DATABASE_PATH", "").strip()
+    if configured_path:
+        runtime_path = Path(configured_path).expanduser()
+        runtime_path.parent.mkdir(parents=True, exist_ok=True)
+        return runtime_path
+
     if getattr(sys, "frozen", False):
         runtime_dir = get_windows_app_data_dir()
         runtime_path = runtime_dir / "schedule_app.db"

@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
+from app_config import get_app_config, validate_runtime_config
 from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
@@ -100,6 +101,46 @@ async def service_worker():
         media_type="application/javascript",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+@app.get("/api/health/live", tags=["Health"])
+def health_live():
+    return {
+        "status": "ok",
+        "app_version": APP_VERSION,
+        "environment": get_app_config().app_env,
+    }
+
+
+@app.get("/api/health/ready", tags=["Health"])
+def health_ready():
+    runtime = validate_runtime_config()
+    database_status = "ok"
+    database_error = None
+    try:
+        connection = get_connection()
+        try:
+            connection.execute("SELECT 1")
+        finally:
+            connection.close()
+    except Exception as exc:
+        database_status = "error"
+        database_error = str(exc)
+        runtime["issues"].append("Database connection check failed")
+        runtime["status"] = "blocked"
+
+    payload = {
+        "status": "ok" if runtime["status"] == "ok" and database_status == "ok" else "blocked",
+        "app_version": APP_VERSION,
+        "runtime": runtime,
+        "database": {
+            "status": database_status,
+            "error": database_error,
+        },
+    }
+    if payload["status"] != "ok":
+        raise HTTPException(status_code=503, detail=payload)
+    return payload
 
 
 # =========================
@@ -962,7 +1003,7 @@ def require_roles_if_auth_initialized(
 
 
 def require_schedule_view_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
-    return require_roles_if_auth_initialized({"owner", "admin", "scheduler", "manager", "read_only"}, authorization)
+    return require_roles_if_auth_initialized({"owner", "admin", "scheduler", "manager", "read_only", "employee"}, authorization)
 
 
 def require_schedule_edit_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
@@ -3774,7 +3815,10 @@ def get_employee_day_statuses():
 
 
 @app.post("/api/employee-day-statuses", tags=["Schedule"])
-def save_employee_day_status(status: EmployeeDayStatusCreate):
+def save_employee_day_status(
+    status: EmployeeDayStatusCreate,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3795,7 +3839,11 @@ def save_employee_day_status(status: EmployeeDayStatusCreate):
 
 
 @app.delete("/api/employee-day-statuses", tags=["Schedule"])
-def delete_employee_day_status(employee_id: int, date: str):
+def delete_employee_day_status(
+    employee_id: int,
+    date: str,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()

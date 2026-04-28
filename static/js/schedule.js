@@ -37,6 +37,8 @@
         let pendingStatusTarget = null;
         let lastGenerationSummary = null;
         let scheduleDataLoaded = false;
+        const LOCAL_COVERAGE_DISPLAY_MODE_PREFIX = "schedule_app_coverage_display_mode";
+        const LOCAL_CARD_DISPLAY_MODE_PREFIX = "schedule_app_card_display_mode";
 
         /* =========================================================
            PAGE INIT / ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ
@@ -186,6 +188,23 @@
                 .replace(/>/g, "&gt;")
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#39;");
+        }
+
+        function getActiveMembership() {
+            return window.scheduleAuth?.getActiveMembership?.() || null;
+        }
+
+        function canEditSchedule() {
+            const role = getActiveMembership()?.role;
+            if (!role || !window.scheduleAccessControl?.accessForRole) {
+                return true;
+            }
+            return Boolean(window.scheduleAccessControl.accessForRole(role).canEditSchedule);
+        }
+
+        function getUserScopedStorageKey(prefix) {
+            const userId = window.scheduleAuth?.getUser?.()?.id || "local";
+            return `${prefix}_${userId}`;
         }
 
         function formatConfirmImpactList(items) {
@@ -595,6 +614,7 @@
             document.getElementById("export-all-word-btn").addEventListener("click", exportAllSchedulesWord);
             document.getElementById("clear-message-btn").addEventListener("click", clearMessage);
             document.getElementById("schedule_coverage_display_mode").addEventListener("change", saveScheduleDisplayMode);
+            document.getElementById("schedule_card_display_mode").addEventListener("change", saveScheduleCardDisplayMode);
             document.getElementById("generation-summary-clear-btn").addEventListener("click", clearGenerationSummary);
             document.getElementById("week_start").addEventListener("change", updateScheduleActionAvailability);
             document.getElementById("position_select").addEventListener("change", updateScheduleActionAvailability);
@@ -634,6 +654,9 @@
         }
 
         function openScheduleActionModal(modalId) {
+            if (!canEditSchedule() && ["generation-actions-modal", "danger-actions-modal"].includes(modalId)) {
+                return;
+            }
             const modal = document.getElementById(modalId);
             if (!modal) return;
             modal.classList.add("is-open");
@@ -788,6 +811,7 @@
             const generationActionsButton = document.getElementById("open-generation-actions-btn");
             const outputActionsButton = document.getElementById("open-output-actions-btn");
             const dangerActionsButton = document.getElementById("open-danger-actions-btn");
+            const editable = canEditSchedule();
 
             loadButton.disabled = !hasPositions || !hasContext;
             generateButton.disabled = !scheduleDataLoaded || !hasContext;
@@ -801,6 +825,22 @@
             generationActionsButton.disabled = !hasPositions || !hasWeek;
             outputActionsButton.disabled = !hasPositions || !hasWeek;
             dangerActionsButton.disabled = !hasPositions || !hasWeek;
+
+            [
+                generateButton,
+                generateAllButton,
+                clearButton,
+                clearAllButton,
+                generationActionsButton,
+                dangerActionsButton
+            ].forEach(button => {
+                if (!button) return;
+                button.hidden = !editable;
+                button.style.display = editable ? "" : "none";
+                if (!editable) {
+                    button.disabled = true;
+                }
+            });
 
             loadButton.title = hasPositions ? "" : t("schedule_no_positions_text", "Create at least one position before loading or generating a weekly schedule.");
             generateButton.title = scheduleDataLoaded ? "" : t("schedule_action_generation_hint", "Generation is available after the selected week is loaded.");
@@ -853,9 +893,13 @@
         }
 
         function syncScheduleDisplaySelect() {
-            const select = document.getElementById("schedule_coverage_display_mode");
-            if (select) {
-                select.value = appSettings.schedule_coverage_display_mode || "interval";
+            const coverageSelect = document.getElementById("schedule_coverage_display_mode");
+            if (coverageSelect) {
+                coverageSelect.value = appSettings.schedule_coverage_display_mode || "interval";
+            }
+            const cardSelect = document.getElementById("schedule_card_display_mode");
+            if (cardSelect) {
+                cardSelect.value = appSettings.schedule_card_display_mode || "detailed";
             }
         }
 
@@ -873,6 +917,7 @@
             Object.entries(colorMap).forEach(([property, value]) => {
                 panel.style.setProperty(property, value);
             });
+            panel.classList.toggle("card-display-compact", appSettings.schedule_card_display_mode === "compact");
         }
 
         async function loadScheduleDisplaySetting() {
@@ -883,6 +928,14 @@
                 }
 
                 appSettings = await response.json();
+                const localCoverageMode = localStorage.getItem(getUserScopedStorageKey(LOCAL_COVERAGE_DISPLAY_MODE_PREFIX));
+                if (!canEditSchedule() && ["interval", "category"].includes(localCoverageMode)) {
+                    appSettings.schedule_coverage_display_mode = localCoverageMode;
+                }
+                const localCardMode = localStorage.getItem(getUserScopedStorageKey(LOCAL_CARD_DISPLAY_MODE_PREFIX));
+                appSettings.schedule_card_display_mode = ["detailed", "compact"].includes(localCardMode)
+                    ? localCardMode
+                    : "detailed";
                 syncScheduleDisplaySelect();
                 applyScheduleAppearanceSettings();
             } catch (error) {
@@ -903,6 +956,13 @@
 
             if (weekDates.length > 0 && positionId) {
                 renderScheduleTable(positionId);
+            }
+
+            if (!canEditSchedule()) {
+                localStorage.setItem(getUserScopedStorageKey(LOCAL_COVERAGE_DISPLAY_MODE_PREFIX), nextMode);
+                syncScheduleDisplaySelect();
+                applyScheduleAppearanceSettings();
+                return;
             }
 
             try {
@@ -934,6 +994,21 @@
                     renderScheduleTable(positionId);
                 }
                 showMessage(t("msg_failed_save_schedule_display", "Failed to save coverage display mode."), "danger");
+            }
+        }
+
+        function saveScheduleCardDisplayMode(event) {
+            const nextMode = event.target.value === "compact" ? "compact" : "detailed";
+            const positionId = Number(document.getElementById("position_select").value);
+            appSettings = {
+                ...appSettings,
+                schedule_card_display_mode: nextMode
+            };
+            localStorage.setItem(getUserScopedStorageKey(LOCAL_CARD_DISPLAY_MODE_PREFIX), nextMode);
+            syncScheduleDisplaySelect();
+            applyScheduleAppearanceSettings();
+            if (weekDates.length > 0 && positionId) {
+                renderScheduleTable(positionId);
             }
         }
 
@@ -1002,6 +1077,14 @@
                 allRequirements = await requirementsResponse.json();
                 allCoverageRequirements = await coverageRequirementsResponse.json();
                 appSettings = await appSettingsResponse.json();
+                const localCoverageMode = localStorage.getItem(getUserScopedStorageKey(LOCAL_COVERAGE_DISPLAY_MODE_PREFIX));
+                if (!canEditSchedule() && ["interval", "category"].includes(localCoverageMode)) {
+                    appSettings.schedule_coverage_display_mode = localCoverageMode;
+                }
+                const localCardMode = localStorage.getItem(getUserScopedStorageKey(LOCAL_CARD_DISPLAY_MODE_PREFIX));
+                appSettings.schedule_card_display_mode = ["detailed", "compact"].includes(localCardMode)
+                    ? localCardMode
+                    : "detailed";
                 syncScheduleDisplaySelect();
                 applyScheduleAppearanceSettings();
                 allShiftTemplates = await shiftTemplatesResponse.json();
@@ -1539,7 +1622,20 @@
                 .filter(item => item.position_id === positionId)
                 .map(item => item.employee_id);
 
-            return allEmployees
+            const employeeMap = new Map(allEmployees.map(employee => [employee.id, employee]));
+            allAssignments
+                .filter(item => item.position_id === positionId && !employeeMap.has(item.employee_id))
+                .forEach(item => {
+                    employeeMap.set(item.employee_id, {
+                        id: item.employee_id,
+                        full_name: item.employee_name,
+                        min_shifts_per_week: 0,
+                        target_shifts_per_week: 0,
+                        max_shifts_per_week: 0
+                    });
+                });
+
+            return Array.from(employeeMap.values())
                 .filter(employee => assignedEmployeeIds.includes(employee.id))
                 .sort((a, b) => a.full_name.localeCompare(b.full_name));
         }
@@ -2035,35 +2131,26 @@
 
         function renderReadOnlyCellBody(dayEntries, employeeId, positionId, date) {
             return `
-                <div class="add-box" aria-hidden="true">
-                    <div class="cell-actions">
-                        <button class="cell-btn primary" type="button" tabindex="-1">
-                            ${t("schedule_add_shift", "Add shift")}
-                        </button>
-                        <button class="cell-btn secondary" type="button" tabindex="-1">
-                            ${t("schedule_day_status", "Day status")}
-                        </button>
-                    </div>
-                </div>
-
-                <div class="entries-list" aria-hidden="true">
+                <div class="entries-list">
                     ${renderCellEntries(dayEntries, employeeId, positionId, date, false)}
                 </div>
             `;
         }
 
-        function renderDayStatusCover(employeeId, date, statusType) {
+        function renderDayStatusCover(employeeId, date, statusType, showActions = true) {
             return `
                 <div class="cell-status-cover ${getDayStatusClass(statusType)}">
-                    <button
-                        class="status-remove-btn delete-day-status-btn"
-                        data-employee-id="${employeeId}"
-                        data-date="${date}"
-                        type="button"
-                        title="${t("schedule_remove_status", "Remove status")}"
-                    >
-                        ×
-                    </button>
+                    ${showActions ? `
+                        <button
+                            class="status-remove-btn delete-day-status-btn"
+                            data-employee-id="${employeeId}"
+                            data-date="${date}"
+                            type="button"
+                            title="${t("schedule_remove_status", "Remove status")}"
+                        >
+                            ×
+                        </button>
+                    ` : ""}
                     <div>${getDayStatusLabel(statusType)}</div>
                 </div>
             `;
@@ -2080,6 +2167,7 @@
 
             const dayStatus = getDayStatus(employeeId, date);
             const hasFullCellStatus = dayStatus && ["sick", "day_off"].includes(dayStatus.status_type);
+            const editable = canEditSchedule();
 
             if (hasFullCellStatus) {
                 return `
@@ -2087,7 +2175,17 @@
                         <div class="schedule-day-inner">
                             ${renderReadOnlyCellBody(dayEntries, employeeId, positionId, date)}
                         </div>
-                        ${renderDayStatusCover(employeeId, date, dayStatus.status_type)}
+                        ${renderDayStatusCover(employeeId, date, dayStatus.status_type, editable)}
+                    </td>
+                `;
+            }
+
+            if (!editable) {
+                return `
+                    <td class="schedule-day-cell">
+                        <div class="schedule-day-inner ${dayEntries.length > 0 ? "has-entries" : ""}">
+                            ${renderReadOnlyCellBody(dayEntries, employeeId, positionId, date)}
+                        </div>
                     </td>
                 `;
             }
@@ -2231,6 +2329,9 @@
            ========================================================= */
 
         function bindScheduleActions() {
+            if (!canEditSchedule()) {
+                return;
+            }
             // Bind "Add shift" buttons / Привязываем кнопки добавления смен
             document.querySelectorAll(".add-shift-btn").forEach(button => {
                 button.addEventListener("click", () => {
@@ -2322,6 +2423,7 @@
         }
 
         function openShiftPicker(employeeId, positionId, date) {
+            if (!canEditSchedule()) return;
             pendingShiftTarget = { employeeId, positionId, date };
 
             const employee = allEmployees.find(item => item.id === employeeId);
@@ -2377,6 +2479,7 @@
         }
 
         function openStatusPicker(employeeId, date) {
+            if (!canEditSchedule()) return;
             pendingStatusTarget = { employeeId, date };
 
             const employee = allEmployees.find(item => item.id === employeeId);
@@ -2462,6 +2565,7 @@
            ========================================================= */
 
         async function createScheduleEntry(employeeId, positionId, date, shiftTemplateId) {
+            if (!canEditSchedule()) return;
             // Create schedule entry via backend / Создаём запись расписания через backend
             const payload = {
                 employee_id: employeeId,
@@ -2493,6 +2597,7 @@
         }
 
         async function deleteScheduleEntry(entryId) {
+            if (!canEditSchedule()) return;
             // Delete one schedule entry / Удаляем одну запись расписания
             try {
                 const response = await fetch(`/api/schedule/${entryId}`, {
@@ -2513,6 +2618,7 @@
         }
 
         async function updateScheduleEntryNoShow(entryId, noShow) {
+            if (!canEditSchedule()) return;
             try {
                 const response = await fetch(`/api/schedule/${entryId}/status`, {
                     method: "PATCH",
@@ -2540,6 +2646,7 @@
            ========================================================= */
 
         async function saveDayStatus(employeeId, date, statusType) {
+            if (!canEditSchedule()) return;
             // Save or remove employee day status
             // Сохраняем или удаляем статус сотрудника на день
             try {

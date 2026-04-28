@@ -2,6 +2,32 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
 
+## 0.14.1_beta cloud/backend hardening - 2026-04-29
+
+### What Changed
+
+- Allowed `employee` users to view the schedule while keeping schedule editing blocked for non-scheduler roles.
+- Added local per-user schedule card display mode and local read-only coverage display preferences.
+- Added backend permission checks for employee day status writes so non-scheduler roles cannot edit schedule status data through direct API calls.
+- Added backend health endpoints: `/api/health/live` and `/api/health/ready`.
+- Added runtime configuration validation for deployed environments and unsupported database engines.
+- Added `Dockerfile`, `.dockerignore`, `requirements-cloud.txt`, and `cloudbuild.yaml` for a Cloud Run smoke backend deployment.
+- Updated Google Cloud setup documentation to explicitly separate current Cloud Run smoke readiness from the future Cloud SQL/PostgreSQL production target.
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app_config.py database.py main.py`
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests`
+- Local health checks:
+  - `GET /api/health/live`
+  - `GET /api/health/ready`
+- Browser verification for `employee` schedule access, read-only schedule controls, and compact card display mode.
+
+### Current Cloud Limitation
+
+- Cloud Run smoke deployment can start the backend with ephemeral SQLite.
+- Production Cloud SQL/PostgreSQL is not enabled yet because the current data layer is still SQLite-specific.
+
 ## 0.14.1_beta - 2026-04-28
 
 ### Release Focus
