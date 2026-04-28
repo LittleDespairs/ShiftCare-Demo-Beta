@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
+import auth_repository
 from app_config import get_app_config, validate_runtime_config
 from cloud_sql import check_postgres_connection
 from database import get_connection, init_db
@@ -831,13 +832,7 @@ def build_auth_response(connection, user_id: int) -> dict:
         datetime.now(UTC) + timedelta(days=int(os.environ.get("AUTH_REFRESH_TOKEN_DAYS", "30")))
     ).replace(tzinfo=None).isoformat(timespec="seconds")
     cursor = connection.cursor()
-    cursor.execute(
-        """
-        INSERT INTO auth_sessions (user_id, token_hash, expires_at)
-        VALUES (?, ?, ?)
-        """,
-        (user_id, hash_session_token(token), expires_at),
-    )
+    auth_repository.create_auth_session(cursor, user_id, hash_session_token(token), expires_at)
     user = get_user_context(cursor, user_id)
     return {
         "access_token": token,
@@ -848,49 +843,10 @@ def build_auth_response(connection, user_id: int) -> dict:
 
 
 def get_user_context(cursor, user_id: int) -> dict:
-    cursor.execute(
-        """
-        SELECT id, email, full_name, status, email_verified, created_at, updated_at, last_login_at
-        FROM users
-        WHERE id = ?
-        """,
-        (user_id,),
-    )
-    user_row = cursor.fetchone()
-    if not user_row:
+    user = auth_repository.get_user_context(cursor, user_id)
+    if not user:
         raise HTTPException(status_code=401, detail="Invalid session")
-    cursor.execute(
-        """
-        SELECT om.organization_id, o.public_id, o.name, om.role, om.status, om.employee_id
-        FROM organization_memberships om
-        JOIN organizations o ON o.id = om.organization_id
-        WHERE om.user_id = ?
-        ORDER BY om.organization_id
-        """,
-        (user_id,),
-    )
-    memberships = [
-        {
-            "organization_id": row["organization_id"],
-            "organization_public_id": row["public_id"],
-            "organization_name": row["name"],
-            "role": row["role"],
-            "status": row["status"],
-            "employee_id": row["employee_id"],
-        }
-        for row in cursor.fetchall()
-    ]
-    return {
-        "id": user_row["id"],
-        "email": user_row["email"],
-        "full_name": user_row["full_name"],
-        "status": user_row["status"],
-        "email_verified": bool(user_row["email_verified"]),
-        "created_at": user_row["created_at"],
-        "updated_at": user_row["updated_at"],
-        "last_login_at": user_row["last_login_at"],
-        "memberships": memberships,
-    }
+    return user
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> dict:
@@ -902,20 +858,14 @@ def get_current_user(authorization: str | None = Header(default=None)) -> dict:
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute(
-            """
-            SELECT user_id
-            FROM auth_sessions
-            WHERE token_hash = ?
-              AND revoked_at IS NULL
-              AND expires_at > ?
-            """,
-            (hash_session_token(token), current_utc_timestamp()),
+        user_id = auth_repository.get_session_user_id(
+            cursor,
+            hash_session_token(token),
+            current_utc_timestamp(),
         )
-        session_row = cursor.fetchone()
-        if not session_row:
+        if not user_id:
             raise HTTPException(status_code=401, detail="Invalid or expired session")
-        return get_user_context(cursor, session_row["user_id"])
+        return get_user_context(cursor, user_id)
     finally:
         connection.close()
 
@@ -944,8 +894,7 @@ def find_any_membership_with_role(current_user: dict, allowed_roles: set[str]) -
 
 
 def active_user_count(cursor) -> int:
-    cursor.execute("SELECT COUNT(*) FROM users WHERE status = 'active'")
-    return int(cursor.fetchone()[0])
+    return auth_repository.active_user_count(cursor)
 
 
 def require_database_admin_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
@@ -1047,12 +996,12 @@ def write_auth_audit_event(
     organization_id: int | None = None,
     metadata: dict | None = None,
 ) -> None:
-    cursor.execute(
-        """
-        INSERT INTO auth_audit_events (organization_id, user_id, event_type, metadata_json)
-        VALUES (?, ?, ?, ?)
-        """,
-        (organization_id, user_id, event_type, json.dumps(metadata or {}, ensure_ascii=False)),
+    auth_repository.write_auth_audit_event(
+        cursor,
+        event_type,
+        user_id=user_id,
+        organization_id=organization_id,
+        metadata=metadata,
     )
 
 
