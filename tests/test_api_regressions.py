@@ -263,6 +263,75 @@ class ApiRegressionTests(unittest.TestCase):
         revoked_response = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(revoked_response.status_code, 401)
 
+    def test_cloud_export_import_round_trip_preserves_setup_data(self):
+        bootstrap_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Round Trip Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(bootstrap_response.status_code, 200)
+        token = bootstrap_response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        organization_id = bootstrap_response.json()["user"]["memberships"][0]["organization_id"]
+
+        employee_id = self._create_employee(headers=headers, full_name="Nurse One")
+        position_id = self._create_position(headers=headers, name="Ward Nurse")
+        template_id = self._create_shift_template(headers=headers, position_id=position_id, name="Day")
+        assignment_response = self.client.post(
+            "/api/employee-positions",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "is_primary": True,
+                "priority_score": 80,
+                "is_fallback_only": False,
+            },
+            headers=headers,
+        )
+        self.assertEqual(assignment_response.status_code, 200)
+        schedule_response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-05-04",
+                "shift_template_id": template_id,
+            },
+            headers=headers,
+        )
+        self.assertEqual(schedule_response.status_code, 200)
+
+        export_response = self.client.get(f"/api/organizations/{organization_id}/cloud-export", headers=headers)
+        self.assertEqual(export_response.status_code, 200)
+        bundle = export_response.json()
+        self.assertEqual(bundle["format"], "shiftcare.organization.v1")
+        self.assertEqual(len(bundle["records"]["employees"]), 1)
+        self.assertEqual(len(bundle["records"]["employee_positions"]), 1)
+
+        import_response = self.client.post(
+            f"/api/organizations/{organization_id}/cloud-import",
+            json={"bundle": bundle, "replace_existing": True},
+            headers=headers,
+        )
+        self.assertEqual(import_response.status_code, 200)
+        imported = import_response.json()["imported"]
+        self.assertEqual(imported["employees"], 1)
+        self.assertEqual(imported["positions"], 1)
+        self.assertEqual(imported["shift_templates"], 1)
+        self.assertEqual(imported["schedule_entries"], 1)
+
+        employees_response = self.client.get("/api/employees", headers=headers)
+        self.assertEqual(employees_response.status_code, 200)
+        self.assertEqual([employee["full_name"] for employee in employees_response.json()], ["Nurse One"])
+
+        assignments_response = self.client.get("/api/employee-positions", headers=headers)
+        self.assertEqual(assignments_response.status_code, 200)
+        self.assertEqual(len(assignments_response.json()), 1)
+
     def test_new_organization_owned_records_receive_public_ids(self):
         employee_id = self._create_employee()
         position_id = self._create_position()

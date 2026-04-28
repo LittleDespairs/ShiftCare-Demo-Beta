@@ -2,6 +2,20 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
 
+# 0.14.7_beta - 2026-04-29
+
+## Added
+
+- Added owner/admin organization export bundles for uploading local setup data to the Cloud beta API.
+- Added cloud organization import with replace-existing behavior and an automatic safety backup before import.
+- Added local cloud-link persistence for the selected cloud API URL and cloud organization identity.
+- Added a Cloud connection panel on the Organization page.
+- Added regression coverage for local organization export/import round trips.
+
+## Notes
+
+- This is the first migration/linking step, not full two-way synchronization yet.
+
 ## 0.14.6_beta - 2026-04-29
 
 ### What Changed

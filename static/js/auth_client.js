@@ -173,5 +173,6 @@
         useLocalApi,
         useCloudApi,
         isApiRequest,
+        nativeFetch,
     };
 })();

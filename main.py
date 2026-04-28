@@ -18,7 +18,7 @@ from io import BytesIO
 from pathlib import Path
 from time import monotonic
 from urllib.parse import quote, urlparse
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +34,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.14.6_beta"
+APP_VERSION = "0.14.7_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app"
 GITHUB_REPO_OWNER = "LittleDespairs"
@@ -262,6 +262,18 @@ class OrganizationInvitationCreate(BaseModel):
     employee_id: int | None = Field(default=None, ge=1)
     role: Literal["admin", "scheduler", "employee", "manager", "read_only"] = "employee"
     expires_in_days: int = Field(default=7, ge=1, le=30)
+
+
+class CloudOrganizationImportRequest(BaseModel):
+    bundle: dict[str, Any]
+    replace_existing: bool = True
+
+
+class CloudOrganizationLinkRequest(BaseModel):
+    cloud_api_base_url: str = Field(min_length=8, max_length=255)
+    cloud_organization_id: int = Field(ge=1)
+    cloud_organization_public_id: str = Field(min_length=2, max_length=120)
+    linked_at: str | None = Field(default=None, max_length=40)
 
 
 class EmployeeCreate(BaseModel):
@@ -1102,6 +1114,426 @@ def create_recovery_backup(label: str) -> str:
         return database_module.create_database_backup(label).name
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to create safety backup: {exc}") from exc
+
+
+ORGANIZATION_EXPORT_TABLES = (
+    "employees",
+    "positions",
+    "shift_templates",
+    "shift_requirements",
+    "coverage_requirements",
+    "employee_preferences",
+    "employee_week_preferences",
+    "employee_day_statuses",
+    "schedule_entries",
+    "app_settings",
+)
+
+ORGANIZATION_IMPORT_DELETE_ORDER = (
+    "schedule_entries",
+    "employee_day_statuses",
+    "employee_week_preferences",
+    "employee_preferences",
+    "coverage_requirements",
+    "shift_requirements",
+    "employee_positions",
+    "shift_templates",
+    "positions",
+    "employees",
+    "app_settings",
+)
+
+
+def fetch_table_rows(cursor: sqlite3.Cursor, table_name: str, organization_id: int) -> list[dict]:
+    order_column = "key" if table_name == "app_settings" else "id"
+    cursor.execute(f"SELECT * FROM {table_name} WHERE organization_id = ? ORDER BY {order_column}", (organization_id,))
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def build_organization_export_bundle(connection, organization_id: int, exported_by_user_id: int | None = None) -> dict:
+    cursor = connection.cursor()
+    organization = fetch_one_or_404(
+        cursor,
+        "SELECT id, public_id, name, status FROM organizations WHERE id = ?",
+        (organization_id,),
+        "Organization not found",
+    )
+    records = {table_name: fetch_table_rows(cursor, table_name, organization_id) for table_name in ORGANIZATION_EXPORT_TABLES}
+    cursor.execute(
+        """
+        SELECT ep.employee_id, e.public_id AS employee_public_id,
+               ep.position_id, p.public_id AS position_public_id,
+               ep.is_primary, ep.priority_score, ep.is_fallback_only
+        FROM employee_positions ep
+        JOIN employees e ON e.id = ep.employee_id
+        JOIN positions p ON p.id = ep.position_id
+        WHERE e.organization_id = ? AND p.organization_id = ?
+        ORDER BY ep.employee_id, ep.position_id
+        """,
+        (organization_id, organization_id),
+    )
+    records["employee_positions"] = [dict(row) for row in cursor.fetchall()]
+    return {
+        "format": "shiftcare.organization.v1",
+        "app_version": APP_VERSION,
+        "exported_at": current_utc_timestamp(),
+        "exported_by_user_id": exported_by_user_id,
+        "organization": dict(organization),
+        "records": records,
+    }
+
+
+def _source_rows_by_public_id(rows: list[dict]) -> dict[str, dict]:
+    return {str(row.get("public_id")): row for row in rows if row.get("public_id")}
+
+
+def _insert_employee_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organization_id: int, now: str) -> dict[int, int]:
+    id_map = {}
+    for row in rows:
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                organization_id, public_id, full_name, sex, min_shifts_per_week, target_shifts_per_week,
+                max_shifts_per_week, can_work_night, can_work_weekends,
+                can_work_evenings_after_night, can_work_mornings_and_evenings, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                row.get("full_name"),
+                row.get("sex"),
+                row.get("min_shifts_per_week"),
+                row.get("target_shifts_per_week"),
+                row.get("max_shifts_per_week"),
+                int(row.get("can_work_night") or 0),
+                int(row.get("can_work_weekends") or 0),
+                int(row.get("can_work_evenings_after_night") or 0),
+                int(row.get("can_work_mornings_and_evenings") or 0),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+        id_map[int(row["id"])] = int(cursor.lastrowid)
+    return id_map
+
+
+def _insert_position_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organization_id: int, now: str) -> dict[int, int]:
+    id_map = {}
+    for row in rows:
+        cursor.execute(
+            """
+            INSERT INTO positions (
+                organization_id, public_id, name, color, requires_continuous_coverage, minimum_staff_presence,
+                max_consecutive_nights, emergency_max_consecutive_nights,
+                max_consecutive_split_days, emergency_max_consecutive_split_days, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                row.get("name"),
+                row.get("color") or DEFAULT_POSITION_COLOR,
+                int(row.get("requires_continuous_coverage") or 0),
+                int(row.get("minimum_staff_presence") or 0),
+                row.get("max_consecutive_nights"),
+                row.get("emergency_max_consecutive_nights"),
+                row.get("max_consecutive_split_days"),
+                row.get("emergency_max_consecutive_split_days"),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+        id_map[int(row["id"])] = int(cursor.lastrowid)
+    return id_map
+
+
+def import_organization_bundle(connection, organization_id: int, bundle: dict, replace_existing: bool, imported_by_user_id: int) -> dict:
+    if bundle.get("format") != "shiftcare.organization.v1":
+        raise HTTPException(status_code=400, detail="Unsupported organization bundle format")
+    records = bundle.get("records") or {}
+    organization = bundle.get("organization") or {}
+    now = current_utc_timestamp()
+    cursor = connection.cursor()
+
+    target_organization = fetch_one_or_404(
+        cursor,
+        "SELECT id, public_id FROM organizations WHERE id = ?",
+        (organization_id,),
+        "Organization not found",
+    )
+    existing_counts = {
+        table_name: fetch_count(cursor, f"SELECT COUNT(*) FROM {table_name} WHERE organization_id = ?", (organization_id,))
+        for table_name in ("employees", "positions", "shift_templates", "schedule_entries")
+    }
+    if any(existing_counts.values()) and not replace_existing:
+        raise HTTPException(status_code=409, detail="Target organization already has scheduling data")
+
+    if replace_existing:
+        for table_name in ORGANIZATION_IMPORT_DELETE_ORDER:
+            if table_name == "employee_positions":
+                cursor.execute(
+                    """
+                    DELETE FROM employee_positions
+                    WHERE employee_id IN (SELECT id FROM employees WHERE organization_id = ?)
+                       OR position_id IN (SELECT id FROM positions WHERE organization_id = ?)
+                    """,
+                    (organization_id, organization_id),
+                )
+            else:
+                cursor.execute(f"DELETE FROM {table_name} WHERE organization_id = ?", (organization_id,))
+
+    cursor.execute(
+        "UPDATE organizations SET name = ?, status = 'active', updated_at = ? WHERE id = ?",
+        (organization.get("name") or "Imported Organization", now, organization_id),
+    )
+
+    employee_id_map = _insert_employee_bundle_rows(cursor, records.get("employees") or [], organization_id, now)
+    position_id_map = _insert_position_bundle_rows(cursor, records.get("positions") or [], organization_id, now)
+    employees_by_public_id = _source_rows_by_public_id(records.get("employees") or [])
+    positions_by_public_id = _source_rows_by_public_id(records.get("positions") or [])
+
+    shift_template_id_map = {}
+    for row in records.get("shift_templates") or []:
+        new_position_id = position_id_map.get(int(row["position_id"])) if row.get("position_id") is not None else None
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (
+                organization_id, public_id, position_id, category, name, start_time, end_time,
+                is_overnight, is_active, is_split_only, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                new_position_id,
+                row.get("category"),
+                row.get("name"),
+                row.get("start_time"),
+                row.get("end_time"),
+                int(row.get("is_overnight") or 0),
+                int(row.get("is_active") if row.get("is_active") is not None else 1),
+                int(row.get("is_split_only") or 0),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+        shift_template_id_map[int(row["id"])] = int(cursor.lastrowid)
+
+    for row in records.get("employee_positions") or []:
+        source_employee = employees_by_public_id.get(str(row.get("employee_public_id")))
+        source_position = positions_by_public_id.get(str(row.get("position_public_id")))
+        if not source_employee or not source_position:
+            continue
+        new_employee_id = employee_id_map.get(int(source_employee["id"]))
+        new_position_id = position_id_map.get(int(source_position["id"]))
+        if not new_employee_id or not new_position_id:
+            continue
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO employee_positions (
+                employee_id, position_id, is_primary, priority_score, is_fallback_only
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                new_employee_id,
+                new_position_id,
+                int(row.get("is_primary") or 0),
+                int(row.get("priority_score") or 50),
+                int(row.get("is_fallback_only") or 0),
+            ),
+        )
+
+    for row in records.get("shift_requirements") or []:
+        new_position_id = position_id_map.get(int(row["position_id"]))
+        if not new_position_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO shift_requirements (
+                organization_id, public_id, position_id, shift_category, required_total,
+                required_female_min, required_male_min, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                new_position_id,
+                row.get("shift_category"),
+                int(row.get("required_total") or 0),
+                int(row.get("required_female_min") or 0),
+                int(row.get("required_male_min") or 0),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+
+    for row in records.get("coverage_requirements") or []:
+        new_position_id = position_id_map.get(int(row["position_id"]))
+        if not new_position_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO coverage_requirements (
+                organization_id, public_id, position_id, start_time, end_time, required_total,
+                required_female_min, required_male_min, is_overnight, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                new_position_id,
+                row.get("start_time"),
+                row.get("end_time"),
+                int(row.get("required_total") or 0),
+                int(row.get("required_female_min") or 0),
+                int(row.get("required_male_min") or 0),
+                int(row.get("is_overnight") or 0),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+
+    for row in records.get("employee_preferences") or []:
+        new_employee_id = employee_id_map.get(int(row["employee_id"]))
+        if not new_employee_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO employee_preferences (
+                organization_id, public_id, employee_id, allow_morning, allow_evening, allow_night,
+                allow_morning_evening_combo, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                new_employee_id,
+                int(row.get("allow_morning") or 0),
+                int(row.get("allow_evening") or 0),
+                int(row.get("allow_night") or 0),
+                int(row.get("allow_morning_evening_combo") or 0),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+
+    for row in records.get("employee_week_preferences") or []:
+        new_employee_id = employee_id_map.get(int(row["employee_id"]))
+        if not new_employee_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO employee_week_preferences (
+                organization_id, public_id, employee_id, week_start_date, preference_date,
+                preference_type, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                new_employee_id,
+                row.get("week_start_date"),
+                row.get("preference_date"),
+                row.get("preference_type"),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+
+    for row in records.get("employee_day_statuses") or []:
+        new_employee_id = employee_id_map.get(int(row["employee_id"]))
+        if not new_employee_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO employee_day_statuses (
+                organization_id, public_id, employee_id, date, status_type, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                new_employee_id,
+                row.get("date"),
+                row.get("status_type"),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+
+    for row in records.get("schedule_entries") or []:
+        new_employee_id = employee_id_map.get(int(row["employee_id"]))
+        new_position_id = position_id_map.get(int(row["position_id"]))
+        new_template_id = shift_template_id_map.get(int(row["shift_template_id"]))
+        if not new_employee_id or not new_position_id or not new_template_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO schedule_entries (
+                organization_id, public_id, employee_id, position_id, date, shift_template_id,
+                no_show, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                new_employee_id,
+                new_position_id,
+                row.get("date"),
+                new_template_id,
+                int(row.get("no_show") or 0),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+
+    for row in records.get("app_settings") or []:
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO app_settings (organization_id, key, value)
+            VALUES (?, ?, ?)
+            """,
+            (organization_id, row.get("key"), row.get("value")),
+        )
+
+    write_auth_audit_event(
+        cursor,
+        "organization_cloud_imported",
+        user_id=imported_by_user_id,
+        organization_id=organization_id,
+        metadata={"source_organization_public_id": organization.get("public_id"), "source_app_version": bundle.get("app_version")},
+    )
+    return {
+        "organization_id": organization_id,
+        "organization_public_id": target_organization["public_id"],
+        "source_organization_public_id": organization.get("public_id"),
+        "imported": {
+            "employees": len(employee_id_map),
+            "positions": len(position_id_map),
+            "shift_templates": len(shift_template_id_map),
+            "schedule_entries": len(records.get("schedule_entries") or []),
+        },
+    }
 
 
 def normalize_version(value: str) -> str:
@@ -2406,6 +2838,99 @@ def get_organization_invitations(organization_id: int, current_user: dict = Depe
             (organization_id,),
         )
         return {"invitations": [dict(row) for row in cursor.fetchall()]}
+    finally:
+        connection.close()
+
+
+@app.get("/api/organizations/{organization_id}/cloud-export", tags=["Auth"])
+def export_organization_for_cloud(organization_id: int, current_user: dict = Depends(get_current_user)):
+    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    connection = get_connection()
+    try:
+        return build_organization_export_bundle(connection, organization_id, exported_by_user_id=current_user["id"])
+    finally:
+        connection.close()
+
+
+@app.post("/api/organizations/{organization_id}/cloud-import", tags=["Auth"])
+def import_organization_from_cloud_bundle(
+    organization_id: int,
+    request_data: CloudOrganizationImportRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    connection = get_connection()
+    try:
+        backup_name = create_recovery_backup("cloud_import")
+        result = import_organization_bundle(
+            connection,
+            organization_id,
+            request_data.bundle,
+            request_data.replace_existing,
+            imported_by_user_id=current_user["id"],
+        )
+        connection.commit()
+        return {"message": "Organization imported successfully", "backup_name": backup_name, **result}
+    except sqlite3.IntegrityError as exc:
+        connection.rollback()
+        raise HTTPException(status_code=409, detail=f"Organization import conflict: {exc}") from exc
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.post("/api/organizations/{organization_id}/cloud-link", tags=["Auth"])
+def save_organization_cloud_link(
+    organization_id: int,
+    request_data: CloudOrganizationLinkRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    cloud_base_url = normalize_public_app_base_url(request_data.cloud_api_base_url)
+    if not cloud_base_url:
+        raise HTTPException(status_code=400, detail="Invalid Cloud API base URL")
+    linked_at = request_data.linked_at or current_utc_timestamp()
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        fetch_one_or_404(cursor, "SELECT id FROM organizations WHERE id = ?", (organization_id,), "Organization not found")
+        for key, value in {
+            "cloud_api_base_url": cloud_base_url,
+            "cloud_organization_id": str(request_data.cloud_organization_id),
+            "cloud_organization_public_id": request_data.cloud_organization_public_id,
+            "cloud_linked_at": linked_at,
+        }.items():
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO app_settings (organization_id, key, value)
+                VALUES (?, ?, ?)
+                """,
+                (organization_id, key, value),
+            )
+        write_auth_audit_event(
+            cursor,
+            "organization_cloud_linked",
+            user_id=current_user["id"],
+            organization_id=organization_id,
+            metadata={
+                "cloud_api_base_url": cloud_base_url,
+                "cloud_organization_id": request_data.cloud_organization_id,
+                "cloud_organization_public_id": request_data.cloud_organization_public_id,
+            },
+        )
+        connection.commit()
+        return {
+            "message": "Cloud link saved",
+            "cloud_api_base_url": cloud_base_url,
+            "cloud_organization_id": request_data.cloud_organization_id,
+            "cloud_organization_public_id": request_data.cloud_organization_public_id,
+            "linked_at": linked_at,
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 

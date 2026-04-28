@@ -37,6 +37,13 @@
             org_employee_portal: "Employee portal",
             org_employee_portal_text: "Public login page for employees.",
             org_employee_site_address: "Employee site address",
+            org_cloud_link: "Cloud connection",
+            org_cloud_link_text: "Upload this local organization to the Cloud beta API and link this installation to it.",
+            org_cloud_api: "Cloud API",
+            org_cloud_email: "Cloud owner email",
+            org_cloud_password: "Cloud owner password",
+            org_cloud_replace: "Replace scheduling data in the selected cloud organization",
+            org_cloud_upload: "Upload and link cloud organization",
             org_members: "Members",
             org_members_text: "Active users and organization roles.",
             org_invitations: "Invitations",
@@ -103,6 +110,13 @@
             org_employee_portal: "Портал сотрудников",
             org_employee_portal_text: "Публичная страница входа для сотрудников.",
             org_employee_site_address: "Адрес сайта для сотрудников",
+            org_cloud_link: "Подключение к облаку",
+            org_cloud_link_text: "Загрузите эту локальную организацию в Cloud beta API и привяжите эту установку к ней.",
+            org_cloud_api: "Cloud API",
+            org_cloud_email: "Email владельца в облаке",
+            org_cloud_password: "Пароль владельца в облаке",
+            org_cloud_replace: "Заменить данные расписания в выбранной облачной организации",
+            org_cloud_upload: "Загрузить и привязать облачную организацию",
             org_members: "Участники",
             org_members_text: "Активные пользователи и роли организации.",
             org_invitations: "Приглашения",
@@ -169,6 +183,13 @@
             org_employee_portal: "פורטל עובדים",
             org_employee_portal_text: "עמוד כניסה ציבורי לעובדים.",
             org_employee_site_address: "כתובת אתר לעובדים",
+            org_cloud_link: "חיבור לענן",
+            org_cloud_link_text: "העלה את הארגון המקומי ל-Cloud beta API וקשר את ההתקנה הזו אליו.",
+            org_cloud_api: "Cloud API",
+            org_cloud_email: "אימייל בעלים בענן",
+            org_cloud_password: "סיסמת בעלים בענן",
+            org_cloud_replace: "החלף נתוני סידור בארגון הענן שנבחר",
+            org_cloud_upload: "העלה וקשר ארגון ענן",
             org_members: "חברים",
             org_members_text: "משתמשים פעילים ותפקידי הארגון.",
             org_invitations: "הזמנות",
@@ -257,24 +278,15 @@
         setText("#employee-portal-panel .settings-section-text", "org_employee_portal_text");
         setText("#employee-portal-panel label span", "org_employee_site_address");
         setText("#copy-employee-portal-btn", "org_copy_link");
+        setText("#cloud-link-panel .settings-section-title", "org_cloud_link");
+        setText("#cloud-link-panel .settings-section-text", "org_cloud_link_text");
+        setText('label[for="cloud-api-base-url"] span, #cloud-link-form label:nth-of-type(1) span', "org_cloud_api");
+        setText("#cloud-link-form label:nth-of-type(2) span", "org_cloud_email");
+        setText("#cloud-link-form label:nth-of-type(3) span", "org_cloud_password");
+        setText("#cloud-link-form .checkbox-row span", "org_cloud_replace");
+        setText("#cloud-link-form > .btn", "org_cloud_upload");
         setText("#invite-result-wrap label span", "org_invitation_link");
         setText("#copy-invite-btn", "org_copy_link");
-        const panels = Array.from(document.querySelectorAll(".organization-panel"));
-        const panelKeys = [
-            ["org_account", "org_account_text"],
-            ["org_employee_portal", "org_employee_portal_text"],
-            ["org_invite", "org_invite_text"],
-            ["org_members", "org_members_text"],
-            ["org_invitations", "org_invitations_text"],
-        ];
-        panels.forEach((panel, index) => {
-            const keys = panelKeys[index];
-            if (!keys) return;
-            const title = panel.querySelector(".settings-section-title");
-            const textBlock = panel.querySelector(".settings-section-text");
-            if (title) title.textContent = t(keys[0]);
-            if (textBlock) textBlock.textContent = t(keys[1]);
-        });
         setText(".organization-table th:nth-child(1)", "org_table_name");
         setText(".organization-table th:nth-child(4)", "org_table_status");
         setText(".organization-table:first-of-type th:nth-child(5)", "org_email_verified");

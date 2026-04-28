@@ -399,6 +399,116 @@
         });
     }
 
+    function normalizeCloudApiBaseUrl(value) {
+        const normalized = window.scheduleAuth.setApiBaseUrl(value);
+        window.scheduleAuth.useLocalApi();
+        return normalized;
+    }
+
+    function setCloudStatus(value, type = "") {
+        if (!elements.cloudLinkStatus) return;
+        elements.cloudLinkStatus.textContent = value || "";
+        elements.cloudLinkStatus.className = `organization-message ${type}`.trim();
+    }
+
+    async function cloudRequest(baseUrl, path, options = {}, token = "") {
+        const headers = new Headers(options.headers || {});
+        if (token) headers.set("Authorization", `Bearer ${token}`);
+        if (options.body && !headers.has("Content-Type")) {
+            headers.set("Content-Type", "application/json");
+        }
+        const response = await window.scheduleAuth.nativeFetch(`${baseUrl}${path}`, { ...options, headers });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.detail || `Cloud request failed with ${response.status}`);
+        }
+        return data;
+    }
+
+    function getCloudMembership(cloudUser) {
+        const memberships = (cloudUser?.memberships || []).filter((membership) => membership.status === "active");
+        const preferred = memberships.find((membership) => membership.role === "owner" || membership.role === "admin");
+        return preferred || memberships[0] || null;
+    }
+
+    async function loginOrBootstrapCloud(baseUrl) {
+        const email = elements.cloudEmail.value.trim();
+        const password = elements.cloudPassword.value;
+        try {
+            return await cloudRequest(baseUrl, "/api/auth/login", {
+                method: "POST",
+                body: JSON.stringify({ email, password }),
+            });
+        } catch (loginError) {
+            const status = await cloudRequest(baseUrl, "/api/auth/status");
+            if (!status.bootstrap_available) {
+                throw loginError;
+            }
+            return cloudRequest(baseUrl, "/api/auth/bootstrap", {
+                method: "POST",
+                body: JSON.stringify({
+                    organization_name: state.organizationName || "ShiftCare Organization",
+                    full_name: state.user.full_name || "Organization Owner",
+                    email,
+                    password,
+                }),
+            });
+        }
+    }
+
+    async function uploadAndLinkCloudOrganization() {
+        if (!canManageInvitations()) {
+            setCloudStatus("Only owners and admins can connect this organization to cloud.", "error");
+            return;
+        }
+        const cloudBaseUrl = normalizeCloudApiBaseUrl(elements.cloudApiBaseUrl.value);
+        if (!cloudBaseUrl) {
+            setCloudStatus("Enter a valid Cloud API URL.", "error");
+            return;
+        }
+        setMessage("", "");
+        setCloudStatus("Preparing local organization export...", "");
+        try {
+            const localBundle = await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-export`);
+            setCloudStatus("Signing in to Cloud beta API...", "");
+            const cloudSession = await loginOrBootstrapCloud(cloudBaseUrl);
+            const cloudMembership = getCloudMembership(cloudSession.user);
+            if (!cloudMembership || !["owner", "admin"].includes(cloudMembership.role)) {
+                throw new Error("Cloud account must be an owner or admin of the target organization.");
+            }
+            setCloudStatus("Uploading local organization to cloud...", "");
+            const importResponse = await cloudRequest(
+                cloudBaseUrl,
+                `/api/organizations/${cloudMembership.organization_id}/cloud-import`,
+                {
+                    method: "POST",
+                    body: JSON.stringify({
+                        bundle: localBundle,
+                        replace_existing: elements.cloudReplaceExisting.checked,
+                    }),
+                },
+                cloudSession.access_token,
+            );
+            setCloudStatus("Saving cloud link locally...", "");
+            await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-link`, {
+                method: "POST",
+                body: JSON.stringify({
+                    cloud_api_base_url: cloudBaseUrl,
+                    cloud_organization_id: cloudMembership.organization_id,
+                    cloud_organization_public_id: importResponse.organization_public_id || cloudMembership.organization_public_id,
+                    linked_at: new Date().toISOString(),
+                }),
+            });
+            setCloudStatus(
+                `Linked. Imported ${importResponse.imported.employees} employees, ${importResponse.imported.positions} positions, ${importResponse.imported.shift_templates} shift templates.`,
+                "success",
+            );
+            elements.cloudPassword.value = "";
+        } catch (error) {
+            setCloudStatus(error.message, "error");
+        }
+    }
+
     function bindActions() {
         elements.organizationSelect.addEventListener("change", async () => {
             window.scheduleAuth.setActiveOrganizationId(Number(elements.organizationSelect.value));
@@ -422,6 +532,10 @@
             if (!elements.employeePortalUrl.value) return;
             await navigator.clipboard.writeText(elements.employeePortalUrl.value);
             setMessage(uiText("org_msg_employee_portal_copied", "Employee portal link copied."), "success");
+        });
+        elements.cloudLinkForm?.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await uploadAndLinkCloudOrganization();
         });
         elements.inviteRole.addEventListener("change", renderEmployeeSelector);
         elements.membersBody.addEventListener("click", (event) => {
@@ -470,13 +584,19 @@
             inviteEmail: document.getElementById("invite-email"),
             inviteRole: document.getElementById("invite-role"),
             inviteDays: document.getElementById("invite-days"),
-            inviteResult: document.getElementById("invite-result"),
-            inviteResultWrap: document.getElementById("invite-result-wrap"),
-            copyInvite: document.getElementById("copy-invite-btn"),
-            employeePortalUrl: document.getElementById("employee-portal-url"),
-            copyEmployeePortal: document.getElementById("copy-employee-portal-btn"),
-            logout: document.getElementById("logout-btn"),
-        });
+        inviteResult: document.getElementById("invite-result"),
+        inviteResultWrap: document.getElementById("invite-result-wrap"),
+        copyInvite: document.getElementById("copy-invite-btn"),
+        employeePortalUrl: document.getElementById("employee-portal-url"),
+        copyEmployeePortal: document.getElementById("copy-employee-portal-btn"),
+        cloudLinkForm: document.getElementById("cloud-link-form"),
+        cloudApiBaseUrl: document.getElementById("cloud-api-base-url"),
+        cloudEmail: document.getElementById("cloud-email"),
+        cloudPassword: document.getElementById("cloud-password"),
+        cloudReplaceExisting: document.getElementById("cloud-replace-existing"),
+        cloudLinkStatus: document.getElementById("cloud-link-status"),
+        logout: document.getElementById("logout-btn"),
+    });
 
         state.user = window.scheduleAuth.requireSession();
         if (!state.user) return;
@@ -485,6 +605,9 @@
         bindActions();
         try {
             state.clientConfig = await window.scheduleAuth.request("/api/client-config");
+            if (elements.cloudApiBaseUrl) {
+                elements.cloudApiBaseUrl.value = state.clientConfig.default_api_base_url || window.scheduleAuth.CLOUD_API_BASE_URL;
+            }
             await refreshCurrentUser();
             renderOrganizationSelector();
             renderIdentity();
