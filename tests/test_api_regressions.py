@@ -120,6 +120,8 @@ class ApiRegressionTests(unittest.TestCase):
             "organization_invitations",
             "auth_audit_events",
             "auth_sessions",
+            "schema_metadata",
+            "schema_migrations",
         ):
             cursor.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -159,6 +161,16 @@ class ApiRegressionTests(unittest.TestCase):
         cursor.execute("PRAGMA table_info(app_settings)")
         app_settings_columns = {row["name"] for row in cursor.fetchall()}
         self.assertIn("organization_id", app_settings_columns)
+
+        cursor.execute("SELECT value FROM schema_metadata WHERE key = 'schema_version'")
+        schema_version_row = cursor.fetchone()
+        self.assertIsNotNone(schema_version_row)
+        self.assertEqual(int(schema_version_row["value"]), database.CURRENT_SCHEMA_VERSION)
+
+        cursor.execute("SELECT to_version FROM schema_migrations ORDER BY id DESC LIMIT 1")
+        migration_row = cursor.fetchone()
+        self.assertIsNotNone(migration_row)
+        self.assertEqual(migration_row["to_version"], database.CURRENT_SCHEMA_VERSION)
 
     def test_auth_bootstrap_login_me_and_logout_flow(self):
         payload = {

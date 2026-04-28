@@ -51,6 +51,7 @@ def get_database_path() -> Path:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
+CURRENT_SCHEMA_VERSION = 14
 PUBLIC_ID_TABLE_PREFIXES = {
     "employees": "emp",
     "positions": "pos",
@@ -72,6 +73,69 @@ def _table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
 def _add_column_if_missing(cursor: sqlite3.Cursor, table_name: str, column_name: str, definition: str) -> None:
     if column_name not in _table_columns(cursor, table_name):
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def _ensure_schema_migration_tables(cursor: sqlite3.Cursor) -> None:
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS schema_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_version INTEGER NOT NULL,
+            to_version INTEGER NOT NULL,
+            description TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+
+def _get_schema_version(cursor: sqlite3.Cursor) -> int:
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_metadata'"
+    )
+    if not cursor.fetchone():
+        return 0
+    cursor.execute("SELECT value FROM schema_metadata WHERE key = 'schema_version'")
+    row = cursor.fetchone()
+    if not row:
+        return 0
+    try:
+        return int(row["value"])
+    except (TypeError, ValueError):
+        return 0
+
+
+def _set_schema_version(cursor: sqlite3.Cursor, version: int) -> None:
+    cursor.execute(
+        """
+        INSERT INTO schema_metadata (key, value, updated_at)
+        VALUES ('schema_version', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key)
+        DO UPDATE SET value = excluded.value,
+                      updated_at = excluded.updated_at
+        """,
+        (str(version),),
+    )
+
+
+def _record_schema_migration(
+    cursor: sqlite3.Cursor,
+    from_version: int,
+    to_version: int,
+    description: str,
+) -> None:
+    cursor.execute(
+        """
+        INSERT INTO schema_migrations (from_version, to_version, description)
+        VALUES (?, ?, ?)
+        """,
+        (from_version, to_version, description),
+    )
 
 
 def _ensure_public_ids(cursor: sqlite3.Cursor, table_name: str, prefix: str) -> None:
@@ -191,6 +255,8 @@ def init_db():
 
     # Turn on foreign keys in SQLite / Включаем внешние ключи в SQLite
     cursor.execute("PRAGMA foreign_keys = ON")
+    previous_schema_version = _get_schema_version(cursor)
+    _ensure_schema_migration_tables(cursor)
 
     # ==========================================
     # Organizations and authorization / Организации и авторизация
@@ -714,6 +780,15 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position
         ON coverage_requirements (organization_id, position_id)
     """)
+
+    if previous_schema_version < CURRENT_SCHEMA_VERSION:
+        _record_schema_migration(
+            cursor,
+            previous_schema_version,
+            CURRENT_SCHEMA_VERSION,
+            "Initialize organization authorization and cloud-ready local schema",
+        )
+        _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
 
     connection.commit()
     connection.close()

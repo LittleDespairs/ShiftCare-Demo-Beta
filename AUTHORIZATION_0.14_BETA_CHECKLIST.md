@@ -58,7 +58,7 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
   - [x] Settings.
 - [x] Add stable IDs for records that will be synchronized later.
 - [x] Add `created_at`, `updated_at`, and `updated_by` where needed.
-- [ ] Add schema migration path from existing local databases.
+- [x] Add schema migration path from existing local databases.
 
 ### 5. Authentication
 
@@ -223,7 +223,7 @@ Planning checklist for the `0.14.x_beta` line. Main focus: introduce user author
   - [x] Настройки.
 - [x] Добавить стабильные ID для записей, которые позже будут синхронизироваться.
 - [x] Добавить `created_at`, `updated_at` и `updated_by` там, где это нужно.
-- [ ] Подготовить путь миграции из существующих локальных баз.
+- [x] Подготовить путь миграции из существующих локальных баз.
 
 ### 5. Авторизация
 
