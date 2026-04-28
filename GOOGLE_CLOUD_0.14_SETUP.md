@@ -142,7 +142,7 @@ cloudbuild.yaml
 Smoke deployment command from the repository root:
 
 ```bash
-gcloud builds submit --config cloudbuild.yaml --project schedule-app-beta
+gcloud builds submit --config cloudbuild.yaml --project schedule-app-beta --substitutions=_TAG=0.14.2-beta
 ```
 
 After deployment:
