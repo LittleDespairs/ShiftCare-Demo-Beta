@@ -137,6 +137,21 @@
                         <button class="btn btn-primary" type="submit">Upload and link cloud organization</button>
                     </form>
 
+                    <dl id="cloud-link-summary" class="organization-summary-list" hidden>
+                        <div>
+                            <dt>Linked Cloud API</dt>
+                            <dd id="cloud-link-api">-</dd>
+                        </div>
+                        <div>
+                            <dt>Cloud organization</dt>
+                            <dd id="cloud-link-organization">-</dd>
+                        </div>
+                        <div>
+                            <dt>Linked at</dt>
+                            <dd id="cloud-link-time">-</dd>
+                        </div>
+                    </dl>
+
                     <div id="cloud-link-status" class="organization-message" role="status" aria-live="polite"></div>
                 </section>
 
@@ -244,8 +259,8 @@
 <script src="/static/js/i18n.js?v={{ app_version }}-employee-schedule"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}"></script>
 <script src="/static/js/access_control.js?v={{ app_version }}-employee-schedule"></script>
-<script src="/static/js/auth_i18n.js?v={{ app_version }}-cloud-link"></script>
-<script src="/static/js/organization.js?v={{ app_version }}-cloud-link"></script>
+<script src="/static/js/auth_i18n.js?v={{ app_version }}-cloud-link-status"></script>
+<script src="/static/js/organization.js?v={{ app_version }}-cloud-link-status"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

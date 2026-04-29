@@ -34,7 +34,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.14.7_beta"
+APP_VERSION = "0.14.8_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app"
 GITHUB_REPO_OWNER = "LittleDespairs"
@@ -2931,6 +2931,40 @@ def save_organization_cloud_link(
     except HTTPException:
         connection.rollback()
         raise
+    finally:
+        connection.close()
+
+
+@app.get("/api/organizations/{organization_id}/cloud-link", tags=["Auth"])
+def get_organization_cloud_link(organization_id: int, current_user: dict = Depends(get_current_user)):
+    require_organization_role(current_user, organization_id, {"owner", "admin", "scheduler", "manager"})
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        fetch_one_or_404(cursor, "SELECT id FROM organizations WHERE id = ?", (organization_id,), "Organization not found")
+        cursor.execute(
+            """
+            SELECT key, value
+            FROM app_settings
+            WHERE organization_id = ?
+              AND key IN (
+                  'cloud_api_base_url',
+                  'cloud_organization_id',
+                  'cloud_organization_public_id',
+                  'cloud_linked_at'
+              )
+            """,
+            (organization_id,),
+        )
+        settings = {row["key"]: row["value"] for row in cursor.fetchall()}
+        cloud_organization_id = settings.get("cloud_organization_id")
+        return {
+            "linked": bool(settings.get("cloud_api_base_url") and cloud_organization_id),
+            "cloud_api_base_url": settings.get("cloud_api_base_url") or "",
+            "cloud_organization_id": int(cloud_organization_id) if cloud_organization_id else None,
+            "cloud_organization_public_id": settings.get("cloud_organization_public_id") or "",
+            "linked_at": settings.get("cloud_linked_at") or "",
+        }
     finally:
         connection.close()
 

@@ -2,6 +2,20 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
 
+# 0.14.8_beta - 2026-04-29
+
+## Added
+
+- Added a cloud-link status API for organization owners, admins, schedulers, and managers.
+- Added a cloud-link summary on the Organization page.
+- Added localized labels for linked Cloud API, cloud organization, and linked timestamp.
+- Added regression coverage for saving and reading cloud-link metadata.
+
+## Verified
+
+- `python -m unittest` - 62 tests passed.
+- Browser check confirmed the Organization page shows the cloud-link summary without console errors.
+
 # 0.14.7_beta - 2026-04-29
 
 ## Added

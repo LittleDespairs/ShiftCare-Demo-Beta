@@ -44,6 +44,10 @@
             org_cloud_password: "Cloud owner password",
             org_cloud_replace: "Replace scheduling data in the selected cloud organization",
             org_cloud_upload: "Upload and link cloud organization",
+            org_cloud_linked_status: "This installation is linked to cloud.",
+            org_cloud_linked_api: "Linked Cloud API",
+            org_cloud_linked_org: "Cloud organization",
+            org_cloud_linked_at: "Linked at",
             org_members: "Members",
             org_members_text: "Active users and organization roles.",
             org_invitations: "Invitations",
@@ -117,6 +121,10 @@
             org_cloud_password: "Пароль владельца в облаке",
             org_cloud_replace: "Заменить данные расписания в выбранной облачной организации",
             org_cloud_upload: "Загрузить и привязать облачную организацию",
+            org_cloud_linked_status: "Эта установка привязана к облаку.",
+            org_cloud_linked_api: "Привязанный Cloud API",
+            org_cloud_linked_org: "Облачная организация",
+            org_cloud_linked_at: "Дата привязки",
             org_members: "Участники",
             org_members_text: "Активные пользователи и роли организации.",
             org_invitations: "Приглашения",
@@ -190,6 +198,10 @@
             org_cloud_password: "סיסמת בעלים בענן",
             org_cloud_replace: "החלף נתוני סידור בארגון הענן שנבחר",
             org_cloud_upload: "העלה וקשר ארגון ענן",
+            org_cloud_linked_status: "התקנה זו מקושרת לענן.",
+            org_cloud_linked_api: "Cloud API מקושר",
+            org_cloud_linked_org: "ארגון ענן",
+            org_cloud_linked_at: "זמן קישור",
             org_members: "חברים",
             org_members_text: "משתמשים פעילים ותפקידי הארגון.",
             org_invitations: "הזמנות",
@@ -285,6 +297,10 @@
         setText("#cloud-link-form label:nth-of-type(3) span", "org_cloud_password");
         setText("#cloud-link-form .checkbox-row span", "org_cloud_replace");
         setText("#cloud-link-form > .btn", "org_cloud_upload");
+        setText("#cloud-link-summary dt:nth-of-type(1)", "org_cloud_linked_api");
+        setText("#cloud-link-summary div:nth-child(1) dt", "org_cloud_linked_api");
+        setText("#cloud-link-summary div:nth-child(2) dt", "org_cloud_linked_org");
+        setText("#cloud-link-summary div:nth-child(3) dt", "org_cloud_linked_at");
         setText("#invite-result-wrap label span", "org_invitation_link");
         setText("#copy-invite-btn", "org_copy_link");
         setText(".organization-table th:nth-child(1)", "org_table_name");

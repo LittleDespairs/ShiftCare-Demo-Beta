@@ -332,6 +332,30 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(assignments_response.status_code, 200)
         self.assertEqual(len(assignments_response.json()), 1)
 
+        empty_link_response = self.client.get(f"/api/organizations/{organization_id}/cloud-link", headers=headers)
+        self.assertEqual(empty_link_response.status_code, 200)
+        self.assertFalse(empty_link_response.json()["linked"])
+
+        save_link_response = self.client.post(
+            f"/api/organizations/{organization_id}/cloud-link",
+            json={
+                "cloud_api_base_url": "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app/",
+                "cloud_organization_id": 42,
+                "cloud_organization_public_id": "org_cloud_public",
+                "linked_at": "2026-04-29T03:00:00.000Z",
+            },
+            headers=headers,
+        )
+        self.assertEqual(save_link_response.status_code, 200)
+
+        linked_response = self.client.get(f"/api/organizations/{organization_id}/cloud-link", headers=headers)
+        self.assertEqual(linked_response.status_code, 200)
+        linked_payload = linked_response.json()
+        self.assertTrue(linked_payload["linked"])
+        self.assertEqual(linked_payload["cloud_api_base_url"], "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app")
+        self.assertEqual(linked_payload["cloud_organization_id"], 42)
+        self.assertEqual(linked_payload["cloud_organization_public_id"], "org_cloud_public")
+
     def test_new_organization_owned_records_receive_public_ids(self):
         employee_id = self._create_employee()
         position_id = self._create_position()

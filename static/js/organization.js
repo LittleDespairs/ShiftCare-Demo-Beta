@@ -411,6 +411,33 @@
         elements.cloudLinkStatus.className = `organization-message ${type}`.trim();
     }
 
+    function renderCloudLinkSummary(link) {
+        if (!elements.cloudLinkSummary) return;
+        elements.cloudLinkSummary.hidden = !link?.linked;
+        if (!link?.linked) return;
+        elements.cloudLinkApi.textContent = link.cloud_api_base_url || "-";
+        elements.cloudLinkOrganization.textContent = link.cloud_organization_public_id
+            ? `${link.cloud_organization_public_id} (#${link.cloud_organization_id})`
+            : `#${link.cloud_organization_id}`;
+        elements.cloudLinkTime.textContent = link.linked_at || "-";
+        if (elements.cloudApiBaseUrl && link.cloud_api_base_url) {
+            elements.cloudApiBaseUrl.value = link.cloud_api_base_url;
+        }
+    }
+
+    async function loadCloudLinkStatus() {
+        if (!state.organizationId || !canViewMembers()) return;
+        try {
+            const link = await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-link`);
+            renderCloudLinkSummary(link);
+            if (link.linked) {
+                setCloudStatus(uiText("org_cloud_linked_status", "This installation is linked to cloud."), "success");
+            }
+        } catch (error) {
+            renderCloudLinkSummary(null);
+        }
+    }
+
     async function cloudRequest(baseUrl, path, options = {}, token = "") {
         const headers = new Headers(options.headers || {});
         if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -503,6 +530,7 @@
                 `Linked. Imported ${importResponse.imported.employees} employees, ${importResponse.imported.positions} positions, ${importResponse.imported.shift_templates} shift templates.`,
                 "success",
             );
+            await loadCloudLinkStatus();
             elements.cloudPassword.value = "";
         } catch (error) {
             setCloudStatus(error.message, "error");
@@ -519,6 +547,7 @@
             try {
                 await loadOrganizationData();
                 await loadEmployeesForInvitations();
+                await loadCloudLinkStatus();
             } catch (error) {
                 setMessage(error.message, "error");
             }
@@ -584,19 +613,23 @@
             inviteEmail: document.getElementById("invite-email"),
             inviteRole: document.getElementById("invite-role"),
             inviteDays: document.getElementById("invite-days"),
-        inviteResult: document.getElementById("invite-result"),
-        inviteResultWrap: document.getElementById("invite-result-wrap"),
-        copyInvite: document.getElementById("copy-invite-btn"),
-        employeePortalUrl: document.getElementById("employee-portal-url"),
-        copyEmployeePortal: document.getElementById("copy-employee-portal-btn"),
-        cloudLinkForm: document.getElementById("cloud-link-form"),
-        cloudApiBaseUrl: document.getElementById("cloud-api-base-url"),
-        cloudEmail: document.getElementById("cloud-email"),
-        cloudPassword: document.getElementById("cloud-password"),
-        cloudReplaceExisting: document.getElementById("cloud-replace-existing"),
-        cloudLinkStatus: document.getElementById("cloud-link-status"),
-        logout: document.getElementById("logout-btn"),
-    });
+            inviteResult: document.getElementById("invite-result"),
+            inviteResultWrap: document.getElementById("invite-result-wrap"),
+            copyInvite: document.getElementById("copy-invite-btn"),
+            employeePortalUrl: document.getElementById("employee-portal-url"),
+            copyEmployeePortal: document.getElementById("copy-employee-portal-btn"),
+            cloudLinkForm: document.getElementById("cloud-link-form"),
+            cloudApiBaseUrl: document.getElementById("cloud-api-base-url"),
+            cloudEmail: document.getElementById("cloud-email"),
+            cloudPassword: document.getElementById("cloud-password"),
+            cloudReplaceExisting: document.getElementById("cloud-replace-existing"),
+            cloudLinkSummary: document.getElementById("cloud-link-summary"),
+            cloudLinkApi: document.getElementById("cloud-link-api"),
+            cloudLinkOrganization: document.getElementById("cloud-link-organization"),
+            cloudLinkTime: document.getElementById("cloud-link-time"),
+            cloudLinkStatus: document.getElementById("cloud-link-status"),
+            logout: document.getElementById("logout-btn"),
+        });
 
         state.user = window.scheduleAuth.requireSession();
         if (!state.user) return;
@@ -615,6 +648,7 @@
             renderPermissions();
             await loadOrganizationData();
             await loadEmployeesForInvitations();
+            await loadCloudLinkStatus();
         } catch (error) {
             setMessage(error.message, "error");
         }
