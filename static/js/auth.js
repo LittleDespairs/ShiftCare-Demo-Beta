@@ -8,6 +8,8 @@
     const sessionPanel = document.getElementById("current-session");
     const apiLocalButton = document.getElementById("api-local-btn");
     const apiCloudButton = document.getElementById("api-cloud-btn");
+    const apiAdvancedToggle = document.getElementById("api-advanced-toggle");
+    const apiModePanel = document.querySelector(".api-mode-panel");
     const apiModeStatus = document.getElementById("api-mode-status");
     const tabs = Array.from(document.querySelectorAll("[data-auth-tab]"));
 
@@ -86,8 +88,8 @@
         if (!apiModeStatus) return;
         const apiBaseUrl = window.scheduleAuth?.getApiBaseUrl?.() || "";
         apiModeStatus.textContent = apiBaseUrl
-            ? `Using cloud beta API: ${apiBaseUrl}`
-            : `Using local API: ${window.location.origin}`;
+            ? `Cloud workspace: ${apiBaseUrl}`
+            : `Local recovery mode: ${window.location.origin}`;
         apiLocalButton?.classList.toggle("btn-primary", !apiBaseUrl);
         apiLocalButton?.classList.toggle("btn-secondary", Boolean(apiBaseUrl));
         apiCloudButton?.classList.toggle("btn-primary", Boolean(apiBaseUrl));
@@ -101,22 +103,33 @@
             if (status.bootstrap_available) {
                 if (apiBaseUrl) {
                     setMessage(
-                        "Cloud beta API is selected and has no owner yet. Use Local if you want to create an organization only on this computer.",
+                        "Cloud workspace is ready for first owner setup.",
                         "success",
+                    );
+                } else {
+                    setMessage(
+                        "Local recovery mode is active. Use it only for migration or emergency access.",
+                        "",
                     );
                 }
                 return;
             }
             if (apiBaseUrl) {
-                setMessage(
-                    "Cloud beta API is selected and already has an owner. To create a local organization, switch to Local first.",
-                    "error",
-                );
+                setMessage("Cloud workspace already has an owner. Log in with that account.", "");
                 return;
             }
-            setMessage("This local database already has an owner. Log in with that owner account.", "");
+            setMessage("Local recovery database already has an owner. Log in only if you need migration or emergency access.", "");
         } catch (error) {
             setMessage(`Could not check authorization state: ${error.message}`, "error");
+        }
+    }
+
+    function initializeCloudFirstMode() {
+        if (!window.scheduleAuth) return;
+        const modePreference = window.scheduleAuth.getApiModePreference?.() || "";
+        const apiBaseUrl = window.scheduleAuth.getApiBaseUrl?.() || "";
+        if (!modePreference && !apiBaseUrl) {
+            window.scheduleAuth.useCloudApi();
         }
     }
 
@@ -157,6 +170,10 @@
         renderAuthStatus();
     });
 
+    apiAdvancedToggle?.addEventListener("click", () => {
+        apiModePanel?.classList.toggle("expanded");
+    });
+
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         setMessage("Signing in...", "");
@@ -192,6 +209,7 @@
         }
     });
 
+    initializeCloudFirstMode();
     renderSession();
     renderApiMode();
     renderAuthStatus();

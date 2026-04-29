@@ -12,7 +12,9 @@
             auth_your_name: "Your name",
             auth_create_owner_account: "Create owner account",
             auth_foundation: "User authorization foundation",
-            auth_foundation_text: "This screen stores the session token locally and connects the desktop workflow to organization-based access.",
+            auth_foundation_text: "Cloud is the primary workspace. Local mode is kept for migration, backups, and emergency access.",
+            auth_connection: "Connection",
+            auth_local_recovery: "Local recovery and migration",
             auth_accept_title: "Accept invitation",
             auth_create_account: "Create your account",
             auth_invitation_token: "Invitation token",
@@ -89,7 +91,9 @@
             auth_your_name: "Ваше имя",
             auth_create_owner_account: "Создать аккаунт владельца",
             auth_foundation: "Основа пользовательской авторизации",
-            auth_foundation_text: "Этот экран хранит токен сессии локально и связывает desktop workflow с доступом к организации.",
+            auth_foundation_text: "Основное рабочее пространство находится в облаке. Локальный режим оставлен для переноса, резервных копий и аварийного доступа.",
+            auth_connection: "Подключение",
+            auth_local_recovery: "Локальное восстановление и перенос",
             auth_accept_title: "Принять приглашение",
             auth_create_account: "Создайте аккаунт",
             auth_invitation_token: "Токен приглашения",
@@ -166,7 +170,9 @@
             auth_your_name: "השם שלך",
             auth_create_owner_account: "צור חשבון בעלים",
             auth_foundation: "בסיס הרשאות משתמשים",
-            auth_foundation_text: "מסך זה שומר את טוקן הסשן מקומית ומחבר את העבודה במחשב לגישה לפי ארגון.",
+            auth_foundation_text: "הענן הוא סביבת העבודה הראשית. מצב מקומי נשמר להעברה, גיבויים וגישה בחירום.",
+            auth_connection: "חיבור",
+            auth_local_recovery: "שחזור והעברה מקומית",
             auth_accept_title: "קבלת הזמנה",
             auth_create_account: "יצירת חשבון",
             auth_invitation_token: "טוקן הזמנה",
@@ -261,6 +267,8 @@
         setText("#bootstrap-form .auth-submit", "auth_create_owner_account");
         setText(".auth-side h2", document.getElementById("accept-title") ? "auth_join_org" : "auth_foundation");
         setText(".auth-side-content > p:not(.auth-kicker):not(.api-mode-status):not(.api-mode-title)", document.getElementById("accept-title") ? "auth_join_text" : "auth_foundation_text");
+        setText(".api-mode-title", "auth_connection");
+        setText("#api-advanced-toggle", "auth_local_recovery");
         setText("#accept-title", "auth_accept_title");
         setText("#accept-form label:nth-of-type(1) span", "auth_invitation_token");
         setText("#accept-form .auth-submit", "auth_accept_button");

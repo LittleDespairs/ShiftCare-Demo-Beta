@@ -97,9 +97,14 @@ body.ltr {
 }
 
 .api-mode-actions {
-    display: flex;
+    display: none;
     flex-wrap: wrap;
     gap: 8px;
+    margin-top: 10px;
+}
+
+.api-mode-panel.expanded .api-mode-actions {
+    display: flex;
 }
 
 .api-mode-actions .btn {
@@ -115,6 +120,14 @@ body.ltr {
     font-size: 0.78rem;
     line-height: 1.35;
     word-break: break-word;
+}
+
+.api-advanced-toggle {
+    margin-top: 10px;
+    min-height: 34px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 0.8rem;
 }
 
 html.embedded-admin-root,

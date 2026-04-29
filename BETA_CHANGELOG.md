@@ -2,6 +2,20 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
 
+# 0.14.9_beta - 2026-04-29
+
+## Changed
+
+- Shifted login toward a cloud-first product model.
+- Cloud workspace is selected by default when no explicit API mode was chosen.
+- Local mode is now grouped under "Local recovery and migration" instead of being shown as a primary equal mode.
+- Added a persistent API mode preference for local recovery use.
+
+## Verified
+
+- `python -m unittest` - 62 tests passed.
+- Browser check confirmed Cloud is default, Local is hidden until the recovery section is expanded, and no console errors were reported.
+
 # 0.14.8_beta - 2026-04-29
 
 ## Added

@@ -3,6 +3,7 @@
     const USER_KEY = "schedule_app_auth_user";
     const ACTIVE_ORGANIZATION_KEY = "schedule_app_active_organization_id";
     const API_BASE_URL_KEY = "schedule_app_api_base_url";
+    const API_MODE_KEY = "schedule_app_api_mode";
     const CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app";
     const nativeFetch = window.fetch.bind(window);
 
@@ -26,18 +27,25 @@
         const normalized = normalizeApiBaseUrl(value);
         if (!normalized) {
             localStorage.removeItem(API_BASE_URL_KEY);
+            localStorage.setItem(API_MODE_KEY, "local");
             return "";
         }
         localStorage.setItem(API_BASE_URL_KEY, normalized);
+        localStorage.setItem(API_MODE_KEY, "cloud");
         return normalized;
     }
 
     function useLocalApi() {
         localStorage.removeItem(API_BASE_URL_KEY);
+        localStorage.setItem(API_MODE_KEY, "local");
     }
 
     function useCloudApi() {
         return setApiBaseUrl(CLOUD_API_BASE_URL);
+    }
+
+    function getApiModePreference() {
+        return localStorage.getItem(API_MODE_KEY) || "";
     }
 
     function resolveApiUrl(input) {
@@ -167,11 +175,13 @@
         request,
         requireSession,
         API_BASE_URL_KEY,
+        API_MODE_KEY,
         CLOUD_API_BASE_URL,
         getApiBaseUrl,
         setApiBaseUrl,
         useLocalApi,
         useCloudApi,
+        getApiModePreference,
         isApiRequest,
         nativeFetch,
     };
