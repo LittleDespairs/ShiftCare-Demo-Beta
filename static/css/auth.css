@@ -2,6 +2,13 @@
     background: #f6f8fb;
 }
 
+.auth-topbar {
+    position: fixed;
+    top: 18px;
+    inset-inline-end: 18px;
+    z-index: 20;
+}
+
 .auth-layout {
     min-height: 100vh;
     display: flex;
@@ -406,7 +413,15 @@
 }
 
 @media (max-width: 860px) {
+    .auth-topbar {
+        position: static;
+        display: flex;
+        justify-content: center;
+        padding: 18px 18px 0;
+    }
+
     .auth-layout {
+        min-height: calc(100vh - 74px);
         padding: 18px;
     }
 

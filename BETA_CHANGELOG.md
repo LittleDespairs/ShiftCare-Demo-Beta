@@ -2,6 +2,16 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.3_beta - 2026-04-30
+
+## Fixed
+
+- Added RU/HE translations and a top language switcher to the authorization page without exposing raw `auth_*` keys.
+- Hidden schedule coverage rows and coverage display controls in the hosted employee web interface while preserving desktop coverage tools.
+- Repaired employee portal account linking so accepted employee members are automatically linked back to employee records.
+- Added ID-card login fallback for legacy unlinked employee members when the employee record can be identified safely.
+- Updated service worker cache keys and Windows packaging metadata to `0.15.3_beta`.
+
 # 0.15.2_beta - 2026-04-30
 
 ## Changed

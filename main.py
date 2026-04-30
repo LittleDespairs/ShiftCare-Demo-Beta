@@ -34,7 +34,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.2_beta"
+APP_VERSION = "0.15.3_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
@@ -1192,7 +1192,70 @@ def find_user_for_login(cursor, identifier: str):
         """,
         (id_card,),
     )
-    return cursor.fetchone()
+    user_row = cursor.fetchone()
+    if user_row:
+        return user_row
+
+    cursor.execute(
+        """
+        SELECT u.id, u.password_hash, u.status
+        FROM employees e
+        JOIN organization_invitations oi
+            ON oi.organization_id = e.organization_id
+           AND oi.employee_id = e.id
+           AND oi.role = 'employee'
+           AND oi.status = 'accepted'
+        JOIN users u ON lower(u.email) = lower(oi.email)
+        JOIN organization_memberships om
+            ON om.organization_id = e.organization_id
+           AND om.user_id = u.id
+           AND om.role = 'employee'
+           AND om.status = 'active'
+           AND om.employee_id IS NULL
+        WHERE replace(replace(replace(e.id_card, '-', ''), ' ', ''), '.', '') = ?
+          AND NOT EXISTS (
+              SELECT 1
+              FROM organization_memberships linked
+              WHERE linked.organization_id = e.organization_id
+                AND linked.employee_id = e.id
+                AND linked.status = 'active'
+          )
+        ORDER BY oi.accepted_at DESC, oi.id DESC
+        LIMIT 1
+        """,
+        (id_card,),
+    )
+    user_row = cursor.fetchone()
+    if user_row:
+        return user_row
+
+    cursor.execute(
+        """
+        SELECT u.id, u.password_hash, u.status
+        FROM employees e
+        JOIN organization_memberships om
+            ON om.organization_id = e.organization_id
+           AND om.role = 'employee'
+           AND om.status = 'active'
+           AND om.employee_id IS NULL
+        JOIN users u ON u.id = om.user_id
+        WHERE replace(replace(replace(e.id_card, '-', ''), ' ', ''), '.', '') = ?
+          AND lower(trim(u.full_name)) = lower(trim(e.full_name))
+          AND NOT EXISTS (
+              SELECT 1
+              FROM organization_memberships linked
+              WHERE linked.organization_id = e.organization_id
+                AND linked.employee_id = e.id
+                AND linked.status = 'active'
+          )
+        ORDER BY u.id
+        """,
+        (id_card,),
+    )
+    rows = cursor.fetchall()
+    if len(rows) == 1:
+        return rows[0]
+    return None
 
 
 def token_expiration(days: int = 1) -> str:
@@ -1266,19 +1329,15 @@ def find_any_membership_with_role(current_user: dict, allowed_roles: set[str]) -
     return None
 
 
-def repair_employee_membership_links(cursor, current_user: dict) -> bool:
-    repaired = False
-    user_email = str(current_user.get("email") or "").strip().lower()
-    if not user_email:
-        return False
-
-    for membership in current_user.get("memberships") or []:
-        if membership.get("status") != "active" or membership.get("role") != "employee":
-            continue
-        if membership.get("employee_id"):
-            continue
-
-        organization_id = int(membership["organization_id"])
+def find_repair_employee_id_for_member(
+    cursor,
+    organization_id: int,
+    user_id: int,
+    user_email: str,
+    full_name: str,
+) -> int | None:
+    normalized_email = str(user_email or "").strip().lower()
+    if normalized_email:
         cursor.execute(
             """
             SELECT oi.employee_id
@@ -1289,16 +1348,68 @@ def repair_employee_membership_links(cursor, current_user: dict) -> bool:
               AND oi.role = 'employee'
               AND oi.status = 'accepted'
               AND oi.employee_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM organization_memberships linked
+                  WHERE linked.organization_id = oi.organization_id
+                    AND linked.employee_id = oi.employee_id
+                    AND linked.user_id != ?
+                    AND linked.status = 'active'
+              )
             ORDER BY oi.accepted_at DESC, oi.id DESC
             LIMIT 1
             """,
-            (organization_id, user_email),
+            (organization_id, normalized_email, user_id),
         )
         invitation = cursor.fetchone()
-        if not invitation:
+        if invitation:
+            return int(invitation["employee_id"])
+
+    normalized_name = str(full_name or "").strip().lower()
+    if not normalized_name:
+        return None
+    cursor.execute(
+        """
+        SELECT e.id
+        FROM employees e
+        WHERE e.organization_id = ?
+          AND lower(trim(e.full_name)) = ?
+          AND NOT EXISTS (
+              SELECT 1
+              FROM organization_memberships linked
+              WHERE linked.organization_id = e.organization_id
+                AND linked.employee_id = e.id
+                AND linked.user_id != ?
+                AND linked.status = 'active'
+          )
+        ORDER BY e.id
+        """,
+        (organization_id, normalized_name, user_id),
+    )
+    matches = cursor.fetchall()
+    if len(matches) == 1:
+        return int(matches[0]["id"])
+    return None
+
+
+def repair_employee_membership_links(cursor, current_user: dict) -> bool:
+    repaired = False
+    user_email = str(current_user.get("email") or "").strip().lower()
+    user_id = int(current_user["id"])
+    full_name = str(current_user.get("full_name") or "")
+    if not user_email and not full_name:
+        return False
+
+    for membership in current_user.get("memberships") or []:
+        if membership.get("status") != "active" or membership.get("role") != "employee":
+            continue
+        if membership.get("employee_id"):
             continue
 
-        employee_id = int(invitation["employee_id"])
+        organization_id = int(membership["organization_id"])
+        employee_id = find_repair_employee_id_for_member(cursor, organization_id, user_id, user_email, full_name)
+        if employee_id is None:
+            continue
         cursor.execute(
             """
             UPDATE organization_memberships
@@ -1316,6 +1427,49 @@ def repair_employee_membership_links(cursor, current_user: dict) -> bool:
             repaired = True
 
     return repaired
+
+
+def repair_organization_employee_membership_links(cursor, organization_id: int) -> int:
+    cursor.execute(
+        """
+        SELECT om.user_id, u.email, u.full_name
+        FROM organization_memberships om
+        JOIN users u ON u.id = om.user_id
+        WHERE om.organization_id = ?
+          AND om.role = 'employee'
+          AND om.status = 'active'
+          AND om.employee_id IS NULL
+        ORDER BY om.user_id
+        """,
+        (organization_id,),
+    )
+    members = cursor.fetchall()
+    repaired_count = 0
+    for member in members:
+        employee_id = find_repair_employee_id_for_member(
+            cursor,
+            organization_id,
+            int(member["user_id"]),
+            str(member["email"] or ""),
+            str(member["full_name"] or ""),
+        )
+        if employee_id is None:
+            continue
+        cursor.execute(
+            """
+            UPDATE organization_memberships
+            SET employee_id = ?, updated_at = ?
+            WHERE organization_id = ?
+              AND user_id = ?
+              AND role = 'employee'
+              AND status = 'active'
+              AND employee_id IS NULL
+            """,
+            (employee_id, current_utc_timestamp(), organization_id, int(member["user_id"])),
+        )
+        if cursor.rowcount:
+            repaired_count += 1
+    return repaired_count
 
 
 def active_user_count(cursor) -> int:
@@ -3806,6 +3960,16 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
                     f"/api/organizations/{int(settings['cloud_organization_id'])}/members",
                     token=settings["desktop_cloud_access_token"],
                 )
+        repaired_count = repair_organization_employee_membership_links(cursor, organization_id)
+        if repaired_count:
+            write_auth_audit_event(
+                cursor,
+                "organization_employee_membership_links_repaired",
+                user_id=current_user["id"],
+                organization_id=organization_id,
+                metadata={"repaired_count": repaired_count},
+            )
+            connection.commit()
         cursor.execute(
             """
             SELECT u.id, u.email, u.full_name, u.status AS user_status, u.email_verified,

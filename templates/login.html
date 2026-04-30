@@ -14,6 +14,14 @@
 </head>
 
 <body class="app-shell ltr auth-page" data-app-version="{{ app_version }}">
+    <div class="auth-topbar">
+        <div class="lang-switcher" aria-label="Language">
+            <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+            <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+            <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+        </div>
+    </div>
+
     <main class="auth-layout">
         <section class="auth-panel" aria-labelledby="auth-title">
             <div class="auth-brand">
@@ -111,6 +119,7 @@
     </div>
     {% endif %}
 
+    <script src="/static/js/i18n.js?v={{ app_version }}-auth-i18n-fix"></script>
     <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
     <script src="/static/js/auth_i18n.js?v={{ app_version }}"></script>
     <script src="/static/js/auth.js?v={{ app_version }}"></script>

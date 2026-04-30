@@ -44,6 +44,7 @@
            PAGE INIT / ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ
            ========================================================= */
         document.addEventListener("DOMContentLoaded", async () => {
+            applyHostedWebScheduleMode();
             setDefaultWeekStart();
             bindPageButtons();
             bindShiftPicker();
@@ -145,6 +146,22 @@
                 return translate(key);
             }
             return fallback || key;
+        }
+
+        function isHostedWebScheduleMode() {
+            return Boolean(window.scheduleAuth?.isHostedCloudOrigin?.());
+        }
+
+        function shouldShowCoverageInSchedule() {
+            return !isHostedWebScheduleMode();
+        }
+
+        function applyHostedWebScheduleMode() {
+            if (!isHostedWebScheduleMode()) return;
+            document.body.classList.add("hosted-employee-schedule");
+            document.querySelectorAll("[data-web-hide='coverage']").forEach(element => {
+                element.hidden = true;
+            });
         }
 
         function formatDate(dateObject) {
@@ -771,6 +788,9 @@
                 ? t("coverage_display_category", "By shift categories")
                 : t("coverage_display_interval", "By time intervals");
             const gapCount = countVisibleCoverageGaps(positionId);
+            const shiftsValue = shouldShowCoverageInSchedule()
+                ? `${visibleEntries.length} · ${coverageMode} · ${gapCount} ${t("schedule_status_gaps", "gaps")}`
+                : String(visibleEntries.length);
 
             const items = [
                 {
@@ -787,7 +807,7 @@
                 },
                 {
                     label: t("schedule_status_shifts", "Shifts"),
-                    value: `${visibleEntries.length} · ${coverageMode} · ${gapCount} ${t("schedule_status_gaps", "gaps")}`
+                    value: shiftsValue
                 }
             ];
 
@@ -2247,6 +2267,26 @@
             // Главная функция отрисовки таблицы
             const thead = document.getElementById("schedule-thead");
             const tbody = document.getElementById("schedule-tbody");
+            const coverageHeaderRow = shouldShowCoverageInSchedule() ? `
+                <tr class="coverage-header-row">
+                    <th class="employee-column">
+                        <div class="coverage-header-cell">
+                            <strong>${t("schedule_coverage_header", "Coverage")}</strong>
+                        </div>
+                    </th>
+
+                    ${weekDates.map(date => {
+                const dateSummary = getGenerationDateSummary(date);
+                return `
+                        <th>
+                            <div class="coverage-header-cell ${dateSummary ? `has-attention ${dateSummary.severity}` : ""}">
+                                ${renderCoverageSummary(positionId, date)}
+                            </div>
+                        </th>
+                    `;
+            }).join("")}
+                </tr>
+            ` : "";
 
             const employeesForPosition = getEmployeesForPosition(positionId);
             const selectedPosition = allPositions.find(item => item.id === positionId);
@@ -2273,24 +2313,7 @@
             }).join("")}
                 </tr>
 
-                <tr class="coverage-header-row">
-                    <th class="employee-column">
-                        <div class="coverage-header-cell">
-                            <strong>${t("schedule_coverage_header", "Coverage")}</strong>
-                        </div>
-                    </th>
-
-                    ${weekDates.map(date => {
-                const dateSummary = getGenerationDateSummary(date);
-                return `
-                        <th>
-                            <div class="coverage-header-cell ${dateSummary ? `has-attention ${dateSummary.severity}` : ""}">
-                                ${renderCoverageSummary(positionId, date)}
-                            </div>
-                        </th>
-                    `;
-            }).join("")}
-                </tr>
+                ${coverageHeaderRow}
             `;
 
             const firstHeaderRow = thead.querySelector(".date-header-row");

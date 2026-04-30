@@ -352,6 +352,106 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(membership["role"], "employee")
         self.assertEqual(membership["employee_id"], employee_id)
 
+    def test_unlinked_employee_member_is_repaired_for_members_list_and_id_login(self):
+        owner_response = self.client.post(
+            "/api/auth/create-organization",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+        employee_id = self._create_employee(headers=owner_headers, full_name="Employee User", id_card="123456789")
+
+        invitation_response = self.client.post(
+            f"/api/organizations/{organization_id}/invitations",
+            headers=owner_headers,
+            json={"email": "employee@example.com", "employee_id": employee_id, "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        accept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "password": "EmployeePass123",
+                "confirm_password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        with database.get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE organization_memberships
+                SET employee_id = NULL
+                WHERE organization_id = ? AND role = 'employee'
+                """,
+                (organization_id,),
+            )
+            connection.commit()
+
+        members_response = self.client.get(f"/api/organizations/{organization_id}/members", headers=owner_headers)
+        self.assertEqual(members_response.status_code, 200)
+        employee_members = [
+            member for member in members_response.json()["members"]
+            if member["email"] == "employee@example.com"
+        ]
+        self.assertEqual(employee_members[0]["employee_id"], employee_id)
+        self.assertEqual(employee_members[0]["employee_name"], "Employee User")
+
+        id_login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "123-456-789", "password": "EmployeePass123"},
+        )
+        self.assertEqual(id_login_response.status_code, 200)
+        self.assertEqual(id_login_response.json()["user"]["memberships"][0]["employee_id"], employee_id)
+
+    def test_id_card_login_repairs_legacy_unlinked_employee_member_by_unique_name(self):
+        owner_response = self.client.post(
+            "/api/auth/create-organization",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+        employee_id = self._create_employee(headers=owner_headers, full_name="Legacy Employee", id_card="987654321")
+        now = "2026-04-30T12:00:00"
+        with database.get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
+                VALUES (?, ?, ?, 'active', 0, ?, ?)
+                """,
+                ("legacy@example.com", "Legacy Employee", main.hash_password("EmployeePass123"), now, now),
+            )
+            user_id = cursor.lastrowid
+            cursor.execute(
+                """
+                INSERT INTO organization_memberships (organization_id, user_id, role, status, employee_id, created_at, updated_at)
+                VALUES (?, ?, 'employee', 'active', NULL, ?, ?)
+                """,
+                (organization_id, user_id, now, now),
+            )
+            connection.commit()
+
+        id_login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "987654321", "password": "EmployeePass123"},
+        )
+        self.assertEqual(id_login_response.status_code, 200)
+        self.assertEqual(id_login_response.json()["user"]["memberships"][0]["employee_id"], employee_id)
+
     def test_desktop_cloud_login_imports_cloud_organization_into_local_sqlite(self):
         cloud_user = {
             "id": 44,
@@ -1233,9 +1333,21 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("Load organization data to this computer", response.text)
         self.assertIn("data-login-method=\"email\"", response.text)
         self.assertIn("data-login-method=\"id_card\"", response.text)
+        self.assertIn("class=\"lang-switcher\"", response.text)
+        self.assertIn("/static/js/i18n.js", response.text)
         self.assertNotIn("Cloud portal and migration", response.text)
         self.assertNotIn("Cloud is the primary workspace", response.text)
         self.assertIn("/static/js/auth.js", response.text)
+
+    def test_shared_i18n_contains_auth_page_keys(self):
+        i18n_js = Path("static/js/i18n.js").read_text(encoding="utf-8")
+        for key in [
+            "auth_employee_portal",
+            "auth_employee_login",
+            "auth_employee_login_action_text",
+            "auth_msg_employee_login_ready",
+        ]:
+            self.assertEqual(i18n_js.count(f"{key}:"), 3)
 
     def test_login_frontend_uses_desktop_cloud_login_without_workspace_switch(self):
         auth_js = Path("static/js/auth.js").read_text(encoding="utf-8")
@@ -1255,6 +1367,15 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("function isEmployeeUser()", schedule_js)
         self.assertIn("allPositions.find(position => position.is_primary) || allPositions[0]", schedule_js)
         self.assertIn("await loadSchedulePageData({ showLoadedMessage: false });", schedule_js)
+
+    def test_hosted_web_schedule_hides_coverage_display_without_desktop_removal(self):
+        schedule_html = Path("templates/schedule.html").read_text(encoding="utf-8")
+        schedule_js = Path("static/js/schedule.js").read_text(encoding="utf-8")
+        self.assertIn('data-web-hide="coverage"', schedule_html)
+        self.assertIn("function shouldShowCoverageInSchedule()", schedule_js)
+        self.assertIn("window.scheduleAuth?.isHostedCloudOrigin?.()", schedule_js)
+        self.assertIn("hosted-employee-schedule", schedule_js)
+        self.assertIn("coverageHeaderRow", schedule_js)
 
     def test_read_only_role_does_not_get_weekly_preferences_navigation(self):
         access_control_js = Path("static/js/access_control.js").read_text(encoding="utf-8")

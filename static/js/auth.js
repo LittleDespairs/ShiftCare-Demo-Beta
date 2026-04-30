@@ -14,6 +14,17 @@
     const loginMethodButtons = Array.from(document.querySelectorAll("[data-login-method]"));
     let loginMethod = "email";
 
+    function t(key, fallback = "") {
+        if (typeof window.organizationAuthText === "function") {
+            return window.organizationAuthText(key);
+        }
+        if (typeof window.translate === "function") {
+            const translated = window.translate(key);
+            return translated === key ? (fallback || key) : translated;
+        }
+        return fallback || key;
+    }
+
     function escapeHtml(value) {
         if (window.escapeHtml) return window.escapeHtml(value);
         if (value === null || value === undefined) return "";
@@ -33,7 +44,7 @@
     function getFriendlyAuthError(error) {
         const messageText = error?.message || String(error || "");
         if (messageText === "Failed to fetch") {
-            return "Cloud is not reachable. Check the internet connection and try again.";
+            return t("auth_msg_cloud_unreachable", "Cloud is not reachable. Check the internet connection and try again.");
         }
         return messageText;
     }
@@ -111,16 +122,16 @@
 
     async function renderAuthStatus() {
         if (window.scheduleAuth?.isDesktopLocalOrigin?.()) {
-            setMessage("Authorize a cloud user or add a new organization. Work will continue locally on this computer.", "");
+            setMessage(t("auth_msg_desktop_ready", "Authorize a cloud user or add a new organization. Work will continue locally on this computer."), "");
             return;
         }
         try {
             const status = await window.scheduleAuth.request("/api/auth/status");
             setMessage(status.bootstrap_available
-                ? "Employee portal is ready."
-                : "Employee portal is ready. Log in with your employee account.", "");
+                ? t("auth_msg_employee_portal_ready", "Employee portal is ready.")
+                : t("auth_msg_employee_login_ready", "Employee portal is ready. Log in with your employee account."), "");
         } catch (error) {
-            setMessage(`Could not check authorization state: ${getFriendlyAuthError(error)}`, "error");
+            setMessage(`${t("auth_msg_status_check_failed", "Could not check authorization state")}: ${getFriendlyAuthError(error)}`, "error");
         }
     }
 
@@ -128,9 +139,9 @@
         if (!isCloudEmployeePortalMode()) return;
         openOrganizationModalButton?.remove();
         organizationModal?.remove();
-        document.querySelector(".auth-brand p").textContent = "Employee portal";
-        document.querySelector("#open-login-modal strong").textContent = "Employee login";
-        document.querySelector("#open-login-modal span").textContent = "Open weekly wishes and read-only schedule";
+        document.querySelector(".auth-brand p").textContent = t("auth_employee_portal", "Employee portal");
+        document.querySelector("#open-login-modal strong").textContent = t("auth_employee_login", "Employee login");
+        document.querySelector("#open-login-modal span").textContent = t("auth_employee_login_action_text", "Open weekly wishes and read-only schedule");
     }
 
     function initializeDefaultApiMode() {
@@ -146,14 +157,18 @@
             button.setAttribute("aria-pressed", active ? "true" : "false");
         });
         if (loginIdentifierLabel) {
-            loginIdentifierLabel.textContent = loginMethod === "id_card" ? "ID card" : "Email";
+            loginIdentifierLabel.textContent = loginMethod === "id_card"
+                ? t("auth_id_card", "ID card")
+                : t("auth_email", "Email");
         }
         if (loginIdentifierInput) {
             loginIdentifierInput.value = "";
             loginIdentifierInput.type = loginMethod === "id_card" ? "text" : "email";
             loginIdentifierInput.inputMode = loginMethod === "id_card" ? "numeric" : "email";
             loginIdentifierInput.autocomplete = loginMethod === "id_card" ? "off" : "username";
-            loginIdentifierInput.placeholder = loginMethod === "id_card" ? "Example: 123456789" : "name@example.com";
+            loginIdentifierInput.placeholder = loginMethod === "id_card"
+                ? t("auth_id_card_placeholder", "Example: 123456789")
+                : t("auth_email_placeholder", "name@example.com");
             loginIdentifierInput.focus();
         }
     }
@@ -198,14 +213,16 @@
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const isDesktopLogin = window.scheduleAuth?.isDesktopLocalOrigin?.();
-        setMessage(isDesktopLogin ? "Signing in and loading organization data..." : "Signing in...", "");
+        setMessage(isDesktopLogin
+            ? t("auth_msg_signing_in_desktop", "Signing in and loading organization data...")
+            : t("auth_msg_signing_in", "Signing in..."), "");
         try {
             const payload = await postJson(isDesktopLogin ? "/api/desktop/cloud-login" : "/api/auth/login", {
                 email: loginIdentifierInput.value,
                 password: document.getElementById("login-password").value,
             });
             storeSession(payload);
-            setMessage("Login successful.", "success");
+            setMessage(t("auth_msg_login_success", "Login successful."), "success");
             window.location.href = destinationForUser(payload.user);
         } catch (error) {
             setMessage(getFriendlyAuthError(error), "error");
@@ -215,11 +232,13 @@
     bootstrapForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         if (isCloudEmployeePortalMode()) {
-            setMessage("Organization setup is available only in the desktop app.", "error");
+            setMessage(t("auth_msg_org_setup_desktop_only", "Organization setup is available only in the desktop app."), "error");
             return;
         }
         const isDesktopLogin = window.scheduleAuth?.isDesktopLocalOrigin?.();
-        setMessage(isDesktopLogin ? "Creating cloud organization and loading it locally..." : "Creating organization...", "");
+        setMessage(isDesktopLogin
+            ? t("auth_msg_creating_org_desktop", "Creating cloud organization and loading it locally...")
+            : t("auth_msg_creating_org", "Creating organization..."), "");
         try {
             const payload = await postJson(isDesktopLogin ? "/api/desktop/cloud-create-organization" : "/api/auth/create-organization", {
                 organization_name: document.getElementById("bootstrap-organization").value,
@@ -228,7 +247,7 @@
                 password: document.getElementById("bootstrap-password").value,
             });
             storeSession(payload);
-            setMessage("Organization created.", "success");
+            setMessage(t("auth_msg_org_created", "Organization created."), "success");
             window.location.href = destinationForUser(payload.user);
         } catch (error) {
             setMessage(getFriendlyAuthError(error), "error");
@@ -240,4 +259,9 @@
     applyCloudEmployeePortalMode();
     renderSession();
     renderAuthStatus();
+    document.addEventListener("app-language-changed", () => {
+        applyLoginMethod(loginMethod);
+        applyCloudEmployeePortalMode();
+        renderAuthStatus();
+    });
 })();

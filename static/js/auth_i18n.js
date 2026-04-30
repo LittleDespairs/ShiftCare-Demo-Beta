@@ -4,6 +4,30 @@
             app_title: "ShiftCare",
             auth_kicker: "Desktop first",
             auth_login: "Login",
+            auth_authorize_user: "Authorize user",
+            auth_employee_login: "Employee login",
+            auth_add_organization: "Add organization",
+            auth_login_action_text: "Load organization data to this computer",
+            auth_employee_login_action_text: "Open weekly wishes and read-only schedule",
+            auth_add_organization_text: "Create a cloud organization and start locally",
+            auth_employee_portal: "Employee portal",
+            auth_login_method: "Login method",
+            auth_id_card: "ID card",
+            auth_id_card_placeholder: "Example: 123456789",
+            auth_email_placeholder: "name@example.com",
+            auth_create_organization: "Create organization",
+            auth_msg_cloud_unreachable: "Cloud is not reachable. Check the internet connection and try again.",
+            auth_msg_desktop_ready: "Authorize a cloud user or add a new organization. Work will continue locally on this computer.",
+            auth_msg_employee_portal_ready: "Employee portal is ready.",
+            auth_msg_employee_login_ready: "Employee portal is ready. Log in with your employee account.",
+            auth_msg_status_check_failed: "Could not check authorization state",
+            auth_msg_signing_in: "Signing in...",
+            auth_msg_signing_in_desktop: "Signing in and loading organization data...",
+            auth_msg_login_success: "Login successful.",
+            auth_msg_org_setup_desktop_only: "Organization setup is available only in the desktop app.",
+            auth_msg_creating_org: "Creating organization...",
+            auth_msg_creating_org_desktop: "Creating cloud organization and loading it locally...",
+            auth_msg_org_created: "Organization created.",
             auth_create_owner: "Create first owner",
             auth_email: "Email",
             auth_password: "Password",
@@ -84,6 +108,30 @@
             app_title: "ShiftCare",
             auth_kicker: "Desktop first",
             auth_login: "Войти",
+            auth_authorize_user: "Авторизовать пользователя",
+            auth_employee_login: "Вход сотрудника",
+            auth_add_organization: "Добавить организацию",
+            auth_login_action_text: "Загрузить данные организации на этот компьютер",
+            auth_employee_login_action_text: "Открыть пожелания и расписание только для просмотра",
+            auth_add_organization_text: "Создать облачную организацию и начать локально",
+            auth_employee_portal: "Портал сотрудника",
+            auth_login_method: "Способ входа",
+            auth_id_card: "Номер ID",
+            auth_id_card_placeholder: "Например: 123456789",
+            auth_email_placeholder: "name@example.com",
+            auth_create_organization: "Создать организацию",
+            auth_msg_cloud_unreachable: "Облако недоступно. Проверьте интернет и попробуйте ещё раз.",
+            auth_msg_desktop_ready: "Авторизуйте облачного пользователя или добавьте новую организацию. Работа продолжится локально на этом компьютере.",
+            auth_msg_employee_portal_ready: "Портал сотрудников готов.",
+            auth_msg_employee_login_ready: "Портал сотрудников готов. Войдите через аккаунт сотрудника.",
+            auth_msg_status_check_failed: "Не удалось проверить состояние авторизации",
+            auth_msg_signing_in: "Вход...",
+            auth_msg_signing_in_desktop: "Вход и загрузка данных организации...",
+            auth_msg_login_success: "Вход выполнен.",
+            auth_msg_org_setup_desktop_only: "Создание организации доступно только в desktop-приложении.",
+            auth_msg_creating_org: "Создание организации...",
+            auth_msg_creating_org_desktop: "Создание облачной организации и загрузка локально...",
+            auth_msg_org_created: "Организация создана.",
             auth_create_owner: "Создать владельца",
             auth_email: "Email",
             auth_password: "Пароль",
@@ -164,6 +212,30 @@
             app_title: "ShiftCare",
             auth_kicker: "Desktop first",
             auth_login: "כניסה",
+            auth_authorize_user: "אישור משתמש",
+            auth_employee_login: "כניסת עובד",
+            auth_add_organization: "הוספת ארגון",
+            auth_login_action_text: "טען את נתוני הארגון למחשב הזה",
+            auth_employee_login_action_text: "פתח בקשות שבועיות וסידור לצפייה בלבד",
+            auth_add_organization_text: "צור ארגון בענן והתחל מקומית",
+            auth_employee_portal: "פורטל עובדים",
+            auth_login_method: "שיטת כניסה",
+            auth_id_card: "מספר תעודה",
+            auth_id_card_placeholder: "לדוגמה: 123456789",
+            auth_email_placeholder: "name@example.com",
+            auth_create_organization: "צור ארגון",
+            auth_msg_cloud_unreachable: "הענן אינו זמין. בדוק את החיבור לאינטרנט ונסה שוב.",
+            auth_msg_desktop_ready: "אשר משתמש ענן או הוסף ארגון חדש. העבודה תמשיך מקומית במחשב הזה.",
+            auth_msg_employee_portal_ready: "פורטל העובדים מוכן.",
+            auth_msg_employee_login_ready: "פורטל העובדים מוכן. היכנס עם חשבון העובד שלך.",
+            auth_msg_status_check_failed: "לא ניתן לבדוק את מצב ההרשאה",
+            auth_msg_signing_in: "מתחבר...",
+            auth_msg_signing_in_desktop: "מתחבר וטוען את נתוני הארגון...",
+            auth_msg_login_success: "הכניסה הצליחה.",
+            auth_msg_org_setup_desktop_only: "הקמת ארגון זמינה רק באפליקציית הדסקטופ.",
+            auth_msg_creating_org: "יוצר ארגון...",
+            auth_msg_creating_org_desktop: "יוצר ארגון בענן וטוען אותו מקומית...",
+            auth_msg_org_created: "הארגון נוצר.",
             auth_create_owner: "יצירת בעלים ראשון",
             auth_email: "אימייל",
             auth_password: "סיסמה",
@@ -258,8 +330,23 @@
     }
 
     function applyAuthTranslations() {
+        const isAcceptInvitation = Boolean(document.getElementById("accept-title"));
+        const isLoginShell = Boolean(document.getElementById("login-modal"));
+        const isCloudEmployeePortal = Boolean(window.scheduleAuth?.isHostedCloudOrigin?.());
+
         setText("#auth-title", "app_title");
-        setText(".auth-brand p", document.getElementById("accept-title") ? "auth_create_account" : "auth_org_access");
+        setText(".auth-brand p", isAcceptInvitation
+            ? "auth_create_account"
+            : (isLoginShell ? (isCloudEmployeePortal ? "auth_employee_portal" : "auth_foundation") : "auth_org_access"));
+        setText("#open-login-modal strong", isCloudEmployeePortal ? "auth_employee_login" : "auth_authorize_user");
+        setText("#open-login-modal span", isCloudEmployeePortal ? "auth_employee_login_action_text" : "auth_login_action_text");
+        setText("#open-organization-modal strong", "auth_add_organization");
+        setText("#open-organization-modal span", "auth_add_organization_text");
+        setText("#login-modal-title", isCloudEmployeePortal ? "auth_employee_login" : "auth_authorize_user");
+        setText("#organization-modal-title", "auth_add_organization");
+        setText("#login-method-email", "auth_email");
+        setText("#login-method-id-card", "auth_id_card");
+        document.querySelector(".auth-login-methods")?.setAttribute("aria-label", t("auth_login_method"));
         setText("#login-tab", "auth_login");
         setText("#bootstrap-tab", "auth_create_owner");
         setText('label[for="login-email"], #login-form label:nth-of-type(1) span, #bootstrap-form label:nth-of-type(3) span', "auth_email");
@@ -267,13 +354,13 @@
         setText("#login-form .auth-submit", "auth_login");
         setText("#bootstrap-form label:nth-of-type(1) span", "auth_org_name");
         setText("#bootstrap-form label:nth-of-type(2) span, #accept-form label:nth-of-type(2) span", "auth_your_name");
-        setText("#bootstrap-form .auth-submit", "auth_create_owner_account");
-        setText(".auth-side h2", document.getElementById("accept-title") ? "auth_join_org" : "auth_foundation");
-        setText(".auth-side-content > p:not(.auth-kicker):not(.api-mode-status):not(.api-mode-title)", document.getElementById("accept-title") ? "auth_join_text" : "auth_foundation_text");
+        setText("#bootstrap-form .auth-submit", "auth_create_organization");
+        setText(".auth-side h2", isAcceptInvitation ? "auth_join_org" : "auth_foundation");
+        setText(".auth-side-content > p:not(.auth-kicker):not(.api-mode-status):not(.api-mode-title)", isAcceptInvitation ? "auth_join_text" : "auth_foundation_text");
         setText("#accept-title", "auth_accept_title");
         setText("#accept-form label:nth-of-type(1) span", "auth_invitation_token");
         setText("#accept-form .auth-submit", "auth_accept_button");
-        setText(".auth-kicker", document.getElementById("accept-title") ? "auth_employee_access" : "auth_kicker");
+        setText(".auth-kicker", isAcceptInvitation ? "auth_employee_access" : "auth_kicker");
         setText("#organization-title", "org_title");
         setText(".page-subtitle", "org_subtitle");
         setText("#logout-btn", "common_logout");
