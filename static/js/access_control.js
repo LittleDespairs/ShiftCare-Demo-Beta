@@ -1,17 +1,17 @@
 (function () {
     const ROLE_ACCESS = {
         owner: {
-            pages: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/guide", "/docs"]),
+            pages: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/positions", "/shift-templates", "/employee-positions", "/coverage-requirements", "/support", "/guide", "/docs"]),
             nav: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization"]),
             canEditSchedule: true,
         },
         admin: {
-            pages: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/guide", "/docs"]),
+            pages: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/positions", "/shift-templates", "/employee-positions", "/coverage-requirements", "/support", "/guide", "/docs"]),
             nav: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization"]),
             canEditSchedule: true,
         },
         scheduler: {
-            pages: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/guide", "/docs"]),
+            pages: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/positions", "/shift-templates", "/employee-positions", "/coverage-requirements", "/guide", "/docs"]),
             nav: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization"]),
             canEditSchedule: true,
         },
@@ -21,8 +21,8 @@
             canEditSchedule: false,
         },
         read_only: {
-            pages: new Set(["/", "/schedule", "/weekly-preferences", "/organization", "/guide", "/docs"]),
-            nav: new Set(["/", "/schedule", "/weekly-preferences", "/organization"]),
+            pages: new Set(["/", "/schedule", "/organization", "/guide", "/docs"]),
+            nav: new Set(["/", "/schedule", "/organization"]),
             canEditSchedule: false,
         },
         employee: {
@@ -56,7 +56,17 @@
     }
 
     function accessForRole(role) {
-        return ROLE_ACCESS[role] || ROLE_ACCESS.employee;
+        const baseAccess = ROLE_ACCESS[role] || ROLE_ACCESS.employee;
+        if (!window.scheduleAuth?.isHostedCloudOrigin?.()) {
+            return baseAccess;
+        }
+        const pages = new Set(["/", "/schedule", "/organization", "/guide", "/docs"]);
+        const nav = new Set(["/schedule", "/organization"]);
+        if (role === "employee") {
+            pages.add("/weekly-preferences");
+            nav.add("/weekly-preferences");
+        }
+        return { pages, nav, canEditSchedule: false };
     }
 
     function canonicalPath(pathname) {
@@ -80,7 +90,6 @@
         const nav = document.querySelector(".nav-list");
         if (!nav) return;
         [
-            ["/", "⌂", "nav_dashboard", "Dashboard"],
             ["/schedule", "🗓", "nav_schedule", "Schedule"],
             ["/employees", "👥", "nav_employees", "Employees"],
             ["/weekly-preferences", "☑", "nav_requests", "Preferences"],
@@ -98,7 +107,6 @@
 
     function applyNavLabels() {
         const labels = {
-            "/": ["nav_dashboard", "Dashboard"],
             "/schedule": ["nav_schedule", "Schedule"],
             "/employees": ["nav_employees", "Employees"],
             "/weekly-preferences": ["nav_requests", "Preferences"],

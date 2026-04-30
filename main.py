@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, date as Date, datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
-from time import monotonic
+from time import monotonic, sleep
 from urllib.parse import quote, urlparse
 from typing import Any, Literal
 
@@ -34,9 +34,10 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.14.9_beta"
+APP_VERSION = "0.15.2_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
-DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app"
+DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
+TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
 GITHUB_REPO_OWNER = "LittleDespairs"
 GITHUB_REPO_NAME = "Schedule_app_releases"
 GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases"
@@ -91,6 +92,29 @@ templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 templates.env.globals["app_version"] = APP_VERSION
 
 
+def is_developer_mode_enabled() -> bool:
+    if os.environ.get("SCHEDULE_APP_DEVELOPER_MODE", "").strip().lower() in TRUTHY_ENV_VALUES:
+        return True
+    app_data_root = os.environ.get("LOCALAPPDATA", "").strip()
+    if not app_data_root:
+        return False
+    return (Path(app_data_root) / "Schedule App" / "developer_mode.flag").exists()
+
+
+templates.env.globals["developer_mode_enabled"] = is_developer_mode_enabled
+
+
+def is_cloud_employee_portal_mode() -> bool:
+    return get_app_config().is_deployed_env
+
+
+templates.env.globals["cloud_employee_portal_mode"] = is_cloud_employee_portal_mode
+
+
+def is_trusted_desktop_cloud_request(request: Request) -> bool:
+    return request.headers.get("X-ShiftCare-Desktop-Client", "").strip().lower() in TRUTHY_ENV_VALUES
+
+
 def normalize_public_app_base_url(value: str) -> str:
     trimmed = (value or "").strip().rstrip("/")
     if not trimmed:
@@ -123,6 +147,203 @@ def build_invitation_url(invitation_token: str) -> str:
     return build_public_app_url(f"/accept-invitation?token={quote(invitation_token)}")
 
 
+def build_invitation_url_for_request(request: Request | None, invitation_token: str) -> str:
+    configured_url = build_invitation_url(invitation_token)
+    if configured_url:
+        return configured_url
+    if request:
+        parsed = urlparse(str(request.base_url))
+        if parsed.hostname and parsed.hostname not in {"127.0.0.1", "localhost", "::1", "testserver"}:
+            return f"{parsed.scheme}://{parsed.netloc}/accept-invitation?token={quote(invitation_token)}"
+    return f"/accept-invitation?token={quote(invitation_token)}"
+
+
+def read_organization_cloud_link_settings(cursor: sqlite3.Cursor, organization_id: int) -> dict:
+    cursor.execute(
+        """
+        SELECT key, value
+        FROM app_settings
+        WHERE organization_id = ?
+          AND key IN (
+              'cloud_api_base_url',
+              'cloud_organization_id',
+              'cloud_organization_public_id',
+              'cloud_linked_at'
+          )
+        """,
+        (organization_id,),
+    )
+    return {row["key"]: row["value"] for row in cursor.fetchall()}
+
+
+def organization_has_cloud_link(settings: dict) -> bool:
+    return bool(settings.get("cloud_api_base_url") and settings.get("cloud_organization_id"))
+
+
+def build_linked_organization_invitation_url(
+    cursor: sqlite3.Cursor,
+    organization_id: int,
+    invitation_token: str,
+) -> str:
+    return build_invitation_url(invitation_token)
+
+
+def get_desktop_cloud_login_base_url() -> str:
+    configured_url = normalize_public_app_base_url(os.environ.get("SCHEDULE_APP_CLOUD_LOGIN_BASE_URL", ""))
+    return configured_url or DESKTOP_CLOUD_LOGIN_BASE_URL
+
+
+def is_desktop_sqlite_runtime() -> bool:
+    config = get_app_config()
+    return not config.is_deployed_env and config.database_engine.strip().lower() == "sqlite"
+
+
+def read_desktop_cloud_sync_settings(cursor: sqlite3.Cursor, organization_id: int) -> dict[str, str]:
+    cursor.execute(
+        """
+        SELECT key, value
+        FROM app_settings
+        WHERE organization_id = ?
+          AND key IN (
+              'cloud_api_base_url',
+              'cloud_organization_id',
+              'cloud_organization_public_id',
+              'desktop_cloud_access_token'
+          )
+        """,
+        (organization_id,),
+    )
+    return {row["key"]: row["value"] for row in cursor.fetchall()}
+
+
+def desktop_cloud_sync_is_ready(settings: dict[str, str]) -> bool:
+    return bool(
+        settings.get("cloud_api_base_url")
+        and settings.get("cloud_organization_id")
+        and settings.get("desktop_cloud_access_token")
+    )
+
+
+def is_desktop_invitation_request(request: Request) -> bool:
+    hostname = request.url.hostname or ""
+    return getattr(sys, "frozen", False) or hostname in {"127.0.0.1", "localhost", "::1"}
+
+
+def request_cloud_json(
+    base_url: str,
+    path: str,
+    *,
+    method: str = "GET",
+    payload: dict | None = None,
+    token: str = "",
+    extra_headers: dict[str, str] | None = None,
+) -> dict:
+    normalized_base = normalize_public_app_base_url(base_url)
+    if not normalized_base:
+        raise HTTPException(status_code=500, detail="Cloud login base URL is not configured")
+    url = f"{normalized_base}{path if path.startswith('/') else f'/{path}'}"
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    headers = {"Accept": "application/json"}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    headers.update(extra_headers or {})
+    raw = ""
+    last_network_error: Exception | None = None
+    for attempt in range(2):
+        request = urllib.request.Request(url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                raw = response.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as exc:
+            try:
+                error_payload = json.loads(exc.read().decode("utf-8") or "{}")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                error_payload = {}
+            detail = error_payload.get("detail") or f"Cloud request failed with {exc.code}"
+            raise HTTPException(status_code=exc.code, detail=detail) from exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_network_error = exc
+            if attempt == 0:
+                sleep(1)
+                continue
+            raise HTTPException(status_code=503, detail=f"Cloud is not reachable: {exc}") from exc
+    if last_network_error and not raw:
+        raise HTTPException(status_code=503, detail=f"Cloud is not reachable: {last_network_error}")
+    try:
+        return json.loads(raw or "{}")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="Cloud returned an invalid JSON response") from exc
+
+
+def select_desktop_cloud_membership(cloud_user: dict) -> dict:
+    memberships = [
+        membership
+        for membership in cloud_user.get("memberships") or []
+        if membership.get("status") == "active" and membership.get("role") in DESKTOP_CLOUD_SYNC_ROLES
+    ]
+    if not memberships:
+        raise HTTPException(
+            status_code=403,
+            detail="This cloud account does not have desktop scheduling access",
+        )
+    return memberships[0]
+
+
+def upsert_desktop_cloud_user(cursor: sqlite3.Cursor, cloud_user: dict, cloud_membership: dict, organization_id: int) -> int:
+    now = current_utc_timestamp()
+    email = str(cloud_user.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=502, detail="Cloud user response is missing email")
+    cursor.execute("SELECT id FROM users WHERE lower(email) = ?", (email,))
+    row = cursor.fetchone()
+    if row:
+        user_id = int(row["id"])
+        cursor.execute(
+            """
+            UPDATE users
+            SET full_name = ?, status = 'active', email_verified = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                cloud_user.get("full_name") or email,
+                int(bool(cloud_user.get("email_verified"))),
+                now,
+                user_id,
+            ),
+        )
+    else:
+        cursor.execute(
+            """
+            INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
+            VALUES (?, ?, NULL, 'active', ?, ?, ?)
+            """,
+            (
+                email,
+                cloud_user.get("full_name") or email,
+                int(bool(cloud_user.get("email_verified"))),
+                now,
+                now,
+            ),
+        )
+        user_id = int(cursor.lastrowid)
+    cursor.execute(
+        """
+        INSERT INTO organization_memberships (organization_id, user_id, role, status, employee_id, created_at, updated_at)
+        VALUES (?, ?, ?, 'active', NULL, ?, ?)
+        ON CONFLICT(organization_id, user_id)
+        DO UPDATE SET role = excluded.role,
+                      status = excluded.status,
+                      employee_id = NULL,
+                      updated_at = excluded.updated_at
+        """,
+        (organization_id, user_id, cloud_membership.get("role") or "scheduler", now, now),
+    )
+    return user_id
+
+
 MAX_WORK_DAYS_PER_WEEK = 6
 MAX_CONSECUTIVE_NIGHTS = 2
 EMERGENCY_MAX_CONSECUTIVE_NIGHTS = 3
@@ -138,6 +359,8 @@ DEFAULT_SCHEDULE_COLORS = {
     "schedule_night_color": "#eef2ff",
     "schedule_status_color": "#f5f3ff",
 }
+DESKTOP_CLOUD_SYNC_ROLES = {"owner", "admin", "scheduler", "manager"}
+DESKTOP_CLOUD_LOGIN_BASE_URL = "https://schedule-app-beta.web.app"
 
 
 @app.get("/service-worker.js", include_in_schema=False)
@@ -209,6 +432,8 @@ def client_config():
         "employee_portal_url": f"{public_app_base_url}/login" if public_app_base_url else "",
         "employee_invitation_url_base": f"{public_app_base_url}/accept-invitation" if public_app_base_url else "",
         "environment": get_app_config().app_env,
+        "developer_mode": is_developer_mode_enabled(),
+        "cloud_employee_portal_mode": is_cloud_employee_portal_mode(),
     }
 
 
@@ -225,8 +450,20 @@ class AuthBootstrapRequest(BaseModel):
 
 
 class AuthLoginRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=128)
+
+
+class DesktopCloudLoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AuthOrganizationCreateRequest(BaseModel):
+    organization_name: str = Field(min_length=2, max_length=120)
+    full_name: str = Field(min_length=2, max_length=100)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
 
 
 class AuthProfileUpdateRequest(BaseModel):
@@ -253,15 +490,28 @@ class AuthEmailVerificationRequest(BaseModel):
 
 class AuthInvitationAcceptRequest(BaseModel):
     token: str = Field(min_length=32, max_length=512)
-    full_name: str = Field(min_length=2, max_length=100)
+    full_name: str | None = Field(default=None, min_length=2, max_length=100)
     password: str = Field(min_length=8, max_length=128)
+    confirm_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_password_confirmation(self):
+        if self.confirm_password is not None and self.password != self.confirm_password:
+            raise ValueError("password confirmation does not match")
+        return self
 
 
 class OrganizationInvitationCreate(BaseModel):
     email: EmailStr
     employee_id: int | None = Field(default=None, ge=1)
+    employee_public_id: str | None = Field(default=None, min_length=2, max_length=120)
     role: Literal["admin", "scheduler", "employee", "manager", "read_only"] = "employee"
     expires_in_days: int = Field(default=7, ge=1, le=30)
+
+
+class OrganizationMemberEmployeeLinkUpdate(BaseModel):
+    employee_id: int | None = Field(default=None, ge=1)
+    employee_public_id: str | None = Field(default=None, min_length=2, max_length=120)
 
 
 class CloudOrganizationImportRequest(BaseModel):
@@ -277,6 +527,7 @@ class CloudOrganizationLinkRequest(BaseModel):
 
 
 class EmployeeCreate(BaseModel):
+    id_card: str | None = Field(default=None, max_length=32)
     full_name: str = Field(min_length=2, max_length=100)
     sex: Literal["male", "female"]
     min_shifts_per_week: int = Field(ge=0, le=14)
@@ -289,6 +540,9 @@ class EmployeeCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_shift_range(self):
+        if self.id_card is not None:
+            normalized_id_card = normalize_id_card(self.id_card)
+            self.id_card = normalized_id_card or None
         if self.min_shifts_per_week > self.max_shifts_per_week:
             raise ValueError("min_shifts_per_week cannot be greater than max_shifts_per_week")
         if self.target_shifts_per_week < self.min_shifts_per_week:
@@ -736,6 +990,8 @@ def is_weekend(date_string: str) -> bool:
 def row_to_employee_dict(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
+        "public_id": row["public_id"] if "public_id" in row.keys() else None,
+        "id_card": row["id_card"] if "id_card" in row.keys() else None,
         "full_name": row["full_name"],
         "sex": row["sex"],
         "min_shifts_per_week": row["min_shifts_per_week"],
@@ -749,7 +1005,7 @@ def row_to_employee_dict(row: sqlite3.Row) -> dict:
 
 
 def row_to_position_dict(row: sqlite3.Row) -> dict:
-    return {
+    item = {
         "id": row["id"],
         "name": row["name"],
         "color": row["color"] if "color" in row.keys() and row["color"] else "#eff6ff",
@@ -760,6 +1016,13 @@ def row_to_position_dict(row: sqlite3.Row) -> dict:
         "max_consecutive_split_days": row["max_consecutive_split_days"] if "max_consecutive_split_days" in row.keys() else None,
         "emergency_max_consecutive_split_days": row["emergency_max_consecutive_split_days"] if "emergency_max_consecutive_split_days" in row.keys() else None,
     }
+    if "is_primary" in row.keys():
+        item["is_primary"] = bool(row["is_primary"])
+    if "priority_score" in row.keys():
+        item["priority_score"] = row["priority_score"]
+    if "is_fallback_only" in row.keys():
+        item["is_fallback_only"] = bool(row["is_fallback_only"])
+    return item
 
 
 def row_to_shift_template_dict(row: sqlite3.Row) -> dict:
@@ -842,13 +1105,21 @@ def get_request_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def login_rate_limit_key(email: str, request: Request) -> str:
-    return f"{email}|{get_request_ip(request)}"
+def normalize_login_identifier(value: str) -> str:
+    return str(value or "").strip().lower()
 
 
-def is_login_rate_limited(email: str, request: Request) -> bool:
+def normalize_id_card(value: Any) -> str:
+    return re.sub(r"\D+", "", str(value or ""))
+
+
+def login_rate_limit_key(identifier: str, request: Request) -> str:
+    return f"{normalize_login_identifier(identifier)}|{get_request_ip(request)}"
+
+
+def is_login_rate_limited(identifier: str, request: Request) -> bool:
     now = monotonic()
-    key = login_rate_limit_key(email, request)
+    key = login_rate_limit_key(identifier, request)
     with AUTH_LOGIN_ATTEMPTS_LOCK:
         entry = AUTH_LOGIN_ATTEMPTS.get(key)
         if not entry:
@@ -869,9 +1140,9 @@ def is_login_rate_limited(email: str, request: Request) -> bool:
         return False
 
 
-def record_login_failure(email: str, request: Request) -> bool:
+def record_login_failure(identifier: str, request: Request) -> bool:
     now = monotonic()
-    key = login_rate_limit_key(email, request)
+    key = login_rate_limit_key(identifier, request)
     with AUTH_LOGIN_ATTEMPTS_LOCK:
         entry = AUTH_LOGIN_ATTEMPTS.setdefault(key, {"failures": [], "locked_until": 0})
         entry["failures"] = [
@@ -886,10 +1157,42 @@ def record_login_failure(email: str, request: Request) -> bool:
     return False
 
 
-def clear_login_failures(email: str, request: Request) -> None:
-    key = login_rate_limit_key(email, request)
+def clear_login_failures(identifier: str, request: Request) -> None:
+    key = login_rate_limit_key(identifier, request)
     with AUTH_LOGIN_ATTEMPTS_LOCK:
         AUTH_LOGIN_ATTEMPTS.pop(key, None)
+
+
+def find_user_for_login(cursor, identifier: str):
+    normalized_identifier = normalize_login_identifier(identifier)
+    cursor.execute(
+        """
+        SELECT id, password_hash, status
+        FROM users
+        WHERE lower(email) = ?
+        """,
+        (normalized_identifier,),
+    )
+    user_row = cursor.fetchone()
+    if user_row:
+        return user_row
+
+    id_card = normalize_id_card(identifier)
+    if not id_card:
+        return None
+    cursor.execute(
+        """
+        SELECT u.id, u.password_hash, u.status
+        FROM users u
+        JOIN organization_memberships om ON om.user_id = u.id AND om.status = 'active'
+        JOIN employees e ON e.id = om.employee_id
+        WHERE replace(replace(replace(e.id_card, '-', ''), ' ', ''), '.', '') = ?
+        ORDER BY u.id
+        LIMIT 1
+        """,
+        (id_card,),
+    )
+    return cursor.fetchone()
 
 
 def token_expiration(days: int = 1) -> str:
@@ -963,6 +1266,58 @@ def find_any_membership_with_role(current_user: dict, allowed_roles: set[str]) -
     return None
 
 
+def repair_employee_membership_links(cursor, current_user: dict) -> bool:
+    repaired = False
+    user_email = str(current_user.get("email") or "").strip().lower()
+    if not user_email:
+        return False
+
+    for membership in current_user.get("memberships") or []:
+        if membership.get("status") != "active" or membership.get("role") != "employee":
+            continue
+        if membership.get("employee_id"):
+            continue
+
+        organization_id = int(membership["organization_id"])
+        cursor.execute(
+            """
+            SELECT oi.employee_id
+            FROM organization_invitations oi
+            JOIN employees e ON e.id = oi.employee_id AND e.organization_id = oi.organization_id
+            WHERE oi.organization_id = ?
+              AND lower(oi.email) = ?
+              AND oi.role = 'employee'
+              AND oi.status = 'accepted'
+              AND oi.employee_id IS NOT NULL
+            ORDER BY oi.accepted_at DESC, oi.id DESC
+            LIMIT 1
+            """,
+            (organization_id, user_email),
+        )
+        invitation = cursor.fetchone()
+        if not invitation:
+            continue
+
+        employee_id = int(invitation["employee_id"])
+        cursor.execute(
+            """
+            UPDATE organization_memberships
+            SET employee_id = ?, updated_at = ?
+            WHERE organization_id = ?
+              AND user_id = ?
+              AND role = 'employee'
+              AND status = 'active'
+              AND employee_id IS NULL
+            """,
+            (employee_id, current_utc_timestamp(), organization_id, current_user["id"]),
+        )
+        if cursor.rowcount:
+            membership["employee_id"] = employee_id
+            repaired = True
+
+    return repaired
+
+
 def active_user_count(cursor) -> int:
     return auth_repository.active_user_count(cursor)
 
@@ -979,6 +1334,15 @@ def require_database_admin_if_auth_initialized(authorization: str | None = Heade
         return None
 
     current_user = get_current_user(authorization)
+    membership = find_any_membership_with_role(current_user, {"owner", "admin"})
+    if not membership:
+        raise HTTPException(status_code=403, detail="Owner or admin permissions are required")
+    return {"user": current_user, "membership": membership}
+
+
+def require_developer_support_access(current_user: dict = Depends(get_current_user)) -> dict:
+    if not is_developer_mode_enabled():
+        raise HTTPException(status_code=404, detail="Developer support mode is disabled")
     membership = find_any_membership_with_role(current_user, {"owner", "admin"})
     if not membership:
         raise HTTPException(status_code=403, detail="Owner or admin permissions are required")
@@ -1002,8 +1366,31 @@ def require_preference_access_if_auth_initialized(authorization: str | None = He
         return {"user": current_user, "membership": admin_membership, "scope": "all"}
 
     employee_membership = find_any_membership_with_role(current_user, {"employee"})
+    if employee_membership and not employee_membership.get("employee_id"):
+        connection = get_connection()
+        try:
+            cursor = connection.cursor()
+            repaired = repair_employee_membership_links(cursor, current_user)
+            if repaired:
+                write_auth_audit_event(
+                    cursor,
+                    "employee_membership_link_repaired",
+                    user_id=current_user["id"],
+                    organization_id=employee_membership["organization_id"],
+                    metadata={"employee_id": employee_membership.get("employee_id")},
+                )
+                connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     if employee_membership and employee_membership.get("employee_id"):
         return {"user": current_user, "membership": employee_membership, "scope": "own"}
+
+    if employee_membership:
+        raise HTTPException(status_code=403, detail="Employee account is not linked to an employee record")
 
     raise HTTPException(status_code=403, detail="Preference permissions are required")
 
@@ -1041,6 +1428,18 @@ def require_schedule_edit_if_auth_initialized(authorization: str | None = Header
 
 def require_setup_edit_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
     return require_roles_if_auth_initialized({"owner", "admin", "scheduler"}, authorization)
+
+
+def employee_scope_from_access(access_context: dict | None) -> int | None:
+    if not access_context:
+        return None
+    membership = access_context.get("membership") or {}
+    if membership.get("role") != "employee":
+        return None
+    employee_id = membership.get("employee_id")
+    if not employee_id:
+        raise HTTPException(status_code=403, detail="Employee account is not linked to an employee record")
+    return int(employee_id)
 
 
 def require_employee_preference_scope(preference_context: dict | None, employee_id: int) -> None:
@@ -1110,6 +1509,8 @@ def audit_context_from_user(current_user: dict | None) -> tuple[int | None, int 
 
 
 def create_recovery_backup(label: str) -> str:
+    if not database_module.is_sqlite_runtime():
+        return "cloud_sql_managed_backup"
     try:
         return database_module.create_database_backup(label).name
     except Exception as exc:
@@ -1142,11 +1543,32 @@ ORGANIZATION_IMPORT_DELETE_ORDER = (
     "employees",
     "app_settings",
 )
+LOCAL_ONLY_APP_SETTING_KEYS = {
+    "desktop_cloud_access_token",
+    "desktop_cloud_last_pull_at",
+    "desktop_cloud_last_pull_app_version",
+    "desktop_cloud_last_push_at",
+    "desktop_cloud_last_push_error",
+    "desktop_sync_suspended",
+}
 
 
 def fetch_table_rows(cursor: sqlite3.Cursor, table_name: str, organization_id: int) -> list[dict]:
     order_column = "key" if table_name == "app_settings" else "id"
-    cursor.execute(f"SELECT * FROM {table_name} WHERE organization_id = ? ORDER BY {order_column}", (organization_id,))
+    if table_name == "app_settings":
+        placeholders = ",".join(["?"] * len(LOCAL_ONLY_APP_SETTING_KEYS))
+        cursor.execute(
+            f"""
+            SELECT *
+            FROM app_settings
+            WHERE organization_id = ?
+              AND key NOT IN ({placeholders})
+            ORDER BY {order_column}
+            """,
+            (organization_id, *sorted(LOCAL_ONLY_APP_SETTING_KEYS)),
+        )
+    else:
+        cursor.execute(f"SELECT * FROM {table_name} WHERE organization_id = ? ORDER BY {order_column}", (organization_id,))
     return [dict(row) for row in cursor.fetchall()]
 
 
@@ -1193,15 +1615,16 @@ def _insert_employee_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organ
         cursor.execute(
             """
             INSERT INTO employees (
-                organization_id, public_id, full_name, sex, min_shifts_per_week, target_shifts_per_week,
+                organization_id, public_id, id_card, full_name, sex, min_shifts_per_week, target_shifts_per_week,
                 max_shifts_per_week, can_work_night, can_work_weekends,
                 can_work_evenings_after_night, can_work_mornings_and_evenings, created_at, updated_at, updated_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 organization_id,
                 row.get("public_id"),
+                normalize_id_card(row.get("id_card")) or None,
                 row.get("full_name"),
                 row.get("sex"),
                 row.get("min_shifts_per_week"),
@@ -1337,10 +1760,14 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
             continue
         cursor.execute(
             """
-            INSERT OR REPLACE INTO employee_positions (
+            INSERT INTO employee_positions (
                 employee_id, position_id, is_primary, priority_score, is_fallback_only
             )
             VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(employee_id, position_id)
+            DO UPDATE SET is_primary = excluded.is_primary,
+                          priority_score = excluded.priority_score,
+                          is_fallback_only = excluded.is_fallback_only
             """,
             (
                 new_employee_id,
@@ -1510,8 +1937,11 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
     for row in records.get("app_settings") or []:
         cursor.execute(
             """
-            INSERT OR REPLACE INTO app_settings (organization_id, key, value)
+            INSERT INTO app_settings (organization_id, key, value)
             VALUES (?, ?, ?)
+            ON CONFLICT(key)
+            DO UPDATE SET organization_id = excluded.organization_id,
+                          value = excluded.value
             """,
             (organization_id, row.get("key"), row.get("value")),
         )
@@ -2331,7 +2761,9 @@ def validate_manual_schedule_entry_basics(connection, entry: ScheduleEntryCreate
 
 
 @app.post("/api/auth/bootstrap", tags=["Auth"])
-def bootstrap_first_owner(request_data: AuthBootstrapRequest):
+def bootstrap_first_owner(request_data: AuthBootstrapRequest, request: Request):
+    if is_cloud_employee_portal_mode() and not is_trusted_desktop_cloud_request(request):
+        raise HTTPException(status_code=404, detail="Organization setup is available only in the desktop app")
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -2383,49 +2815,44 @@ def login(request_data: AuthLoginRequest, request: Request):
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        email = str(request_data.email).strip().lower()
-        if is_login_rate_limited(email, request):
+        identifier = normalize_login_identifier(request_data.email)
+        if is_login_rate_limited(identifier, request):
             write_auth_audit_event(
                 cursor,
                 "login_rate_limited",
-                metadata={"email": email, "ip": get_request_ip(request)},
+                metadata={"identifier": identifier, "ip": get_request_ip(request)},
             )
             connection.commit()
             raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
 
-        cursor.execute(
-            """
-            SELECT id, password_hash, status
-            FROM users
-            WHERE lower(email) = ?
-            """,
-            (email,),
-        )
-        user_row = cursor.fetchone()
+        user_row = find_user_for_login(cursor, identifier)
         if not user_row or user_row["status"] != "active" or not verify_password(request_data.password, user_row["password_hash"]):
             user_id = user_row["id"] if user_row else None
             write_auth_audit_event(
                 cursor,
                 "login_failed",
                 user_id=user_id,
-                metadata={"email": email, "ip": get_request_ip(request)},
+                metadata={"identifier": identifier, "ip": get_request_ip(request)},
             )
             connection.commit()
-            if record_login_failure(email, request):
+            if record_login_failure(identifier, request):
                 write_auth_audit_event_record(
                     "login_rate_limited",
                     user_id=user_id,
-                    metadata={"email": email, "ip": get_request_ip(request)},
+                    metadata={"identifier": identifier, "ip": get_request_ip(request)},
                 )
                 raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+            raise HTTPException(status_code=401, detail="Invalid login or password")
 
         now = current_utc_timestamp()
         cursor.execute("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?", (now, now, user_row["id"]))
         write_auth_audit_event(cursor, "login_success", user_id=user_row["id"])
         auth_response = build_auth_response(connection, user_row["id"])
+        if repair_employee_membership_links(cursor, auth_response["user"]):
+            write_auth_audit_event(cursor, "employee_membership_link_repaired", user_id=user_row["id"])
+            auth_response["user"] = get_user_context(cursor, user_row["id"])
         connection.commit()
-        clear_login_failures(email, request)
+        clear_login_failures(identifier, request)
         return auth_response
     except HTTPException:
         connection.rollback()
@@ -2434,9 +2861,358 @@ def login(request_data: AuthLoginRequest, request: Request):
         connection.close()
 
 
+@app.post("/api/auth/create-organization", tags=["Auth"])
+def create_owner_organization(request_data: AuthOrganizationCreateRequest, request: Request):
+    if is_cloud_employee_portal_mode() and not is_trusted_desktop_cloud_request(request):
+        raise HTTPException(status_code=404, detail="Organization setup is available only in the desktop app")
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        email = str(request_data.email).strip().lower()
+        now = current_utc_timestamp()
+        cursor.execute("SELECT id, password_hash, status FROM users WHERE lower(email) = ?", (email,))
+        user_row = cursor.fetchone()
+        if user_row:
+            if user_row["status"] != "active" or not verify_password(request_data.password, user_row["password_hash"]):
+                raise HTTPException(status_code=401, detail="Existing account password is incorrect")
+            user_id = int(user_row["id"])
+            cursor.execute(
+                "UPDATE users SET full_name = ?, updated_at = ? WHERE id = ?",
+                (request_data.full_name.strip(), now, user_id),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
+                VALUES (?, ?, ?, 'active', 1, ?, ?)
+                """,
+                (email, request_data.full_name.strip(), hash_password(request_data.password), now, now),
+            )
+            user_id = int(cursor.lastrowid)
+
+        public_id = f"org_{secrets.token_hex(16)}"
+        cursor.execute(
+            """
+            INSERT INTO organizations (public_id, name, status, created_at, updated_at)
+            VALUES (?, ?, 'active', ?, ?)
+            """,
+            (public_id, request_data.organization_name.strip(), now, now),
+        )
+        organization_id = int(cursor.lastrowid)
+        cursor.execute(
+            """
+            INSERT INTO organization_memberships (organization_id, user_id, role, status, created_at, updated_at)
+            VALUES (?, ?, 'owner', 'active', ?, ?)
+            """,
+            (organization_id, user_id, now, now),
+        )
+        write_auth_audit_event(cursor, "organization_created", user_id=user_id, organization_id=organization_id)
+        auth_response = build_auth_response(connection, user_id)
+        connection.commit()
+        return auth_response
+    except sqlite3.IntegrityError as exc:
+        connection.rollback()
+        raise HTTPException(status_code=409, detail="Organization or owner already exists") from exc
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def import_cloud_session_to_desktop(cloud_base_url: str, cloud_session: dict) -> dict:
+    cloud_token = cloud_session.get("access_token")
+    cloud_user = cloud_session.get("user") or {}
+    if not cloud_token or not cloud_user:
+        raise HTTPException(status_code=502, detail="Cloud login response is incomplete")
+    cloud_membership = select_desktop_cloud_membership(cloud_user)
+    cloud_organization_id = int(cloud_membership["organization_id"])
+    cloud_bundle = request_cloud_json(
+        cloud_base_url,
+        f"/api/organizations/{cloud_organization_id}/cloud-export",
+        token=cloud_token,
+    )
+
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        user_id = upsert_desktop_cloud_user(cursor, cloud_user, cloud_membership, 1)
+        import_result = import_organization_bundle(
+            connection,
+            1,
+            cloud_bundle,
+            replace_existing=True,
+            imported_by_user_id=user_id,
+        )
+        now = current_utc_timestamp()
+        for key, value in {
+            "cloud_api_base_url": cloud_base_url,
+            "cloud_organization_id": str(cloud_organization_id),
+            "cloud_organization_public_id": str(cloud_membership.get("organization_public_id") or cloud_bundle.get("organization", {}).get("public_id") or ""),
+            "cloud_linked_at": now,
+            "desktop_cloud_access_token": str(cloud_token),
+            "desktop_cloud_last_pull_at": now,
+            "desktop_cloud_last_pull_app_version": str(cloud_bundle.get("app_version") or ""),
+        }.items():
+            cursor.execute(
+                """
+                INSERT INTO app_settings (organization_id, key, value)
+                VALUES (1, ?, ?)
+                ON CONFLICT(key)
+                DO UPDATE SET organization_id = excluded.organization_id,
+                              value = excluded.value
+                """,
+                (key, value),
+            )
+        cursor.execute("DELETE FROM desktop_sync_outbox WHERE organization_id = 1")
+        auth_response = build_auth_response(connection, user_id)
+        connection.commit()
+        return {
+            **auth_response,
+            "desktop_sync": {
+                "cloud_api_base_url": cloud_base_url,
+                "cloud_organization_id": cloud_organization_id,
+                "cloud_organization_public_id": cloud_membership.get("organization_public_id") or cloud_bundle.get("organization", {}).get("public_id") or "",
+                "last_pull_at": now,
+                "imported": import_result.get("imported", {}),
+            },
+        }
+    except sqlite3.IntegrityError as exc:
+        connection.rollback()
+        raise HTTPException(status_code=409, detail=f"Desktop import conflict: {exc}") from exc
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.post("/api/desktop/cloud-login", tags=["Auth"])
+def desktop_cloud_login(request_data: DesktopCloudLoginRequest):
+    if not is_desktop_sqlite_runtime():
+        raise HTTPException(status_code=404, detail="Desktop cloud login is available only in the installed SQLite app")
+
+    cloud_base_url = get_desktop_cloud_login_base_url()
+    cloud_session = request_cloud_json(
+        cloud_base_url,
+        "/api/auth/login",
+        method="POST",
+        payload={"email": str(request_data.email), "password": request_data.password},
+    )
+    return import_cloud_session_to_desktop(cloud_base_url, cloud_session)
+
+
+@app.post("/api/desktop/cloud-create-organization", tags=["Auth"])
+def desktop_cloud_create_organization(request_data: AuthOrganizationCreateRequest):
+    if not is_desktop_sqlite_runtime():
+        raise HTTPException(status_code=404, detail="Desktop organization setup is available only in the installed SQLite app")
+    cloud_base_url = get_desktop_cloud_login_base_url()
+    cloud_session = request_cloud_json(
+        cloud_base_url,
+        "/api/auth/create-organization",
+        method="POST",
+        payload=request_data.model_dump(mode="json"),
+        extra_headers={"X-ShiftCare-Desktop-Client": "1"},
+    )
+    return import_cloud_session_to_desktop(cloud_base_url, cloud_session)
+
+
 @app.get("/api/auth/me", tags=["Auth"])
 def get_authenticated_user(current_user: dict = Depends(get_current_user)):
-    return {"user": current_user}
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        if repair_employee_membership_links(cursor, current_user):
+            write_auth_audit_event(cursor, "employee_membership_link_repaired", user_id=current_user["id"])
+            connection.commit()
+            return {"user": get_user_context(cursor, current_user["id"])}
+        return {"user": current_user}
+    finally:
+        connection.close()
+
+
+@app.get("/api/desktop/sync/status", tags=["Auth"])
+def desktop_sync_status(current_user: dict = Depends(get_current_user)):
+    if not is_desktop_sqlite_runtime():
+        raise HTTPException(status_code=404, detail="Desktop sync status is available only in the installed SQLite app")
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        membership = find_any_membership_with_role(current_user, DESKTOP_CLOUD_SYNC_ROLES)
+        if not membership:
+            raise HTTPException(status_code=403, detail="Desktop scheduling permissions are required")
+        organization_id = int(membership["organization_id"])
+        settings = read_organization_cloud_link_settings(cursor, organization_id)
+        cursor.execute(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM desktop_sync_outbox
+            WHERE organization_id = ?
+            GROUP BY status
+            """,
+            (organization_id,),
+        )
+        queue_counts = {row["status"]: row["count"] for row in cursor.fetchall()}
+        cursor.execute(
+            """
+            SELECT value
+            FROM app_settings
+            WHERE organization_id = ? AND key = 'desktop_cloud_last_pull_at'
+            """,
+            (organization_id,),
+        )
+        last_pull_row = cursor.fetchone()
+        return {
+            "linked": organization_has_cloud_link(settings),
+            "cloud_api_base_url": settings.get("cloud_api_base_url") or "",
+            "cloud_organization_id": int(settings["cloud_organization_id"]) if settings.get("cloud_organization_id") else None,
+            "cloud_organization_public_id": settings.get("cloud_organization_public_id") or "",
+            "last_pull_at": last_pull_row["value"] if last_pull_row else "",
+            "queue": {
+                "pending": int(queue_counts.get("pending", 0)),
+                "syncing": int(queue_counts.get("syncing", 0)),
+                "failed": int(queue_counts.get("failed", 0)),
+                "synced": int(queue_counts.get("synced", 0)),
+            },
+        }
+    finally:
+        connection.close()
+
+
+def should_start_desktop_sync_worker() -> bool:
+    if os.environ.get("SCHEDULE_APP_DISABLE_BACKGROUND_SYNC", "").strip().lower() in TRUTHY_ENV_VALUES:
+        return False
+    return is_desktop_sqlite_runtime() and (
+        getattr(sys, "frozen", False)
+        or os.environ.get("SCHEDULE_APP_ENABLE_BACKGROUND_SYNC", "").strip().lower() in TRUTHY_ENV_VALUES
+    )
+
+
+def run_desktop_sync_once() -> bool:
+    if not is_desktop_sqlite_runtime():
+        return False
+
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM desktop_sync_outbox
+            WHERE status IN ('pending', 'failed')
+              AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+            """,
+            (current_utc_timestamp(),),
+        )
+        pending_count = int(cursor.fetchone()["count"])
+        if pending_count <= 0:
+            return False
+
+        cursor.execute(
+            """
+            SELECT key, value
+            FROM app_settings
+            WHERE organization_id = 1
+              AND key IN ('cloud_api_base_url', 'cloud_organization_id', 'desktop_cloud_access_token')
+            """
+        )
+        settings = {row["key"]: row["value"] for row in cursor.fetchall()}
+        cloud_base_url = settings.get("cloud_api_base_url") or get_desktop_cloud_login_base_url()
+        cloud_organization_id = settings.get("cloud_organization_id")
+        cloud_token = settings.get("desktop_cloud_access_token")
+        if not cloud_organization_id or not cloud_token:
+            return False
+
+        sync_cloud_preferences_to_desktop(connection, settings)
+
+        cursor.execute(
+            """
+            UPDATE desktop_sync_outbox
+            SET status = 'syncing', attempts = attempts + 1, updated_at = ?
+            WHERE organization_id = 1 AND status IN ('pending', 'failed')
+            """,
+            (current_utc_timestamp(),),
+        )
+        connection.commit()
+
+        bundle = build_organization_export_bundle(connection, 1)
+        request_cloud_json(
+            cloud_base_url,
+            f"/api/organizations/{int(cloud_organization_id)}/cloud-import",
+            method="POST",
+            payload={"bundle": bundle, "replace_existing": True},
+            token=cloud_token,
+        )
+
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            UPDATE desktop_sync_outbox
+            SET status = 'synced', updated_at = ?, synced_at = ?, last_error = NULL
+            WHERE organization_id = 1 AND status = 'syncing'
+            """,
+            (now, now),
+        )
+        cursor.execute(
+            """
+            INSERT INTO app_settings (organization_id, key, value)
+            VALUES (1, 'desktop_cloud_last_push_at', ?)
+            ON CONFLICT(key)
+            DO UPDATE SET organization_id = excluded.organization_id,
+                          value = excluded.value
+            """,
+            (now,),
+        )
+        connection.commit()
+        return True
+    except Exception as exc:
+        connection.rollback()
+        try:
+            cursor = connection.cursor()
+            now = current_utc_timestamp()
+            next_attempt = (datetime.now(UTC) + timedelta(minutes=2)).replace(tzinfo=None).isoformat(timespec="seconds")
+            cursor.execute(
+                """
+                UPDATE desktop_sync_outbox
+                SET status = 'failed', updated_at = ?, last_error = ?, next_attempt_at = ?
+                WHERE organization_id = 1 AND status = 'syncing'
+                """,
+                (now, str(exc)[:500], next_attempt),
+            )
+            cursor.execute(
+                """
+                INSERT INTO app_settings (organization_id, key, value)
+                VALUES (1, 'desktop_cloud_last_push_error', ?)
+                ON CONFLICT(key)
+                DO UPDATE SET organization_id = excluded.organization_id,
+                              value = excluded.value
+                """,
+                (str(exc)[:500],),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+        return False
+    finally:
+        connection.close()
+
+
+def desktop_sync_worker_loop() -> None:
+    while True:
+        sleep(20)
+        run_desktop_sync_once()
+
+
+_DESKTOP_SYNC_WORKER_STARTED = False
+
+
+@app.on_event("startup")
+def start_desktop_sync_worker():
+    global _DESKTOP_SYNC_WORKER_STARTED
+    if _DESKTOP_SYNC_WORKER_STARTED or not should_start_desktop_sync_worker():
+        return
+    _DESKTOP_SYNC_WORKER_STARTED = True
+    threading.Thread(target=desktop_sync_worker_loop, name="shiftcare-desktop-sync", daemon=True).start()
 
 
 @app.get("/api/auth/status", tags=["Auth"])
@@ -2488,6 +3264,114 @@ def update_authenticated_profile(
         raise
     finally:
         connection.close()
+
+
+def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> bool:
+    cloud_base_url = settings.get("cloud_api_base_url") or get_desktop_cloud_login_base_url()
+    cloud_organization_id = settings.get("cloud_organization_id")
+    cloud_token = settings.get("desktop_cloud_access_token")
+    if not cloud_organization_id or not cloud_token:
+        return False
+
+    cloud_bundle = request_cloud_json(
+        cloud_base_url,
+        f"/api/organizations/{int(cloud_organization_id)}/cloud-export",
+        token=cloud_token,
+    )
+    records = cloud_bundle.get("records") or {}
+    cloud_employees = records.get("employees") or []
+    cloud_employee_public_ids = {
+        int(row["id"]): str(row.get("public_id") or "")
+        for row in cloud_employees
+        if row.get("id") is not None and row.get("public_id")
+    }
+    cursor = connection.cursor()
+    cursor.execute("SELECT id, public_id FROM employees WHERE organization_id = 1")
+    local_employee_ids = {str(row["public_id"]): int(row["id"]) for row in cursor.fetchall() if row["public_id"]}
+    now = current_utc_timestamp()
+
+    cursor.execute("DELETE FROM employee_preferences WHERE organization_id = 1")
+    for row in records.get("employee_preferences") or []:
+        public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
+        local_employee_id = local_employee_ids.get(str(public_id))
+        if not local_employee_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO employee_preferences (
+                organization_id, public_id, employee_id, allow_morning, allow_evening, allow_night,
+                allow_morning_evening_combo, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1,
+                row.get("public_id"),
+                local_employee_id,
+                int(row.get("allow_morning") or 0),
+                int(row.get("allow_evening") or 0),
+                int(row.get("allow_night") or 0),
+                int(row.get("allow_morning_evening_combo") or 0),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                None,
+            ),
+        )
+
+    cursor.execute("DELETE FROM employee_week_preferences WHERE organization_id = 1")
+    for row in records.get("employee_week_preferences") or []:
+        public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
+        local_employee_id = local_employee_ids.get(str(public_id))
+        if not local_employee_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO employee_week_preferences (
+                organization_id, public_id, employee_id, week_start_date, preference_date,
+                preference_type, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1,
+                row.get("public_id"),
+                local_employee_id,
+                row.get("week_start_date"),
+                row.get("preference_date"),
+                row.get("preference_type"),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                None,
+            ),
+        )
+    cursor.execute(
+        """
+        INSERT INTO app_settings (organization_id, key, value)
+        VALUES (1, 'desktop_cloud_last_pull_at', ?)
+        ON CONFLICT(key)
+        DO UPDATE SET organization_id = excluded.organization_id,
+                      value = excluded.value
+        """,
+        (now,),
+    )
+    return True
+
+
+def pull_cloud_preferences_for_desktop_generation(connection) -> None:
+    if not is_desktop_sqlite_runtime():
+        return
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT key, value
+        FROM app_settings
+        WHERE organization_id = 1
+          AND key IN ('cloud_api_base_url', 'cloud_organization_id', 'desktop_cloud_access_token')
+        """
+    )
+    settings = {row["key"]: row["value"] for row in cursor.fetchall()}
+    if desktop_cloud_sync_is_ready(settings):
+        sync_cloud_preferences_to_desktop(connection, settings)
 
 
 @app.post("/api/auth/change-password", tags=["Auth"])
@@ -2678,40 +3562,62 @@ def accept_invitation(request_data: AuthInvitationAcceptRequest):
         token_hash = hash_session_token(request_data.token)
         cursor.execute(
             """
-            SELECT id, organization_id, email, role, employee_id
-            FROM organization_invitations
+            SELECT oi.id, oi.organization_id, oi.email, oi.role, oi.employee_id,
+                   e.full_name AS employee_name
+            FROM organization_invitations oi
+            LEFT JOIN employees e ON e.id = oi.employee_id
             WHERE token_hash = ?
-              AND status = 'pending'
-              AND expires_at > ?
+              AND oi.status = 'pending'
+              AND oi.expires_at > ?
             """,
             (token_hash, now),
         )
         invitation = cursor.fetchone()
         if not invitation:
             raise HTTPException(status_code=404, detail="Invitation not found or expired")
-
-        cursor.execute("SELECT id FROM users WHERE lower(email) = ?", (invitation["email"].lower(),))
-        if cursor.fetchone():
-            raise HTTPException(status_code=409, detail="User already exists")
+        full_name = (invitation["employee_name"] or request_data.full_name or "").strip()
+        if not full_name:
+            raise HTTPException(status_code=400, detail="Invitation is not linked to an employee name")
 
         cursor.execute(
-            """
-            INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
-            VALUES (?, ?, ?, 'active', 0, ?, ?)
-            """,
-            (
-                invitation["email"].lower(),
-                request_data.full_name.strip(),
-                hash_password(request_data.password),
-                now,
-                now,
-            ),
+            "SELECT id, password_hash, status FROM users WHERE lower(email) = ?",
+            (invitation["email"].lower(),),
         )
-        user_id = cursor.lastrowid
+        existing_user = cursor.fetchone()
+        if existing_user:
+            if existing_user["status"] != "active":
+                raise HTTPException(status_code=409, detail="Existing user account is disabled")
+            if existing_user["password_hash"] and not verify_password(request_data.password, existing_user["password_hash"]):
+                raise HTTPException(status_code=401, detail="Account already exists. Enter the existing account password to accept this invitation.")
+            user_id = int(existing_user["id"])
+            cursor.execute(
+                "UPDATE users SET full_name = ?, updated_at = ? WHERE id = ?",
+                (full_name, now, user_id),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
+                VALUES (?, ?, ?, 'active', 0, ?, ?)
+                """,
+                (
+                    invitation["email"].lower(),
+                    full_name,
+                    hash_password(request_data.password),
+                    now,
+                    now,
+                ),
+            )
+            user_id = cursor.lastrowid
         cursor.execute(
             """
             INSERT INTO organization_memberships (organization_id, user_id, role, status, employee_id, created_at, updated_at)
             VALUES (?, ?, ?, 'active', ?, ?, ?)
+            ON CONFLICT(organization_id, user_id)
+            DO UPDATE SET role = excluded.role,
+                          status = 'active',
+                          employee_id = excluded.employee_id,
+                          updated_at = excluded.updated_at
             """,
             (
                 invitation["organization_id"],
@@ -2751,6 +3657,41 @@ def accept_invitation(request_data: AuthInvitationAcceptRequest):
         connection.close()
 
 
+@app.get("/api/auth/invitation-preview", tags=["Auth"])
+def get_invitation_preview(token: str):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT oi.email, oi.role, oi.employee_id, oi.expires_at,
+                   e.full_name AS employee_name,
+                   o.name AS organization_name
+            FROM organization_invitations oi
+            JOIN organizations o ON o.id = oi.organization_id
+            LEFT JOIN employees e ON e.id = oi.employee_id
+            WHERE oi.token_hash = ?
+              AND oi.status = 'pending'
+              AND oi.expires_at > ?
+            """,
+            (hash_session_token(token), current_utc_timestamp()),
+        )
+        invitation = cursor.fetchone()
+        if not invitation:
+            raise HTTPException(status_code=404, detail="Invitation not found or expired")
+        return {
+            "email": invitation["email"],
+            "role": invitation["role"],
+            "employee_id": invitation["employee_id"],
+            "employee_name": invitation["employee_name"] or "",
+            "organization_name": invitation["organization_name"],
+            "expires_at": invitation["expires_at"],
+            "requires_name": not bool(invitation["employee_name"]),
+        }
+    finally:
+        connection.close()
+
+
 @app.post("/api/auth/logout", tags=["Auth"])
 def logout(authorization: str | None = Header(default=None), current_user: dict = Depends(get_current_user)):
     token = authorization.split(" ", 1)[1].strip() if authorization else ""
@@ -2778,22 +3719,104 @@ def get_user_organizations(current_user: dict = Depends(get_current_user)):
     return {"organizations": current_user["memberships"]}
 
 
+@app.get("/api/support/accounts", tags=["Support"])
+def get_support_accounts(_support: dict = Depends(require_developer_support_access)):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT o.id, o.public_id, o.name, o.status, o.created_at, o.updated_at,
+                   COUNT(DISTINCT om.user_id) AS member_count,
+                   COUNT(DISTINCT e.id) AS employee_count
+            FROM organizations o
+            LEFT JOIN organization_memberships om
+                ON om.organization_id = o.id AND om.status = 'active'
+            LEFT JOIN employees e
+                ON 1 = 1
+            GROUP BY o.id, o.public_id, o.name, o.status, o.created_at, o.updated_at
+            ORDER BY o.id
+            """
+        )
+        organizations = [dict(row) for row in cursor.fetchall()]
+
+        cursor.execute(
+            """
+            SELECT u.id AS user_id, u.email, u.full_name, u.status AS user_status,
+                   u.email_verified, u.created_at, u.updated_at, u.last_login_at,
+                   o.id AS organization_id, o.name AS organization_name,
+                   om.role, om.status AS membership_status, om.employee_id,
+                   e.full_name AS employee_name
+            FROM users u
+            LEFT JOIN organization_memberships om ON om.user_id = u.id
+            LEFT JOIN organizations o ON o.id = om.organization_id
+            LEFT JOIN employees e ON e.id = om.employee_id
+            ORDER BY o.id, u.full_name, u.email
+            """
+        )
+        accounts = [
+            {
+                "user_id": row["user_id"],
+                "email": row["email"],
+                "full_name": row["full_name"],
+                "user_status": row["user_status"],
+                "email_verified": bool(row["email_verified"]),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "last_login_at": row["last_login_at"],
+                "organization_id": row["organization_id"],
+                "organization_name": row["organization_name"],
+                "role": row["role"],
+                "membership_status": row["membership_status"],
+                "employee_id": row["employee_id"],
+                "employee_name": row["employee_name"],
+            }
+            for row in cursor.fetchall()
+        ]
+
+        cursor.execute(
+            """
+            SELECT id, full_name, sex, min_shifts_per_week, target_shifts_per_week, max_shifts_per_week
+            FROM employees
+            ORDER BY full_name, id
+            """
+        )
+        employees = [dict(row) for row in cursor.fetchall()]
+        return {
+            "developer_mode": True,
+            "organizations": organizations,
+            "accounts": accounts,
+            "employees": employees,
+        }
+    finally:
+        connection.close()
+
+
 @app.get("/api/organizations/{organization_id}/members", tags=["Auth"])
 def get_organization_members(organization_id: int, current_user: dict = Depends(get_current_user)):
     require_organization_role(current_user, organization_id, {"owner", "admin", "scheduler", "manager"})
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        if is_desktop_sqlite_runtime():
+            settings = read_desktop_cloud_sync_settings(cursor, organization_id)
+            if desktop_cloud_sync_is_ready(settings):
+                return request_cloud_json(
+                    settings["cloud_api_base_url"],
+                    f"/api/organizations/{int(settings['cloud_organization_id'])}/members",
+                    token=settings["desktop_cloud_access_token"],
+                )
         cursor.execute(
             """
             SELECT u.id, u.email, u.full_name, u.status AS user_status, u.email_verified,
                    e.full_name AS employee_name,
+                   e.public_id AS employee_public_id,
                    om.role, om.status AS membership_status, om.employee_id, om.created_at, om.updated_at
             FROM organization_memberships om
             JOIN users u ON u.id = om.user_id
             LEFT JOIN employees e ON e.id = om.employee_id
-            WHERE om.organization_id = ? AND om.status = 'active'
-            ORDER BY u.full_name, u.email
+            WHERE om.organization_id = ?
+            ORDER BY CASE om.status WHEN 'active' THEN 0 WHEN 'invited' THEN 1 ELSE 2 END, u.full_name, u.email
             """,
             (organization_id,),
         )
@@ -2808,6 +3831,7 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
                     "role": row["role"],
                     "membership_status": row["membership_status"],
                     "employee_id": row["employee_id"],
+                    "employee_public_id": row["employee_public_id"],
                     "employee_name": row["employee_name"],
                     "created_at": row["created_at"],
                     "updated_at": row["updated_at"],
@@ -2825,9 +3849,19 @@ def get_organization_invitations(organization_id: int, current_user: dict = Depe
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        if is_desktop_sqlite_runtime():
+            settings = read_desktop_cloud_sync_settings(cursor, organization_id)
+            if desktop_cloud_sync_is_ready(settings):
+                return request_cloud_json(
+                    settings["cloud_api_base_url"],
+                    f"/api/organizations/{int(settings['cloud_organization_id'])}/invitations",
+                    token=settings["desktop_cloud_access_token"],
+                )
         cursor.execute(
             """
-            SELECT oi.id, oi.email, oi.employee_id, e.full_name AS employee_name,
+            SELECT oi.id, oi.email, oi.employee_id,
+                   e.public_id AS employee_public_id,
+                   e.full_name AS employee_name,
                    oi.role, oi.status, oi.expires_at, oi.accepted_at,
                    oi.created_by_user_id, oi.created_at
             FROM organization_invitations oi
@@ -2844,7 +3878,7 @@ def get_organization_invitations(organization_id: int, current_user: dict = Depe
 
 @app.get("/api/organizations/{organization_id}/cloud-export", tags=["Auth"])
 def export_organization_for_cloud(organization_id: int, current_user: dict = Depends(get_current_user)):
-    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    require_organization_role(current_user, organization_id, DESKTOP_CLOUD_SYNC_ROLES)
     connection = get_connection()
     try:
         return build_organization_export_bundle(connection, organization_id, exported_by_user_id=current_user["id"])
@@ -2942,10 +3976,29 @@ def get_organization_cloud_link(organization_id: int, current_user: dict = Depen
     try:
         cursor = connection.cursor()
         fetch_one_or_404(cursor, "SELECT id FROM organizations WHERE id = ?", (organization_id,), "Organization not found")
+        settings = read_organization_cloud_link_settings(cursor, organization_id)
+        cloud_organization_id = settings.get("cloud_organization_id")
+        return {
+            "linked": organization_has_cloud_link(settings),
+            "cloud_api_base_url": settings.get("cloud_api_base_url") or "",
+            "cloud_organization_id": int(cloud_organization_id) if cloud_organization_id else None,
+            "cloud_organization_public_id": settings.get("cloud_organization_public_id") or "",
+            "linked_at": settings.get("cloud_linked_at") or "",
+        }
+    finally:
+        connection.close()
+
+
+@app.delete("/api/organizations/{organization_id}/cloud-link", tags=["Auth"])
+def delete_organization_cloud_link(organization_id: int, current_user: dict = Depends(get_current_user)):
+    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        fetch_one_or_404(cursor, "SELECT id FROM organizations WHERE id = ?", (organization_id,), "Organization not found")
         cursor.execute(
             """
-            SELECT key, value
-            FROM app_settings
+            DELETE FROM app_settings
             WHERE organization_id = ?
               AND key IN (
                   'cloud_api_base_url',
@@ -2956,15 +4009,17 @@ def get_organization_cloud_link(organization_id: int, current_user: dict = Depen
             """,
             (organization_id,),
         )
-        settings = {row["key"]: row["value"] for row in cursor.fetchall()}
-        cloud_organization_id = settings.get("cloud_organization_id")
-        return {
-            "linked": bool(settings.get("cloud_api_base_url") and cloud_organization_id),
-            "cloud_api_base_url": settings.get("cloud_api_base_url") or "",
-            "cloud_organization_id": int(cloud_organization_id) if cloud_organization_id else None,
-            "cloud_organization_public_id": settings.get("cloud_organization_public_id") or "",
-            "linked_at": settings.get("cloud_linked_at") or "",
-        }
+        write_auth_audit_event(
+            cursor,
+            "organization_cloud_unlinked",
+            user_id=current_user["id"],
+            organization_id=organization_id,
+        )
+        connection.commit()
+        return {"message": "Cloud link removed"}
+    except HTTPException:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 
@@ -2973,6 +4028,7 @@ def get_organization_cloud_link(organization_id: int, current_user: dict = Depen
 def create_organization_invitation(
     organization_id: int,
     request_data: OrganizationInvitationCreate,
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     require_organization_role(current_user, organization_id, {"owner", "admin"})
@@ -2983,35 +4039,56 @@ def create_organization_invitation(
         email = str(request_data.email).strip().lower()
         cursor.execute(
             """
-            SELECT 1
+            SELECT om.status, om.role, om.employee_id
             FROM organization_memberships om
             JOIN users u ON u.id = om.user_id
             WHERE om.organization_id = ? AND lower(u.email) = ?
             """,
             (organization_id, email),
         )
-        if cursor.fetchone():
+        existing_membership = cursor.fetchone()
+        if existing_membership and existing_membership["status"] == "active":
             raise HTTPException(status_code=409, detail="User is already a member of this organization")
 
         employee_id = request_data.employee_id
+        employee_public_id = request_data.employee_public_id
+        if employee_id is None and employee_public_id:
+            cursor.execute(
+                """
+                SELECT id
+                FROM employees
+                WHERE public_id = ? AND organization_id = ?
+                """,
+                (employee_public_id, organization_id),
+            )
+            employee_row = cursor.fetchone()
+            if not employee_row:
+                raise HTTPException(status_code=404, detail="Employee not found in this organization")
+            employee_id = int(employee_row["id"])
+        if request_data.role == "employee" and employee_id is None:
+            raise HTTPException(status_code=400, detail="Employee invitations must be linked to an employee")
         if employee_id is not None:
             if request_data.role != "employee":
                 raise HTTPException(status_code=400, detail="Employee link is only available for employee invitations")
             cursor.execute(
                 """
-                SELECT id
+                SELECT id, public_id
                 FROM employees
                 WHERE id = ? AND organization_id = ?
                 """,
                 (employee_id, organization_id),
             )
-            if not cursor.fetchone():
+            employee_row = cursor.fetchone()
+            if not employee_row:
                 raise HTTPException(status_code=404, detail="Employee not found in this organization")
+            employee_public_id = employee_row["public_id"]
             cursor.execute(
                 """
                 SELECT 1
                 FROM organization_memberships
-                WHERE organization_id = ? AND employee_id = ? AND status = 'active'
+                WHERE organization_id = ?
+                  AND employee_id = ?
+                  AND status = 'active'
                 """,
                 (organization_id, employee_id),
             )
@@ -3027,6 +4104,91 @@ def create_organization_invitation(
             )
             if cursor.fetchone():
                 raise HTTPException(status_code=409, detail="Employee already has a pending invitation")
+
+        cursor.execute(
+            """
+            SELECT 1
+            FROM organization_invitations
+            WHERE organization_id = ?
+              AND lower(email) = ?
+              AND status = 'pending'
+            """,
+            (organization_id, email),
+        )
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="User already has a pending invitation")
+
+        if is_desktop_sqlite_runtime() and is_desktop_invitation_request(request):
+            settings = read_desktop_cloud_sync_settings(cursor, organization_id)
+            if desktop_cloud_sync_is_ready(settings):
+                cloud_payload = {
+                    "email": email,
+                    "employee_public_id": employee_public_id,
+                    "role": request_data.role,
+                    "expires_in_days": request_data.expires_in_days,
+                }
+                cloud_response = request_cloud_json(
+                    settings["cloud_api_base_url"],
+                    f"/api/organizations/{int(settings['cloud_organization_id'])}/invitations",
+                    method="POST",
+                    payload=cloud_payload,
+                    token=settings["desktop_cloud_access_token"],
+                )
+                cloud_invitation = cloud_response.get("invitation") or {}
+                cloud_token = cloud_response.get("invitation_token") or secrets.token_urlsafe(32)
+                now = current_utc_timestamp()
+                expires_at = cloud_invitation.get("expires_at") or (
+                    datetime.now(UTC) + timedelta(days=request_data.expires_in_days)
+                ).replace(tzinfo=None).isoformat(timespec="seconds")
+                cursor.execute(
+                    """
+                    INSERT INTO organization_invitations (
+                        organization_id, email, employee_id, role, token_hash, status, expires_at, created_by_user_id, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                    """,
+                    (
+                        organization_id,
+                        email,
+                        employee_id,
+                        request_data.role,
+                        hash_session_token(cloud_token),
+                        expires_at,
+                        current_user["id"],
+                        now,
+                    ),
+                )
+                local_invitation_id = cursor.lastrowid
+                write_auth_audit_event(
+                    cursor,
+                    "invitation_created_via_cloud",
+                    user_id=current_user["id"],
+                    organization_id=organization_id,
+                    metadata={
+                        "invitation_id": local_invitation_id,
+                        "cloud_invitation_id": cloud_invitation.get("id"),
+                        "email": email,
+                        "employee_id": employee_id,
+                    },
+                )
+                connection.commit()
+                return {
+                    "invitation": {
+                        "id": local_invitation_id,
+                        "organization_id": organization_id,
+                        "email": email,
+                        "employee_id": employee_id,
+                        "role": request_data.role,
+                        "status": "pending",
+                        "expires_at": expires_at,
+                    },
+                    "invitation_token": cloud_token,
+                    "invitation_url": cloud_response.get("invitation_url") or build_invitation_url_for_request(request, cloud_token),
+                }
+            raise HTTPException(
+                status_code=409,
+                detail="Cloud invitation link is not available. Sign in with a cloud organization before inviting employees.",
+            )
 
         now = current_utc_timestamp()
         expires_at = (datetime.now(UTC) + timedelta(days=request_data.expires_in_days)).replace(tzinfo=None).isoformat(
@@ -3076,7 +4238,7 @@ def create_organization_invitation(
                 "expires_at": expires_at,
             },
             "invitation_token": invitation_token,
-            "invitation_url": build_invitation_url(invitation_token),
+            "invitation_url": build_invitation_url_for_request(request, invitation_token),
         }
     except sqlite3.IntegrityError as exc:
         connection.rollback()
@@ -3092,15 +4254,27 @@ def create_organization_invitation(
 def remove_organization_member(
     organization_id: int,
     user_id: int,
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     actor_membership = require_organization_role(current_user, organization_id, {"owner", "admin"})
-    if user_id == current_user["id"]:
-        raise HTTPException(status_code=400, detail="You cannot remove your own organization access")
 
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        if is_desktop_sqlite_runtime() and is_desktop_invitation_request(request):
+            settings = read_desktop_cloud_sync_settings(cursor, organization_id)
+            if desktop_cloud_sync_is_ready(settings):
+                return request_cloud_json(
+                    settings["cloud_api_base_url"],
+                    f"/api/organizations/{int(settings['cloud_organization_id'])}/members/{user_id}",
+                    method="DELETE",
+                    token=settings["desktop_cloud_access_token"],
+                )
+
+        if user_id == current_user["id"]:
+            raise HTTPException(status_code=400, detail="You cannot remove your own organization access")
+
         cursor.execute(
             """
             SELECT om.role, om.status, u.email, u.full_name
@@ -3171,16 +4345,164 @@ def remove_organization_member(
         connection.close()
 
 
-@app.delete("/api/organizations/{organization_id}/invitations/{invitation_id}", tags=["Auth"])
-def revoke_organization_invitation(
+@app.put("/api/organizations/{organization_id}/members/{user_id}/employee-link", tags=["Auth"])
+def update_organization_member_employee_link(
     organization_id: int,
-    invitation_id: int,
+    user_id: int,
+    request_data: OrganizationMemberEmployeeLinkUpdate,
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     require_organization_role(current_user, organization_id, {"owner", "admin"})
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        employee_id = request_data.employee_id
+        employee_public_id = request_data.employee_public_id
+        if employee_id is None and employee_public_id:
+            cursor.execute(
+                """
+                SELECT id
+                FROM employees
+                WHERE public_id = ? AND organization_id = ?
+                """,
+                (employee_public_id, organization_id),
+            )
+            employee_row = cursor.fetchone()
+            if not employee_row:
+                raise HTTPException(status_code=404, detail="Employee not found in this organization")
+            employee_id = int(employee_row["id"])
+        elif employee_id is not None:
+            cursor.execute(
+                """
+                SELECT public_id
+                FROM employees
+                WHERE id = ? AND organization_id = ?
+                """,
+                (employee_id, organization_id),
+            )
+            employee_row = cursor.fetchone()
+            if not employee_row:
+                raise HTTPException(status_code=404, detail="Employee not found in this organization")
+            employee_public_id = employee_row["public_id"]
+
+        if is_desktop_sqlite_runtime() and is_desktop_invitation_request(request):
+            settings = read_desktop_cloud_sync_settings(cursor, organization_id)
+            if desktop_cloud_sync_is_ready(settings):
+                return request_cloud_json(
+                    settings["cloud_api_base_url"],
+                    f"/api/organizations/{int(settings['cloud_organization_id'])}/members/{user_id}/employee-link",
+                    method="PUT",
+                    payload={"employee_public_id": employee_public_id, "employee_id": None},
+                    token=settings["desktop_cloud_access_token"],
+                )
+
+        cursor.execute(
+            """
+            SELECT om.role, om.status, om.employee_id, u.email
+            FROM organization_memberships om
+            JOIN users u ON u.id = om.user_id
+            WHERE om.organization_id = ? AND om.user_id = ?
+            """,
+            (organization_id, user_id),
+        )
+        member = cursor.fetchone()
+        if not member:
+            raise HTTPException(status_code=404, detail="Organization member not found")
+        if member["status"] != "active":
+            raise HTTPException(status_code=409, detail="Organization member is not active")
+        if member["role"] != "employee":
+            raise HTTPException(status_code=400, detail="Only employee members can be linked to employee records")
+
+        if employee_id is not None:
+            cursor.execute(
+                """
+                SELECT id, full_name
+                FROM employees
+                WHERE id = ? AND organization_id = ?
+                """,
+                (employee_id, organization_id),
+            )
+            employee = cursor.fetchone()
+            if not employee:
+                raise HTTPException(status_code=404, detail="Employee not found in this organization")
+            cursor.execute(
+                """
+                SELECT 1
+                FROM organization_memberships
+                WHERE organization_id = ?
+                  AND employee_id = ?
+                  AND user_id != ?
+                  AND status = 'active'
+                """,
+                (organization_id, employee_id, user_id),
+            )
+            if cursor.fetchone():
+                raise HTTPException(status_code=409, detail="Employee is already linked to another active user")
+
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            UPDATE organization_memberships
+            SET employee_id = ?, updated_at = ?
+            WHERE organization_id = ? AND user_id = ? AND role = 'employee' AND status = 'active'
+            """,
+            (employee_id, now, organization_id, user_id),
+        )
+        if employee_id is not None:
+            cursor.execute(
+                """
+                UPDATE organization_invitations
+                SET employee_id = ?
+                WHERE organization_id = ?
+                  AND lower(email) = ?
+                  AND role = 'employee'
+                  AND status = 'accepted'
+                  AND employee_id IS NULL
+                """,
+                (employee_id, organization_id, str(member["email"]).lower()),
+            )
+        write_auth_audit_event(
+            cursor,
+            "member_employee_link_updated",
+            user_id=current_user["id"],
+            organization_id=organization_id,
+            metadata={
+                "target_user_id": user_id,
+                "target_email": member["email"],
+                "employee_id": employee_id,
+            },
+        )
+        connection.commit()
+        return {"message": "Employee link updated", "user_id": user_id, "employee_id": employee_id}
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.delete("/api/organizations/{organization_id}/invitations/{invitation_id}", tags=["Auth"])
+def revoke_organization_invitation(
+    organization_id: int,
+    invitation_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        if is_desktop_sqlite_runtime() and is_desktop_invitation_request(request):
+            settings = read_desktop_cloud_sync_settings(cursor, organization_id)
+            if desktop_cloud_sync_is_ready(settings):
+                return request_cloud_json(
+                    settings["cloud_api_base_url"],
+                    f"/api/organizations/{int(settings['cloud_organization_id'])}/invitations/{invitation_id}",
+                    method="DELETE",
+                    token=settings["desktop_cloud_access_token"],
+                )
+
         cursor.execute(
             """
             SELECT id, email, role, status
@@ -3229,17 +4551,30 @@ def revoke_organization_invitation(
 def regenerate_organization_invitation_token(
     organization_id: int,
     invitation_id: int,
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     require_organization_role(current_user, organization_id, {"owner", "admin"})
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        if is_desktop_sqlite_runtime() and is_desktop_invitation_request(request):
+            settings = read_desktop_cloud_sync_settings(cursor, organization_id)
+            if desktop_cloud_sync_is_ready(settings):
+                return request_cloud_json(
+                    settings["cloud_api_base_url"],
+                    f"/api/organizations/{int(settings['cloud_organization_id'])}/invitations/{invitation_id}/regenerate-token",
+                    method="POST",
+                    token=settings["desktop_cloud_access_token"],
+                )
+
         cursor.execute(
             """
-            SELECT id, email, employee_id, role, status
-            FROM organization_invitations
-            WHERE id = ? AND organization_id = ?
+            SELECT oi.id, oi.email, oi.employee_id, oi.role, oi.status,
+                   e.full_name AS employee_name
+            FROM organization_invitations oi
+            LEFT JOIN employees e ON e.id = oi.employee_id
+            WHERE oi.id = ? AND oi.organization_id = ?
             """,
             (invitation_id, organization_id),
         )
@@ -3285,7 +4620,7 @@ def regenerate_organization_invitation_token(
                 "expires_at": expires_at,
             },
             "invitation_token": invitation_token,
-            "invitation_url": build_invitation_url(invitation_token),
+            "invitation_url": build_invitation_url_for_request(request, invitation_token),
         }
     except sqlite3.IntegrityError as exc:
         connection.rollback()
@@ -3307,6 +4642,11 @@ def create_database_backup_endpoint(
     request_data: DatabaseBackupCreateRequest,
     admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
 ):
+    if not database_module.is_sqlite_runtime():
+        raise HTTPException(
+            status_code=409,
+            detail="File backups are disabled for PostgreSQL/Cloud SQL runtime. Use Cloud SQL managed backups.",
+        )
     user_id, organization_id = audit_context_from_admin(admin_context)
     backup_path = database_module.create_schedule_backup(
         request_data.label,
@@ -3332,6 +4672,11 @@ def restore_database_backup_endpoint(
     request_data: DatabaseRestoreRequest,
     admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
 ):
+    if not database_module.is_sqlite_runtime():
+        raise HTTPException(
+            status_code=409,
+            detail="File restore is disabled for PostgreSQL/Cloud SQL runtime. Use Cloud SQL point-in-time recovery.",
+        )
     try:
         result = database_module.restore_database_backup(request_data.backup_name)
     except FileNotFoundError:
@@ -3378,8 +4723,16 @@ def install_update(request_data: UpdateInstallRequest):
     }
 
 
+def desktop_only_page_or_404(template_name: str, request: Request):
+    if is_cloud_employee_portal_mode():
+        raise HTTPException(status_code=404, detail="This page is available only in the desktop app")
+    return templates.TemplateResponse(request=request, name=template_name, context={})
+
+
 @app.get("/", tags=["Pages"])
 def home_page(request: Request):
+    if is_cloud_employee_portal_mode():
+        return templates.TemplateResponse(request=request, name="schedule.html", context={})
     return templates.TemplateResponse(request=request, name="index.html", context={})
 
 
@@ -3398,6 +4751,13 @@ def organizations_page_alias(request: Request):
     return templates.TemplateResponse(request=request, name="organization.html", context={})
 
 
+@app.get("/support", tags=["Pages"])
+def support_page(request: Request):
+    if not is_developer_mode_enabled():
+        raise HTTPException(status_code=404, detail="Developer support mode is disabled")
+    return templates.TemplateResponse(request=request, name="support.html", context={})
+
+
 @app.get("/accept-invitation", tags=["Pages"])
 def accept_invitation_page(request: Request):
     return templates.TemplateResponse(request=request, name="accept_invitation.html", context={})
@@ -3405,27 +4765,27 @@ def accept_invitation_page(request: Request):
 
 @app.get("/employees", tags=["Pages"])
 def employees_page(request: Request):
-    return templates.TemplateResponse(request=request, name="employees.html", context={})
+    return desktop_only_page_or_404("employees.html", request)
 
 
 @app.get("/positions", tags=["Pages"])
 def positions_page(request: Request):
-    return templates.TemplateResponse(request=request, name="positions.html", context={})
+    return desktop_only_page_or_404("positions.html", request)
 
 
 @app.get("/employee-positions", tags=["Pages"])
 def employee_positions_page(request: Request):
-    return templates.TemplateResponse(request=request, name="employee_positions.html", context={})
+    return desktop_only_page_or_404("employee_positions.html", request)
 
 
 @app.get("/shift-templates", tags=["Pages"])
 def shift_templates_page(request: Request):
-    return templates.TemplateResponse(request=request, name="shift_templates.html", context={})
+    return desktop_only_page_or_404("shift_templates.html", request)
 
 
 @app.get("/coverage-requirements", tags=["Pages"])
 def coverage_requirements_page(request: Request):
-    return templates.TemplateResponse(request=request, name="coverage_requirements.html", context={})
+    return desktop_only_page_or_404("coverage_requirements.html", request)
 
 
 @app.get("/weekly-preferences", tags=["Pages"])
@@ -3440,7 +4800,7 @@ def schedule_page(request: Request):
 
 @app.get("/settings", tags=["Pages"])
 def settings_page(request: Request):
-    return templates.TemplateResponse(request=request, name="settings.html", context={})
+    return desktop_only_page_or_404("settings.html", request)
 
 
 @app.get("/guide", tags=["Pages"])
@@ -3455,6 +4815,7 @@ def guide_page(request: Request):
 
 @app.get("/api/employees", tags=["Employees"])
 def get_employees(access_context: dict | None = Depends(require_preference_access_if_auth_initialized)):
+    organization_filter = access_context["membership"]["organization_id"] if access_context else None
     employee_filter = None
     if access_context and access_context["scope"] == "own":
         employee_filter = access_context["membership"]["employee_id"]
@@ -3463,6 +4824,8 @@ def get_employees(access_context: dict | None = Depends(require_preference_acces
         cursor = connection.cursor()
         if employee_filter:
             cursor.execute("SELECT * FROM employees WHERE id = ? ORDER BY id", (employee_filter,))
+        elif organization_filter:
+            cursor.execute("SELECT * FROM employees WHERE organization_id = ? ORDER BY id", (organization_filter,))
         else:
             cursor.execute("SELECT * FROM employees ORDER BY id")
         return [row_to_employee_dict(row) for row in cursor.fetchall()]
@@ -3472,18 +4835,21 @@ def get_employees(access_context: dict | None = Depends(require_preference_acces
 
 @app.post("/api/employees", tags=["Employees"])
 def add_employee(employee: EmployeeCreate, _access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
     connection = get_connection()
     try:
         cursor = connection.cursor()
         cursor.execute(
             """
             INSERT INTO employees (
-                full_name, sex, min_shifts_per_week, target_shifts_per_week, max_shifts_per_week,
+                organization_id, id_card, full_name, sex, min_shifts_per_week, target_shifts_per_week, max_shifts_per_week,
                 can_work_night, can_work_weekends, can_work_evenings_after_night, can_work_mornings_and_evenings
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                organization_id,
+                employee.id_card,
                 employee.full_name,
                 employee.sex,
                 employee.min_shifts_per_week,
@@ -3507,19 +4873,29 @@ def update_employee(
     employee: EmployeeCreate,
     _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
 ):
+    organization_id = _access["membership"]["organization_id"] if _access else None
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (employee_id,), "Employee not found")
+        if organization_id:
+            fetch_one_or_404(
+                cursor,
+                "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+                (employee_id, organization_id),
+                "Employee not found",
+            )
+        else:
+            fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (employee_id,), "Employee not found")
         cursor.execute(
             """
             UPDATE employees
-            SET full_name = ?, sex = ?, min_shifts_per_week = ?, target_shifts_per_week = ?,
+            SET id_card = ?, full_name = ?, sex = ?, min_shifts_per_week = ?, target_shifts_per_week = ?,
                 max_shifts_per_week = ?, can_work_night = ?, can_work_weekends = ?,
                 can_work_evenings_after_night = ?, can_work_mornings_and_evenings = ?
             WHERE id = ?
             """,
             (
+                employee.id_card,
                 employee.full_name,
                 employee.sex,
                 employee.min_shifts_per_week,
@@ -3540,10 +4916,19 @@ def update_employee(
 
 @app.delete("/api/employees/{employee_id}", tags=["Employees"])
 def delete_employee(employee_id: int, _access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
+    organization_id = _access["membership"]["organization_id"] if _access else None
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (employee_id,), "Employee not found")
+        if organization_id:
+            fetch_one_or_404(
+                cursor,
+                "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+                (employee_id, organization_id),
+                "Employee not found",
+            )
+        else:
+            fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (employee_id,), "Employee not found")
         backup_name = create_recovery_backup("delete_employee")
         cursor.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
         connection.commit()
@@ -3554,15 +4939,24 @@ def delete_employee(employee_id: int, _access: dict | None = Depends(require_set
 
 @app.get("/api/employees/{employee_id}/delete-impact", tags=["Employees"])
 def get_employee_delete_impact(employee_id: int, _access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
+    organization_id = _access["membership"]["organization_id"] if _access else None
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        employee_row = fetch_one_or_404(
-            cursor,
-            "SELECT id, full_name FROM employees WHERE id = ?",
-            (employee_id,),
-            "Employee not found",
-        )
+        if organization_id:
+            employee_row = fetch_one_or_404(
+                cursor,
+                "SELECT id, full_name FROM employees WHERE id = ? AND organization_id = ?",
+                (employee_id, organization_id),
+                "Employee not found",
+            )
+        else:
+            employee_row = fetch_one_or_404(
+                cursor,
+                "SELECT id, full_name FROM employees WHERE id = ?",
+                (employee_id,),
+                "Employee not found",
+            )
         return {
             "employee_id": employee_row["id"],
             "employee_name": employee_row["full_name"],
@@ -3589,11 +4983,24 @@ def get_employee_delete_impact(employee_id: int, _access: dict | None = Depends(
 
 
 @app.get("/api/positions", tags=["Positions"])
-def get_positions():
+def get_positions(access_context: dict | None = Depends(require_schedule_view_if_auth_initialized)):
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute("SELECT * FROM positions ORDER BY id")
+        employee_id = employee_scope_from_access(access_context)
+        if employee_id is not None:
+            cursor.execute(
+                """
+                SELECT p.*, ep.is_primary, ep.priority_score, ep.is_fallback_only
+                FROM positions p
+                JOIN employee_positions ep ON ep.position_id = p.id
+                WHERE ep.employee_id = ?
+                ORDER BY ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, p.id
+                """,
+                (employee_id,),
+            )
+        else:
+            cursor.execute("SELECT * FROM positions ORDER BY id")
         return [row_to_position_dict(row) for row in cursor.fetchall()]
     finally:
         connection.close()
@@ -3717,18 +5124,26 @@ def get_position_delete_impact(
 
 
 @app.get("/api/employee-positions", tags=["Assignments"])
-def get_employee_positions():
+def get_employee_positions(access_context: dict | None = Depends(require_schedule_view_if_auth_initialized)):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        employee_id = employee_scope_from_access(access_context)
+        params: tuple = ()
+        where_sql = ""
+        if employee_id is not None:
+            where_sql = "WHERE ep.employee_id = ?"
+            params = (employee_id,)
         cursor.execute(
-            """
+            f"""
             SELECT ep.*, e.full_name AS employee_name, p.name AS position_name
             FROM employee_positions ep
             JOIN employees e ON e.id = ep.employee_id
             JOIN positions p ON p.id = ep.position_id
-            ORDER BY ep.employee_id, ep.position_id
-            """
+            {where_sql}
+            ORDER BY ep.employee_id, ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, ep.position_id
+            """,
+            params,
         )
         items = [dict(row) for row in cursor.fetchall()]
         for item in items:
@@ -3974,6 +5389,7 @@ def delete_shift_template(
         connection.commit()
         return {"message": "Shift template deleted successfully", "backup_name": backup_name}
     except sqlite3.IntegrityError:
+        connection.rollback()
         raise HTTPException(status_code=400, detail="Cannot delete shift template because it is used in schedule")
     finally:
         connection.close()
@@ -4252,31 +5668,43 @@ def save_employee_preference(
     preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
 ):
     require_employee_preference_scope(preference_context, preference.employee_id)
+    organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
+    user_id = preference_context["user"]["id"] if preference_context else None
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (preference.employee_id,), "Employee not found")
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+            (preference.employee_id, organization_id),
+            "Employee not found",
+        )
+        now = current_utc_timestamp()
         cursor.execute(
             """
             INSERT INTO employee_preferences
-                (employee_id, allow_morning, allow_evening, allow_night, allow_morning_evening_combo)
-            VALUES (?, ?, ?, ?, ?)
+                (organization_id, employee_id, allow_morning, allow_evening, allow_night,
+                 allow_morning_evening_combo, updated_at, updated_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(employee_id)
             DO UPDATE SET allow_morning = excluded.allow_morning,
                           allow_evening = excluded.allow_evening,
                           allow_night = excluded.allow_night,
-                          allow_morning_evening_combo = excluded.allow_morning_evening_combo
+                          allow_morning_evening_combo = excluded.allow_morning_evening_combo,
+                          updated_at = excluded.updated_at,
+                          updated_by = excluded.updated_by
             """,
             (
+                organization_id,
                 preference.employee_id,
                 int(preference.allow_morning),
                 int(preference.allow_evening),
                 int(preference.allow_night),
                 int(preference.allow_morning_evening_combo),
+                now,
+                user_id,
             ),
         )
-        user_id = preference_context["user"]["id"] if preference_context else None
-        organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
         write_auth_audit_event(
             cursor,
             "employee_preference_saved",
@@ -4298,21 +5726,23 @@ def get_employee_week_preferences(
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        params: tuple = (week_start_date,)
-        scope_filter = ""
+        filters = ["ewp.week_start_date = ?"]
+        params: list = [week_start_date]
+        if preference_context:
+            filters.append("ewp.organization_id = ?")
+            params.append(preference_context["membership"]["organization_id"])
         if preference_context and preference_context["scope"] == "own":
-            scope_filter = "AND ewp.employee_id = ?"
-            params = (week_start_date, preference_context["membership"]["employee_id"])
+            filters.append("ewp.employee_id = ?")
+            params.append(preference_context["membership"]["employee_id"])
         cursor.execute(
             f"""
             SELECT ewp.*, e.full_name AS employee_name
             FROM employee_week_preferences ewp
             JOIN employees e ON e.id = ewp.employee_id
-            WHERE ewp.week_start_date = ?
-            {scope_filter}
+            WHERE {" AND ".join(filters)}
             ORDER BY ewp.employee_id, ewp.preference_date
             """,
-            params,
+            tuple(params),
         )
         return [dict(row) for row in cursor.fetchall()]
     finally:
@@ -4325,28 +5755,39 @@ def save_employee_week_preference(
     preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
 ):
     require_employee_preference_scope(preference_context, preference.employee_id)
+    organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
+    user_id = preference_context["user"]["id"] if preference_context else None
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (preference.employee_id,), "Employee not found")
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+            (preference.employee_id, organization_id),
+            "Employee not found",
+        )
+        now = current_utc_timestamp()
         cursor.execute(
             """
             INSERT INTO employee_week_preferences
-                (employee_id, week_start_date, preference_date, preference_type)
-            VALUES (?, ?, ?, ?)
+                (organization_id, employee_id, week_start_date, preference_date, preference_type, updated_at, updated_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(employee_id, preference_date)
             DO UPDATE SET week_start_date = excluded.week_start_date,
-                          preference_type = excluded.preference_type
+                          preference_type = excluded.preference_type,
+                          updated_at = excluded.updated_at,
+                          updated_by = excluded.updated_by
             """,
             (
+                organization_id,
                 preference.employee_id,
                 preference.week_start_date,
                 preference.preference_date,
                 preference.preference_type,
+                now,
+                user_id,
             ),
         )
-        user_id = preference_context["user"]["id"] if preference_context else None
-        organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
         write_auth_audit_event(
             cursor,
             "employee_week_preference_saved",
@@ -4372,18 +5813,18 @@ def delete_employee_week_preference(
     preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
 ):
     require_employee_preference_scope(preference_context, employee_id)
+    organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
+    user_id = preference_context["user"]["id"] if preference_context else None
     connection = get_connection()
     try:
         cursor = connection.cursor()
         cursor.execute(
             """
             DELETE FROM employee_week_preferences
-            WHERE employee_id = ? AND preference_date = ?
+            WHERE organization_id = ? AND employee_id = ? AND preference_date = ?
             """,
-            (employee_id, preference_date),
+            (organization_id, employee_id, preference_date),
         )
-        user_id = preference_context["user"]["id"] if preference_context else None
-        organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
         write_auth_audit_event(
             cursor,
             "employee_week_preference_deleted",
@@ -4573,7 +6014,12 @@ def sync_generated_day_off_statuses(
 # =========================
 
 
-def get_schedule_entries(connection, position_id: int | None = None, dates: list[str] | None = None) -> list[dict]:
+def get_schedule_entries(
+    connection,
+    position_id: int | None = None,
+    dates: list[str] | None = None,
+    employee_id: int | None = None,
+) -> list[dict]:
     cursor = connection.cursor()
     clauses = []
     params: list = []
@@ -4583,6 +6029,9 @@ def get_schedule_entries(connection, position_id: int | None = None, dates: list
     if dates:
         clauses.append(f"se.date IN ({','.join(['?'] * len(dates))})")
         params.extend(dates)
+    if employee_id is not None:
+        clauses.append("se.employee_id = ?")
+        params.append(employee_id)
     where_sql = "WHERE " + " AND ".join(clauses) if clauses else ""
     cursor.execute(
         f"""
@@ -4621,10 +6070,10 @@ def get_schedule_entries(connection, position_id: int | None = None, dates: list
 
 
 @app.get("/api/schedule", tags=["Schedule"])
-def get_schedule(_access: dict | None = Depends(require_schedule_view_if_auth_initialized)):
+def get_schedule(access_context: dict | None = Depends(require_schedule_view_if_auth_initialized)):
     connection = get_connection()
     try:
-        return get_schedule_entries(connection)
+        return get_schedule_entries(connection, employee_id=employee_scope_from_access(access_context))
     finally:
         connection.close()
 
@@ -6510,6 +7959,7 @@ def auto_generate_schedule(
 ):
     connection = get_connection()
     try:
+        pull_cloud_preferences_for_desktop_generation(connection)
         result = run_auto_generate_for_position(connection, request_data.position_id, request_data.week_start_date)
         connection.commit()
         return result
@@ -6524,6 +7974,7 @@ def auto_generate_all_schedules(
 ):
     connection = get_connection()
     try:
+        pull_cloud_preferences_for_desktop_generation(connection)
         cursor = connection.cursor()
         cursor.execute("SELECT id, name FROM positions ORDER BY id")
         positions = [dict(row) for row in cursor.fetchall()]
@@ -6579,7 +8030,7 @@ def export_schedule_excel(
     week_start_date: str,
     position_id: int,
     lang: str = "en",
-    _access: dict | None = Depends(require_schedule_view_if_auth_initialized),
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
     connection = get_connection()
@@ -6590,11 +8041,15 @@ def export_schedule_excel(
         cursor = connection.cursor()
         position_row = fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (position_id,), "Position not found")
         position = row_to_position_dict(position_row)
-        employees = load_position_employees(connection, position_id)
+        employee_scope = employee_scope_from_access(access_context)
+        employees = [
+            employee for employee in load_position_employees(connection, position_id)
+            if employee_scope is None or employee["id"] == employee_scope
+        ]
         employee_ids = {employee["id"] for employee in employees}
         entries = [
             entry
-            for entry in get_schedule_entries(connection, dates=week_dates)
+            for entry in get_schedule_entries(connection, dates=week_dates, employee_id=employee_scope)
             if entry["employee_id"] in employee_ids
         ]
         day_status_map = get_employee_day_status_map(connection, [employee["id"] for employee in employees], week_dates)
@@ -6636,7 +8091,7 @@ def export_schedule_excel(
 def export_all_schedules_excel(
     week_start_date: str,
     lang: str = "en",
-    _access: dict | None = Depends(require_schedule_view_if_auth_initialized),
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
     connection = get_connection()
@@ -6645,10 +8100,26 @@ def export_all_schedules_excel(
             lang = "en"
         week_dates = build_week_dates(week_start_date)
         cursor = connection.cursor()
-        cursor.execute("SELECT * FROM positions ORDER BY id")
+        employee_scope = employee_scope_from_access(access_context)
+        if employee_scope is not None:
+            cursor.execute(
+                """
+                SELECT p.*, ep.is_primary, ep.priority_score, ep.is_fallback_only
+                FROM positions p
+                JOIN employee_positions ep ON ep.position_id = p.id
+                WHERE ep.employee_id = ?
+                ORDER BY ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, p.id
+                """,
+                (employee_scope,),
+            )
+        else:
+            cursor.execute("SELECT * FROM positions ORDER BY id")
         positions = [row_to_position_dict(row) for row in cursor.fetchall()]
         employees_by_position = {
-            position["id"]: load_position_employees(connection, position["id"])
+            position["id"]: [
+                employee for employee in load_position_employees(connection, position["id"])
+                if employee_scope is None or employee["id"] == employee_scope
+            ]
             for position in positions
         }
         employee_ids = sorted({
@@ -6656,7 +8127,7 @@ def export_all_schedules_excel(
             for employees in employees_by_position.values()
             for employee in employees
         })
-        entries = get_schedule_entries(connection, dates=week_dates)
+        entries = get_schedule_entries(connection, dates=week_dates, employee_id=employee_scope)
         day_status_map = get_employee_day_status_map(connection, employee_ids, week_dates) if employee_ids else {}
         output = build_all_schedule_export_workbook(
             positions=positions,
@@ -6695,7 +8166,7 @@ def export_schedule_word(
     week_start_date: str,
     position_id: int,
     lang: str = "en",
-    _access: dict | None = Depends(require_schedule_view_if_auth_initialized),
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
     connection = get_connection()
@@ -6706,11 +8177,15 @@ def export_schedule_word(
         cursor = connection.cursor()
         position_row = fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (position_id,), "Position not found")
         position = row_to_position_dict(position_row)
-        employees = load_position_employees(connection, position_id)
+        employee_scope = employee_scope_from_access(access_context)
+        employees = [
+            employee for employee in load_position_employees(connection, position_id)
+            if employee_scope is None or employee["id"] == employee_scope
+        ]
         employee_ids = {employee["id"] for employee in employees}
         entries = [
             entry
-            for entry in get_schedule_entries(connection, dates=week_dates)
+            for entry in get_schedule_entries(connection, dates=week_dates, employee_id=employee_scope)
             if entry["employee_id"] in employee_ids
         ]
         day_status_map = get_employee_day_status_map(connection, [employee["id"] for employee in employees], week_dates)
@@ -6752,7 +8227,7 @@ def export_schedule_word(
 def export_all_schedules_word(
     week_start_date: str,
     lang: str = "en",
-    _access: dict | None = Depends(require_schedule_view_if_auth_initialized),
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
     connection = get_connection()
@@ -6761,10 +8236,26 @@ def export_all_schedules_word(
             lang = "en"
         week_dates = build_week_dates(week_start_date)
         cursor = connection.cursor()
-        cursor.execute("SELECT * FROM positions ORDER BY id")
+        employee_scope = employee_scope_from_access(access_context)
+        if employee_scope is not None:
+            cursor.execute(
+                """
+                SELECT p.*, ep.is_primary, ep.priority_score, ep.is_fallback_only
+                FROM positions p
+                JOIN employee_positions ep ON ep.position_id = p.id
+                WHERE ep.employee_id = ?
+                ORDER BY ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, p.id
+                """,
+                (employee_scope,),
+            )
+        else:
+            cursor.execute("SELECT * FROM positions ORDER BY id")
         positions = [row_to_position_dict(row) for row in cursor.fetchall()]
         employees_by_position = {
-            position["id"]: load_position_employees(connection, position["id"])
+            position["id"]: [
+                employee for employee in load_position_employees(connection, position["id"])
+                if employee_scope is None or employee["id"] == employee_scope
+            ]
             for position in positions
         }
         employee_ids = sorted({
@@ -6772,7 +8263,7 @@ def export_all_schedules_word(
             for employees in employees_by_position.values()
             for employee in employees
         })
-        entries = get_schedule_entries(connection, dates=week_dates)
+        entries = get_schedule_entries(connection, dates=week_dates, employee_id=employee_scope)
         day_status_map = get_employee_day_status_map(connection, employee_ids, week_dates) if employee_ids else {}
         output = build_all_schedule_export_document(
             positions=positions,

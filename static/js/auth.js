@@ -6,12 +6,13 @@
     const bootstrapForm = document.getElementById("bootstrap-form");
     const message = document.getElementById("auth-message");
     const sessionPanel = document.getElementById("current-session");
-    const apiLocalButton = document.getElementById("api-local-btn");
-    const apiCloudButton = document.getElementById("api-cloud-btn");
-    const apiAdvancedToggle = document.getElementById("api-advanced-toggle");
-    const apiModePanel = document.querySelector(".api-mode-panel");
-    const apiModeStatus = document.getElementById("api-mode-status");
-    const tabs = Array.from(document.querySelectorAll("[data-auth-tab]"));
+    const loginModal = document.getElementById("login-modal");
+    const organizationModal = document.getElementById("organization-modal");
+    const openOrganizationModalButton = document.getElementById("open-organization-modal");
+    const loginIdentifierInput = document.getElementById("login-email");
+    const loginIdentifierLabel = document.getElementById("login-identifier-label");
+    const loginMethodButtons = Array.from(document.querySelectorAll("[data-login-method]"));
+    let loginMethod = "email";
 
     function escapeHtml(value) {
         if (window.escapeHtml) return window.escapeHtml(value);
@@ -29,13 +30,27 @@
         message.className = `auth-message ${type || ""}`.trim();
     }
 
-    function setActiveTab(mode) {
-        tabs.forEach((tab) => {
-            tab.classList.toggle("active", tab.dataset.authTab === mode);
-        });
-        loginForm.classList.toggle("hidden", mode !== "login");
-        bootstrapForm.classList.toggle("hidden", mode !== "bootstrap");
+    function getFriendlyAuthError(error) {
+        const messageText = error?.message || String(error || "");
+        if (messageText === "Failed to fetch") {
+            return "Cloud is not reachable. Check the internet connection and try again.";
+        }
+        return messageText;
+    }
+
+    function openModal(modal) {
+        if (!modal) return;
+        modal.classList.add("is-open");
+        modal.setAttribute("aria-hidden", "false");
         setMessage("", "");
+        const firstInput = modal.querySelector("input, textarea, select, button");
+        firstInput?.focus();
+    }
+
+    function closeModal(modal) {
+        if (!modal) return;
+        modal.classList.remove("is-open");
+        modal.setAttribute("aria-hidden", "true");
     }
 
     function storeSession(payload) {
@@ -84,52 +99,62 @@
         document.getElementById("auth-clear-session").addEventListener("click", clearSession);
     }
 
-    function renderApiMode() {
-        if (!apiModeStatus) return;
-        const apiBaseUrl = window.scheduleAuth?.getApiBaseUrl?.() || "";
-        apiModeStatus.textContent = apiBaseUrl
-            ? `Cloud workspace: ${apiBaseUrl}`
-            : `Local recovery mode: ${window.location.origin}`;
-        apiLocalButton?.classList.toggle("btn-primary", !apiBaseUrl);
-        apiLocalButton?.classList.toggle("btn-secondary", Boolean(apiBaseUrl));
-        apiCloudButton?.classList.toggle("btn-primary", Boolean(apiBaseUrl));
-        apiCloudButton?.classList.toggle("btn-soft", !apiBaseUrl);
+    function isCloudEmployeePortalMode() {
+        return Boolean(window.scheduleAuth?.isHostedCloudOrigin?.());
+    }
+
+    function destinationForUser(user) {
+        const membership = window.scheduleAuth?.getActiveMembership?.(user) || user?.memberships?.[0] || null;
+        if (membership?.role === "employee") return "/weekly-preferences";
+        return "/schedule";
     }
 
     async function renderAuthStatus() {
+        if (window.scheduleAuth?.isDesktopLocalOrigin?.()) {
+            setMessage("Authorize a cloud user or add a new organization. Work will continue locally on this computer.", "");
+            return;
+        }
         try {
             const status = await window.scheduleAuth.request("/api/auth/status");
-            const apiBaseUrl = window.scheduleAuth?.getApiBaseUrl?.() || "";
-            if (status.bootstrap_available) {
-                if (apiBaseUrl) {
-                    setMessage(
-                        "Cloud workspace is ready for first owner setup.",
-                        "success",
-                    );
-                } else {
-                    setMessage(
-                        "Local recovery mode is active. Use it only for migration or emergency access.",
-                        "",
-                    );
-                }
-                return;
-            }
-            if (apiBaseUrl) {
-                setMessage("Cloud workspace already has an owner. Log in with that account.", "");
-                return;
-            }
-            setMessage("Local recovery database already has an owner. Log in only if you need migration or emergency access.", "");
+            setMessage(status.bootstrap_available
+                ? "Employee portal is ready."
+                : "Employee portal is ready. Log in with your employee account.", "");
         } catch (error) {
-            setMessage(`Could not check authorization state: ${error.message}`, "error");
+            setMessage(`Could not check authorization state: ${getFriendlyAuthError(error)}`, "error");
         }
     }
 
-    function initializeCloudFirstMode() {
+    function applyCloudEmployeePortalMode() {
+        if (!isCloudEmployeePortalMode()) return;
+        openOrganizationModalButton?.remove();
+        organizationModal?.remove();
+        document.querySelector(".auth-brand p").textContent = "Employee portal";
+        document.querySelector("#open-login-modal strong").textContent = "Employee login";
+        document.querySelector("#open-login-modal span").textContent = "Open weekly wishes and read-only schedule";
+    }
+
+    function initializeDefaultApiMode() {
         if (!window.scheduleAuth) return;
-        const modePreference = window.scheduleAuth.getApiModePreference?.() || "";
-        const apiBaseUrl = window.scheduleAuth.getApiBaseUrl?.() || "";
-        if (!modePreference && !apiBaseUrl) {
-            window.scheduleAuth.useCloudApi();
+        window.scheduleAuth.useLocalApi();
+    }
+
+    function applyLoginMethod(nextMethod) {
+        loginMethod = nextMethod === "id_card" ? "id_card" : "email";
+        loginMethodButtons.forEach((button) => {
+            const active = button.dataset.loginMethod === loginMethod;
+            button.classList.toggle("active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        if (loginIdentifierLabel) {
+            loginIdentifierLabel.textContent = loginMethod === "id_card" ? "ID card" : "Email";
+        }
+        if (loginIdentifierInput) {
+            loginIdentifierInput.value = "";
+            loginIdentifierInput.type = loginMethod === "id_card" ? "text" : "email";
+            loginIdentifierInput.inputMode = loginMethod === "id_card" ? "numeric" : "email";
+            loginIdentifierInput.autocomplete = loginMethod === "id_card" ? "off" : "username";
+            loginIdentifierInput.placeholder = loginMethod === "id_card" ? "Example: 123456789" : "name@example.com";
+            loginIdentifierInput.focus();
         }
     }
 
@@ -148,69 +173,71 @@
         return data;
     }
 
-    tabs.forEach((tab) => {
-        tab.addEventListener("click", () => setActiveTab(tab.dataset.authTab));
+    document.getElementById("open-login-modal")?.addEventListener("click", () => openModal(loginModal));
+    document.getElementById("open-organization-modal")?.addEventListener("click", () => openModal(organizationModal));
+    loginMethodButtons.forEach((button) => {
+        button.addEventListener("click", () => applyLoginMethod(button.dataset.loginMethod));
     });
 
-    apiLocalButton?.addEventListener("click", () => {
-        window.scheduleAuth?.useLocalApi?.();
-        clearSession();
-        renderApiMode();
-        document.dispatchEvent(new CustomEvent("schedule-api-mode-changed"));
-        setMessage("Local API selected. Please log in again.", "success");
-        renderAuthStatus();
+    document.addEventListener("click", (event) => {
+        const closeButton = event.target.closest("[data-auth-modal-close]");
+        if (closeButton) {
+            closeModal(closeButton.closest(".app-modal-overlay"));
+            return;
+        }
+        if (event.target === loginModal) closeModal(loginModal);
+        if (event.target === organizationModal) closeModal(organizationModal);
     });
 
-    apiCloudButton?.addEventListener("click", () => {
-        window.scheduleAuth?.useCloudApi?.();
-        clearSession();
-        renderApiMode();
-        document.dispatchEvent(new CustomEvent("schedule-api-mode-changed"));
-        setMessage("Cloud beta API selected. Please log in again.", "success");
-        renderAuthStatus();
-    });
-
-    apiAdvancedToggle?.addEventListener("click", () => {
-        apiModePanel?.classList.toggle("expanded");
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        closeModal(loginModal);
+        closeModal(organizationModal);
     });
 
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
-        setMessage("Signing in...", "");
+        const isDesktopLogin = window.scheduleAuth?.isDesktopLocalOrigin?.();
+        setMessage(isDesktopLogin ? "Signing in and loading organization data..." : "Signing in...", "");
         try {
-            const payload = await postJson("/api/auth/login", {
-                email: document.getElementById("login-email").value,
+            const payload = await postJson(isDesktopLogin ? "/api/desktop/cloud-login" : "/api/auth/login", {
+                email: loginIdentifierInput.value,
                 password: document.getElementById("login-password").value,
             });
             storeSession(payload);
             setMessage("Login successful.", "success");
-            window.location.href = "/organization";
+            window.location.href = destinationForUser(payload.user);
         } catch (error) {
-            setMessage(error.message, "error");
+            setMessage(getFriendlyAuthError(error), "error");
         }
     });
 
-    bootstrapForm.addEventListener("submit", async (event) => {
+    bootstrapForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
-        setMessage("Creating owner account...", "");
+        if (isCloudEmployeePortalMode()) {
+            setMessage("Organization setup is available only in the desktop app.", "error");
+            return;
+        }
+        const isDesktopLogin = window.scheduleAuth?.isDesktopLocalOrigin?.();
+        setMessage(isDesktopLogin ? "Creating cloud organization and loading it locally..." : "Creating organization...", "");
         try {
-            const payload = await postJson("/api/auth/bootstrap", {
+            const payload = await postJson(isDesktopLogin ? "/api/desktop/cloud-create-organization" : "/api/auth/create-organization", {
                 organization_name: document.getElementById("bootstrap-organization").value,
                 full_name: document.getElementById("bootstrap-name").value,
                 email: document.getElementById("bootstrap-email").value,
                 password: document.getElementById("bootstrap-password").value,
             });
             storeSession(payload);
-            setActiveTab("login");
-            setMessage("Owner account created.", "success");
-            window.location.href = "/organization";
+            setMessage("Organization created.", "success");
+            window.location.href = destinationForUser(payload.user);
         } catch (error) {
-            setMessage(error.message, "error");
+            setMessage(getFriendlyAuthError(error), "error");
         }
     });
 
-    initializeCloudFirstMode();
+    initializeDefaultApiMode();
+    applyLoginMethod("email");
+    applyCloudEmployeePortalMode();
     renderSession();
-    renderApiMode();
     renderAuthStatus();
 })();

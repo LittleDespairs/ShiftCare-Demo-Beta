@@ -76,11 +76,6 @@ def validate_runtime_config(config: AppConfig | None = None) -> dict:
         if missing:
             issues.append("PostgreSQL configuration is incomplete: " + ", ".join(missing))
 
-        issues.append(
-            "PostgreSQL/Cloud SQL connectivity can be checked, but the application data layer is not yet switched "
-            "from SQLite SQL to PostgreSQL SQL. Keep production traffic blocked until the adapter migration is complete."
-        )
-
     if config.is_deployed_env and not config.auth_token_secret:
         warnings.append(
             "AUTH_TOKEN_SECRET is not set. The current beta token implementation is database-backed, "

@@ -60,6 +60,9 @@
                 loadPositions(),
                 loadScheduleDisplaySetting()
             ]);
+            if (isEmployeeUser() && document.getElementById("position_select").value) {
+                await loadSchedulePageData({ showLoadedMessage: false });
+            }
         });
 
         // Re-render parts that depend on language / Перерисовка частей, зависящих от языка
@@ -200,6 +203,10 @@
                 return true;
             }
             return Boolean(window.scheduleAccessControl.accessForRole(role).canEditSchedule);
+        }
+
+        function isEmployeeUser() {
+            return getActiveMembership()?.role === "employee";
         }
 
         function getUserScopedStorageKey(prefix) {
@@ -885,6 +892,12 @@
                         <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
                     `).join("")}
                 `;
+                if (isEmployeeUser()) {
+                    const preferredPosition = allPositions.find(position => position.is_primary) || allPositions[0];
+                    if (preferredPosition) {
+                        select.value = String(preferredPosition.id);
+                    }
+                }
                 renderScheduleInitialState();
             } catch (error) {
                 console.error(error);
@@ -1322,7 +1335,10 @@
                 );
             } catch (error) {
                 console.error(error);
-                showMessage(t("msg_server_error_auto_generate", "Server error while auto-generating schedule."), "danger");
+                showMessage(
+                    `${t("msg_server_error_auto_generate", "Server error while auto-generating schedule.")}<br>${escapeHtml(error.message || "")}`,
+                    "danger"
+                );
             } finally {
                 button.disabled = false;
                 setScheduleGenerating(false);
@@ -1396,7 +1412,10 @@
                 );
             } catch (error) {
                 console.error(error);
-                showMessage(t("msg_server_error_auto_generate", "Server error while auto-generating schedule."), "danger");
+                showMessage(
+                    `${t("msg_server_error_auto_generate", "Server error while auto-generating schedule.")}<br>${escapeHtml(error.message || "")}`,
+                    "danger"
+                );
             } finally {
                 button.disabled = false;
                 setScheduleGenerating(false);

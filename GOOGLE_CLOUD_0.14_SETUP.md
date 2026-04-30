@@ -18,17 +18,10 @@ Cloud Run API -> Cloud SQL PostgreSQL
 
 ## Current Implementation Status
 
-As of `0.14.2_beta`, the deployable Cloud Run container is suitable for backend smoke tests only.
-The application data layer is still SQLite-based (`sqlite3`, SQLite DDL, SQLite backup/restore).
-Do not connect production organization data to Cloud Run until the PostgreSQL adapter and migrations are implemented.
+As of `0.14.17_beta`, Cloud Run is connected to Cloud SQL PostgreSQL through the application database adapter.
+The desktop/local runtime still defaults to SQLite, while the deployed beta backend uses PostgreSQL.
 
 Current working beta path:
-
-```text
-Cloud Run API smoke test -> ephemeral SQLite in /tmp
-```
-
-Production target path:
 
 ```text
 Cloud Run API -> Cloud SQL PostgreSQL
@@ -40,8 +33,7 @@ Readiness endpoint:
 /api/health/ready
 ```
 
-It returns HTTP `503` when the configured runtime is blocked, for example when `DATABASE_ENGINE=postgresql`
-is set before PostgreSQL support exists.
+It returns HTTP `503` when the configured runtime is blocked, for example when PostgreSQL is selected but required database settings or connectivity are missing.
 
 ## Google Cloud Resources
 
@@ -143,13 +135,14 @@ docs/postgresql/001_initial_schema.sql
 Smoke deployment command from the repository root:
 
 ```bash
-gcloud builds submit --config cloudbuild.yaml --project schedule-app-beta --substitutions=_TAG=0.14.2-beta
+gcloud builds submit --config cloudbuild.yaml --project schedule-app-beta --substitutions=_TAG=0.14.17-beta
 ```
 
-When the Firebase Hosting domain `app.shiftcare.co.il` is verified, deploy Cloud Run with the public app URL:
+The Cloud Run build now uses the approved public app domain by default:
 
-```bash
-gcloud builds submit --config cloudbuild.yaml --project schedule-app-beta --substitutions=_TAG=0.14.5-beta,_PUBLIC_APP_BASE_URL=https://app.shiftcare.co.il
+```text
+PUBLIC_APP_BASE_URL=https://portal.shiftcare.co.il
+SCHEDULE_APP_DEFAULT_API_BASE_URL=https://portal.shiftcare.co.il
 ```
 
 After deployment:
@@ -165,15 +158,19 @@ Open:
 <service-url>/api/health/ready
 ```
 
-The smoke deployment uses:
+The Cloud Run deployment uses:
 
 ```text
 APP_ENV=staging
-DATABASE_ENGINE=sqlite
-SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db
+DATABASE_ENGINE=postgresql
+DATABASE_NAME=schedule_beta
+DATABASE_USER=schedule_app
+CLOUD_SQL_CONNECTION_NAME=schedule-app-beta:me-west1:schedule-beta-db
+DATABASE_PASSWORD=<Secret Manager: schedule-app-db-password>
+AUTH_TOKEN_SECRET=<Secret Manager: schedule-app-auth-token-secret>
 ```
 
-This is intentionally non-production because Cloud Run container storage is ephemeral.
+SQLite remains only the desktop/local default. Do not use container-local SQLite for Cloud Run beta data.
 
 ## Firebase Hosting Custom Domain
 
@@ -191,19 +188,44 @@ Firebase Hosting target:
 
 ```text
 Project: schedule-app-beta
-Custom domain: app.shiftcare.co.il
+Primary custom domain: portal.shiftcare.co.il
+Legacy alias: app.shiftcare.co.il
 Rewrite target: Cloud Run service schedule-app-beta-api in me-west1
 ```
 
-Registrar DNS record after Firebase asks for it:
+Google Cloud DNS zone:
+
+```text
+Managed zone: shiftcare-co-il
+DNS name: shiftcare.co.il.
+```
+
+Set these nameservers at the domain registrar for `shiftcare.co.il`:
+
+```text
+ns-cloud-b1.googledomains.com
+ns-cloud-b2.googledomains.com
+ns-cloud-b3.googledomains.com
+ns-cloud-b4.googledomains.com
+```
+
+The Cloud DNS zone already contains this Firebase Hosting record:
 
 ```text
 Type: CNAME
-Host/name: app
-Target/value: schedule-app-beta-1ab9d.web.app
+Host/name: portal
+Target/value: schedule-app-beta.web.app
 ```
 
-After DNS verification, deploy Hosting from the repository root:
+Firebase has not requested a separate `portal` ACME TXT record yet. If Firebase later asks for one, add it to the same Cloud DNS zone:
+
+```text
+Type: TXT
+Host/name: _acme-challenge.portal
+Target/value: use the current value shown by Firebase custom domain status
+```
+
+After Firebase confirms the custom domain, deploy Hosting from the repository root:
 
 ```bash
 firebase deploy --only hosting --project schedule-app-beta
@@ -212,9 +234,12 @@ firebase deploy --only hosting --project schedule-app-beta
 Then verify:
 
 ```text
-https://app.shiftcare.co.il/login
-https://app.shiftcare.co.il/api/client-config
+https://portal.shiftcare.co.il/login
+https://portal.shiftcare.co.il/api/client-config
 ```
+
+DNS status on 2026-04-29: Google Public DNS resolves `portal.shiftcare.co.il` to `schedule-app-beta.web.app`.
+Some local ISP/OS resolvers may still temporarily show the old Box nameservers while delegation cache expires.
 
 ## Cloud SQL PostgreSQL Preparation
 
@@ -224,7 +249,8 @@ The PostgreSQL baseline schema lives at:
 docs/postgresql/001_initial_schema.sql
 ```
 
-Apply it only to an empty Cloud SQL PostgreSQL database. The runtime readiness endpoint can validate PostgreSQL connectivity when `DATABASE_ENGINE=postgresql`, but the application data layer is still blocked for production until the SQLite SQL in `main.py` is migrated to PostgreSQL-compatible queries.
+The deployed runtime applies this baseline through `database.init_db()` when `DATABASE_ENGINE=postgresql`.
+Apply it manually only to an empty Cloud SQL PostgreSQL database.
 
 Required PostgreSQL environment variables:
 
@@ -239,13 +265,29 @@ DATABASE_SSL_MODE=require
 
 For Cloud Run with Cloud SQL Unix socket connectivity, keep `DATABASE_HOST` empty and configure the Cloud SQL connection on the Cloud Run service.
 
-## PostgreSQL Migration Blockers
+## PostgreSQL Migration Checklist
 
-Before using Cloud SQL for real beta organizations, complete these items:
+Completed in `0.14.17_beta`:
 
-- Replace direct `sqlite3` calls with a database abstraction that supports PostgreSQL placeholders and row access.
-- Review and harden the PostgreSQL DDL baseline for every table currently created in `database.py`.
-- Replace SQLite-specific `PRAGMA`, `AUTOINCREMENT`, `randomblob`, and trigger syntax.
-- Replace SQLite file backup/restore for deployed mode with logical exports or Cloud SQL backups.
-- Add integration tests that run against a disposable PostgreSQL database.
-- Add Cloud SQL connection configuration to Cloud Run only after the PostgreSQL integration tests pass.
+- Replaced direct Cloud Run `sqlite3` runtime with a database adapter that supports PostgreSQL placeholders, row-style access, `lastrowid`, and SQLite-compatible integrity errors.
+- Hardened the PostgreSQL DDL baseline for the current application schema and default seed rows.
+- Replaced SQLite-only runtime readiness blockers and kept SQLite-specific migrations on the local SQLite path.
+- Disabled SQLite file backup/restore actions for PostgreSQL runtime; use Cloud SQL automated backups and point-in-time recovery.
+- Added adapter regression coverage and verified deployed Cloud SQL runtime through public API smoke tests.
+- Added Cloud SQL connection, Secret Manager credentials, and Cloud Run Cloud SQL instance binding to `cloudbuild.yaml`.
+
+Verified on 2026-04-29:
+
+```text
+Cloud Run revision: schedule-app-beta-api-00023-59z
+App version: 0.14.17_beta
+Ready endpoint: /api/health/ready -> ok
+Database engine: postgresql
+Bootstrap state: 1 active organization, 0 active users
+API smoke: create/list/delete employee, position, and shift template -> ok
+```
+
+Remaining production hardening:
+
+- Add a disposable PostgreSQL CI service for full integration tests instead of relying only on deployed Cloud SQL smoke checks.
+- Add logical export tooling if customer-level export/import is needed beyond Cloud SQL managed backups.

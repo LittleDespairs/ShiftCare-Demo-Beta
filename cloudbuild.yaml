@@ -4,7 +4,10 @@ substitutions:
   _REPOSITORY: schedule-app
   _IMAGE: schedule-app-api
   _TAG: manual
-  _PUBLIC_APP_BASE_URL: https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app
+  _PUBLIC_APP_BASE_URL: https://schedule-app-beta.web.app
+  _CLOUD_SQL_CONNECTION_NAME: schedule-app-beta:me-west1:schedule-beta-db
+  _DATABASE_NAME: schedule_beta
+  _DATABASE_USER: schedule_app
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -33,7 +36,11 @@ steps:
       - managed
       - --allow-unauthenticated
       - --set-env-vars
-      - APP_ENV=staging,DATABASE_ENGINE=sqlite,SCHEDULE_APP_DATABASE_PATH=/tmp/schedule_app.db,PUBLIC_APP_BASE_URL=${_PUBLIC_APP_BASE_URL},SCHEDULE_APP_DEFAULT_API_BASE_URL=${_PUBLIC_APP_BASE_URL}
+      - APP_ENV=staging,DATABASE_ENGINE=postgresql,DATABASE_NAME=${_DATABASE_NAME},DATABASE_USER=${_DATABASE_USER},CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},DATABASE_SSL_MODE=require,PUBLIC_APP_BASE_URL=${_PUBLIC_APP_BASE_URL},SCHEDULE_APP_DEFAULT_API_BASE_URL=${_PUBLIC_APP_BASE_URL}
+      - --set-secrets
+      - DATABASE_PASSWORD=schedule-app-db-password:latest,AUTH_TOKEN_SECRET=schedule-app-auth-token-secret:latest
+      - --set-cloudsql-instances
+      - ${_CLOUD_SQL_CONNECTION_NAME}
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_TAG}

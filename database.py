@@ -7,6 +7,9 @@ from datetime import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from app_config import get_app_config
+from db_adapter import apply_postgres_schema, connect_postgres, is_postgres_engine
+
 # Base directory / Базовая папка проекта
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -59,7 +62,8 @@ def get_database_path() -> Path:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
-CURRENT_SCHEMA_VERSION = 14
+CURRENT_SCHEMA_VERSION = 16
+POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
 PUBLIC_ID_TABLE_PREFIXES = {
     "employees": "emp",
     "positions": "pos",
@@ -71,6 +75,7 @@ PUBLIC_ID_TABLE_PREFIXES = {
     "employee_day_statuses": "dst",
     "coverage_requirements": "cov",
 }
+DESKTOP_SYNC_TABLES = tuple(PUBLIC_ID_TABLE_PREFIXES.keys())
 
 
 def _table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
@@ -177,10 +182,60 @@ def _ensure_public_ids(cursor: sqlite3.Cursor, table_name: str, prefix: str) -> 
     )
 
 
+def _ensure_desktop_sync_triggers(cursor: sqlite3.Cursor) -> None:
+    for table_name in DESKTOP_SYNC_TABLES:
+        cursor.execute(
+            f"""
+            CREATE TRIGGER IF NOT EXISTS trg_{table_name}_desktop_sync_insert
+            AFTER INSERT ON {table_name}
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO desktop_sync_outbox (
+                    organization_id, entity_type, entity_public_id, operation, payload_json
+                )
+                SELECT NEW.organization_id, '{table_name}', NEW.public_id, 'upsert', '{{}}'
+                WHERE COALESCE((SELECT value FROM app_settings WHERE key = 'desktop_sync_suspended'), '0') != '1';
+            END
+            """
+        )
+        cursor.execute(
+            f"""
+            CREATE TRIGGER IF NOT EXISTS trg_{table_name}_desktop_sync_update
+            AFTER UPDATE ON {table_name}
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO desktop_sync_outbox (
+                    organization_id, entity_type, entity_public_id, operation, payload_json
+                )
+                SELECT NEW.organization_id, '{table_name}', NEW.public_id, 'upsert', '{{}}'
+                WHERE COALESCE((SELECT value FROM app_settings WHERE key = 'desktop_sync_suspended'), '0') != '1';
+            END
+            """
+        )
+        cursor.execute(
+            f"""
+            CREATE TRIGGER IF NOT EXISTS trg_{table_name}_desktop_sync_delete
+            AFTER DELETE ON {table_name}
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO desktop_sync_outbox (
+                    organization_id, entity_type, entity_public_id, operation, payload_json
+                )
+                SELECT OLD.organization_id, '{table_name}', OLD.public_id, 'delete', '{{}}'
+                WHERE COALESCE((SELECT value FROM app_settings WHERE key = 'desktop_sync_suspended'), '0') != '1';
+            END
+            """
+        )
+
+
 def get_backup_dir() -> Path:
     backup_dir = DATABASE_PATH.parent / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
     return backup_dir
+
+
+def is_sqlite_runtime() -> bool:
+    return not is_postgres_engine(get_app_config().database_engine)
 
 
 def _sanitize_backup_label(label: str) -> str:
@@ -203,6 +258,8 @@ def validate_sqlite_file(path: Path) -> None:
 
 
 def create_database_backup(label: str = "manual") -> Path:
+    if not is_sqlite_runtime():
+        raise NotImplementedError("File database backups are available only for the SQLite desktop runtime")
     source = DATABASE_PATH
     if not source.exists():
         raise FileNotFoundError(f"Database file does not exist: {source}")
@@ -221,6 +278,8 @@ def create_schedule_backup(
     organization_id: int = 1,
     created_by: int | None = None,
 ) -> Path:
+    if not is_sqlite_runtime():
+        raise NotImplementedError("Schedule backup files are available only for the SQLite desktop runtime")
     source = DATABASE_PATH
     if not source.exists():
         raise FileNotFoundError(f"Database file does not exist: {source}")
@@ -247,6 +306,8 @@ def create_schedule_backup(
 
 
 def list_database_backups(limit: int = 20) -> list[dict]:
+    if not is_sqlite_runtime():
+        return []
     backups = sorted(
         [*get_backup_dir().glob("*.db"), *get_backup_dir().glob("*.schedulebackup")],
         key=lambda path: path.stat().st_mtime,
@@ -284,6 +345,8 @@ def _extract_schedule_backup(backup_path: Path) -> Path:
 
 
 def restore_database_backup(backup_name: str) -> dict:
+    if not is_sqlite_runtime():
+        raise NotImplementedError("File restore is available only for the SQLite desktop runtime")
     backup_path = (get_backup_dir() / backup_name).resolve()
     backup_dir = get_backup_dir().resolve()
     if backup_dir not in backup_path.parents:
@@ -311,6 +374,10 @@ def restore_database_backup(backup_name: str) -> dict:
 
 
 def get_connection():
+    config = get_app_config()
+    if is_postgres_engine(config.database_engine):
+        return connect_postgres(config)
+
     # Create SQLite connection / Создаём подключение к SQLite
     connection = sqlite3.connect(DATABASE_PATH)
     connection.execute("PRAGMA foreign_keys = ON")
@@ -320,7 +387,27 @@ def get_connection():
     return connection
 
 
+def _postgres_schema_is_current(connection) -> bool:
+    cursor = connection.cursor(track_lastrowid=False)
+    try:
+        cursor.execute("SELECT value FROM schema_metadata WHERE key = ?", ("schema_version",))
+        row = cursor.fetchone()
+    except Exception:
+        connection.rollback()
+        return False
+    return bool(row and str(row["value"]) == str(CURRENT_SCHEMA_VERSION))
+
+
 def init_db():
+    if is_postgres_engine(get_app_config().database_engine):
+        connection = get_connection()
+        try:
+            if not _postgres_schema_is_current(connection):
+                apply_postgres_schema(connection, POSTGRES_SCHEMA_PATH)
+        finally:
+            connection.close()
+        return
+
     # Initialize database tables / Инициализируем таблицы базы данных
     connection = get_connection()
     cursor = connection.cursor()
@@ -452,6 +539,25 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS desktop_sync_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            entity_type TEXT NOT NULL,
+            entity_public_id TEXT,
+            operation TEXT NOT NULL CHECK (operation IN ('upsert', 'delete', 'replace')),
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'syncing', 'synced', 'failed')),
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            next_attempt_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            synced_at TEXT,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)")
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_memberships_user
@@ -477,6 +583,10 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_auth_email_verification_tokens_user
         ON auth_email_verification_tokens (user_id, expires_at, used_at)
     """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_desktop_sync_outbox_pending
+        ON desktop_sync_outbox (status, next_attempt_at, created_at)
+    """)
 
     # =========================
     # Employees / Сотрудники
@@ -484,6 +594,7 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS employees (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_card TEXT,
         full_name TEXT NOT NULL,
         sex TEXT NOT NULL CHECK (sex IN ('male', 'female')),
         min_shifts_per_week INTEGER NOT NULL,
@@ -862,11 +973,17 @@ def init_db():
         _add_column_if_missing(cursor, table_name, "updated_at", "TEXT")
         _add_column_if_missing(cursor, table_name, "updated_by", "INTEGER")
 
+    _add_column_if_missing(cursor, "employees", "id_card", "TEXT")
     _add_column_if_missing(cursor, "organization_invitations", "employee_id", "INTEGER")
 
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_employees_org
         ON employees (organization_id, id)
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_org_id_card
+        ON employees (organization_id, id_card)
+        WHERE id_card IS NOT NULL AND id_card <> ''
     """)
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_positions_org
@@ -888,13 +1005,14 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position
         ON coverage_requirements (organization_id, position_id)
     """)
+    _ensure_desktop_sync_triggers(cursor)
 
     if previous_schema_version < CURRENT_SCHEMA_VERSION:
         _record_schema_migration(
             cursor,
             previous_schema_version,
             CURRENT_SCHEMA_VERSION,
-            "Initialize organization authorization and cloud-ready local schema",
+            "Add employee Israeli ID login support",
         )
         _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
 

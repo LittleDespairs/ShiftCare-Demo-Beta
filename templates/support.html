@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <title>Developer Support - ShiftCare</title>
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}">
+</head>
+
+<body class="app-shell ltr">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">SC</div>
+                <div class="brand-text">
+                    <h1 class="brand-title">ShiftCare</h1>
+                    <p class="brand-subtitle">Developer support</p>
+                </div>
+            </div>
+            <nav class="nav-list">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">⌂</span>
+                    <span class="nav-label">Home</span>
+                </a>
+                <a href="/schedule" class="nav-item">
+                    <span class="nav-icon">🗓</span>
+                    <span class="nav-label">Schedule</span>
+                </a>
+                <a href="/organization" class="nav-item">
+                    <span class="nav-icon">◎</span>
+                    <span class="nav-label">Organization</span>
+                </a>
+                <a href="/settings" class="nav-item">
+                    <span class="nav-icon">⚙</span>
+                    <span class="nav-label">Settings</span>
+                </a>
+                <a href="/support" class="nav-item active">
+                    <span class="nav-icon">◇</span>
+                    <span class="nav-label">Support</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 class="page-title">Developer Support</h2>
+                    <p class="page-subtitle">Read-only beta diagnostics for accounts, organizations, and employees.</p>
+                </div>
+                <div class="topbar-actions">
+                    <button id="support-refresh-btn" class="btn btn-secondary" type="button">Refresh</button>
+                </div>
+            </header>
+
+            <section class="organization-grid">
+                <section class="organization-panel organization-panel-wide">
+                    <div class="settings-section-header">
+                        <div>
+                            <h3 class="settings-section-title">Organizations</h3>
+                            <p class="settings-section-text">Branches visible in the current database.</p>
+                        </div>
+                    </div>
+                    <div class="organization-table-wrap">
+                        <table class="organization-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Status</th>
+                                    <th>Members</th>
+                                    <th>Employees</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody id="support-organizations-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="organization-panel organization-panel-wide">
+                    <div class="settings-section-header">
+                        <div>
+                            <h3 class="settings-section-title">User accounts</h3>
+                            <p class="settings-section-text">Users, roles, memberships, and linked employee records.</p>
+                        </div>
+                    </div>
+                    <div class="organization-table-wrap">
+                        <table class="organization-table">
+                            <thead>
+                                <tr>
+                                    <th>User ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Organization</th>
+                                    <th>Role</th>
+                                    <th>User status</th>
+                                    <th>Membership</th>
+                                    <th>Employee</th>
+                                    <th>Last login</th>
+                                </tr>
+                            </thead>
+                            <tbody id="support-accounts-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="organization-panel organization-panel-wide">
+                    <div class="settings-section-header">
+                        <div>
+                            <h3 class="settings-section-title">Employees</h3>
+                            <p class="settings-section-text">Scheduling employee records in the current database.</p>
+                        </div>
+                    </div>
+                    <div class="organization-table-wrap">
+                        <table class="organization-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Sex</th>
+                                    <th>Min shifts</th>
+                                    <th>Target shifts</th>
+                                    <th>Max shifts</th>
+                                </tr>
+                            </thead>
+                            <tbody id="support-employees-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+
+            <div id="support-message" class="organization-message" role="status" aria-live="polite"></div>
+        </main>
+    </div>
+<script src="/static/js/i18n.js?v={{ app_version }}-employee-schedule"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-support-dashboard"></script>
+<script src="/static/js/support.js?v={{ app_version }}-support-dashboard"></script>
+<script src="/static/js/online_status.js?v={{ app_version }}"></script>
+</body>
+
+</html>
+

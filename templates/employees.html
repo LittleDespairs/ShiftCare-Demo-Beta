@@ -496,6 +496,7 @@
                                     <thead>
                                         <tr>
                                             <th data-i18n="employees_table_id">ID</th>
+                                            <th data-i18n="employees_table_id_card">ID card</th>
                                             <th data-i18n="employees_table_name">Full name</th>
                                             <th data-i18n="employees_table_sex">Sex</th>
                                             <th data-i18n="employees_table_min_target_max">Min / Target / Max</th>
@@ -508,7 +509,7 @@
                                     </thead>
                                     <tbody id="employees-table-body">
                                         <tr>
-                                            <td colspan="9" class="employee-meta-cell" data-i18n="employees_empty_list">
+                                            <td colspan="10" class="employee-meta-cell" data-i18n="employees_empty_list">
                                                 No employees yet
                                             </td>
                                         </tr>
@@ -550,6 +551,15 @@
                         </p>
 
                         <form id="employee-form" class="form-grid">
+                            <div>
+                                <label class="form-label" for="id_card" data-i18n="employees_id_card">ID card</label>
+                                <input type="text" id="id_card" class="input"
+                                    inputmode="numeric"
+                                    autocomplete="off"
+                                    data-i18n-placeholder="employees_id_card_placeholder"
+                                    placeholder="Israeli ID number">
+                            </div>
+
                             <div>
                                 <label class="form-label" for="full_name" data-i18n="employees_full_name">Full name</label>
                                 <input type="text" id="full_name" class="input"
@@ -781,12 +791,13 @@
                 </div>
             </footer>
 <script src="/static/js/i18n.js?v={{ app_version }}-employee-schedule"></script>
-<script src="/static/js/auth_client.js?v={{ app_version }}"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-employee-schedule"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-directory-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
 <script src="/static/js/employees.js?v={{ app_version }}"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 
 </html>
+
 

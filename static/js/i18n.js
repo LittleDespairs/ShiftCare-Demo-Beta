@@ -325,6 +325,8 @@ const I18N_TRANSLATIONS = {
 
         employees_full_name: "Full name",
         employees_full_name_placeholder: "Enter full name",
+        employees_id_card: "ID card",
+        employees_id_card_placeholder: "Israeli ID number",
 
         employees_sex: "Sex",
         employees_select_sex: "Select sex",
@@ -349,6 +351,7 @@ const I18N_TRANSLATIONS = {
         employees_list_subtitle: "Current employees available in the system.",
 
         employees_table_id: "ID",
+        employees_table_id_card: "ID card",
         employees_table_name: "Full name",
         employees_table_sex: "Sex",
         employees_table_min_target_max: "Min / Target / Max",
@@ -453,6 +456,7 @@ const I18N_TRANSLATIONS = {
         preferences_day_column: "Day",
         preferences_date_column: "Date",
         preferences_value_column: "Preference",
+        preferences_clear_button: "Clear",
 
         preferences_employee_not_found: "Employee not found",
 
@@ -577,6 +581,7 @@ const I18N_TRANSLATIONS = {
         msg_editing_template: "Editing template",
         msg_confirm_delete_template: "Are you sure you want to delete this shift template?",
         msg_failed_delete_template: "Failed to delete shift template.",
+        msg_template_in_use_delete_blocked: "This shift template is used in the schedule and cannot be deleted.",
         msg_server_error_delete_template: "Server error while deleting shift template.",
 
         msg_failed_load_templates: "Failed to load shift templates.",
@@ -1230,6 +1235,8 @@ const I18N_TRANSLATIONS = {
 
         employees_full_name: "Полное имя",
         employees_full_name_placeholder: "Введите полное имя",
+        employees_id_card: "ID",
+        employees_id_card_placeholder: "Номер теудат-зеут",
 
         employees_sex: "Пол",
         employees_select_sex: "Выберите пол",
@@ -1254,6 +1261,7 @@ const I18N_TRANSLATIONS = {
         employees_list_subtitle: "Текущие сотрудники, доступные в системе.",
 
         employees_table_id: "ID",
+        employees_table_id_card: "ID",
         employees_table_name: "Полное имя",
         employees_table_sex: "Пол",
         employees_table_min_target_max: "Мин / Цель / Макс",
@@ -1306,6 +1314,7 @@ const I18N_TRANSLATIONS = {
         preferences_day_column: "День",
         preferences_date_column: "Дата",
         preferences_value_column: "Пожелание",
+        preferences_clear_button: "Очистить",
 
         preferences_employee_not_found: "Сотрудник не найден",
 
@@ -1426,6 +1435,7 @@ const I18N_TRANSLATIONS = {
         msg_editing_template: "Редактируется шаблон",
         msg_confirm_delete_template: "Вы уверены, что хотите удалить этот шаблон смены?",
         msg_failed_delete_template: "Не удалось удалить шаблон смены.",
+        msg_template_in_use_delete_blocked: "Этот шаблон смены используется в расписании, поэтому его нельзя удалить.",
         msg_server_error_delete_template: "Ошибка сервера при удалении шаблона смены.",
 
         msg_failed_load_templates: "Не удалось загрузить шаблоны смен.",
@@ -2032,6 +2042,8 @@ const I18N_TRANSLATIONS = {
 
         employees_full_name: "שם מלא",
         employees_full_name_placeholder: "הזן שם מלא",
+        employees_id_card: "תעודת זהות",
+        employees_id_card_placeholder: "מספר תעודת זהות",
 
         employees_sex: "מין",
         employees_select_sex: "בחר מין",
@@ -2060,6 +2072,7 @@ const I18N_TRANSLATIONS = {
         footer_version: "ShiftCare v{version}",
 
         employees_table_id: "מזהה",
+        employees_table_id_card: "תעודת זהות",
         employees_table_name: "שם מלא",
         employees_table_sex: "מין",
         employees_table_min_target_max: "מינימום / יעד / מקסימום",
@@ -2156,6 +2169,7 @@ const I18N_TRANSLATIONS = {
         preferences_day_column: "יום",
         preferences_date_column: "תאריך",
         preferences_value_column: "העדפה",
+        preferences_clear_button: "נקה",
 
         preferences_employee_not_found: "העובד לא נמצא",
 
@@ -2276,6 +2290,7 @@ const I18N_TRANSLATIONS = {
         msg_editing_template: "עורך תבנית",
         msg_confirm_delete_template: "האם אתה בטוח שברצונך למחוק את תבנית המשמרת הזאת?",
         msg_failed_delete_template: "מחיקת תבנית המשמרת נכשלה.",
+        msg_template_in_use_delete_blocked: "תבנית המשמרת הזאת נמצאת בשימוש בסידור העבודה ולכן אי אפשר למחוק אותה.",
         msg_server_error_delete_template: "שגיאת שרת בזמן מחיקת תבנית המשמרת.",
 
         msg_failed_load_templates: "טעינת תבניות המשמרת נכשלה.",

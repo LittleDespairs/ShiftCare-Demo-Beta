@@ -5,7 +5,7 @@ a = Analysis(
     ['launcher.py'],
     pathex=[],
     binaries=[],
-    datas=[('templates', 'templates'), ('static', 'static'), ('schedule_app.db', '.')],
+    datas=[('templates', 'templates'), ('static', 'static')],
     hiddenimports=[
         'webview',
         'webview.platforms.edgechromium',
@@ -27,7 +27,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='ShiftCare_0.14.9_beta',
+    name='ShiftCare_0.15.2_beta',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -48,7 +48,8 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='ShiftCare_0.14.9_beta',
+    name='ShiftCare_0.15.2_beta',
 )
+
 
 

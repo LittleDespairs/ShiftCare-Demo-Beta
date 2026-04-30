@@ -31,8 +31,10 @@ android/app/src/main/assets/schedule_app_backend/
 !.env.example
 
 # Private draft documentation
+private/
 GENERATOR_EXPLANATION_RU.docx
 GENERATOR_EXPLANATION_RU.txt
+DESKTOP_CLOUD_SYNC_0.15_CHECKLIST.md
 
 # Logs and temporary files
 *.log

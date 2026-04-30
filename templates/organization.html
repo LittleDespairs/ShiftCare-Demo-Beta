@@ -96,7 +96,7 @@
                     <div class="settings-section-header">
                         <div>
                             <h3 class="settings-section-title">Employee portal</h3>
-                            <p class="settings-section-text">Public login page for employees.</p>
+                            <p class="settings-section-text">Public page for employee wishes and read-only schedules.</p>
                         </div>
                     </div>
 
@@ -107,52 +107,6 @@
                         </label>
                         <button id="copy-employee-portal-btn" class="btn btn-secondary" type="button">Copy link</button>
                     </div>
-                </section>
-
-                <section id="cloud-link-panel" class="organization-panel organization-panel-wide">
-                    <div class="settings-section-header">
-                        <div>
-                            <h3 class="settings-section-title">Cloud connection</h3>
-                            <p class="settings-section-text">Upload this local organization to the Cloud beta API and link this installation to it.</p>
-                        </div>
-                    </div>
-
-                    <form id="cloud-link-form" class="organization-form-stack">
-                        <label class="form-field">
-                            <span>Cloud API</span>
-                            <input id="cloud-api-base-url" type="url" autocomplete="url" required>
-                        </label>
-                        <label class="form-field">
-                            <span>Cloud owner email</span>
-                            <input id="cloud-email" type="email" autocomplete="email" required>
-                        </label>
-                        <label class="form-field">
-                            <span>Cloud owner password</span>
-                            <input id="cloud-password" type="password" autocomplete="current-password" required>
-                        </label>
-                        <label class="checkbox-row">
-                            <input id="cloud-replace-existing" type="checkbox" checked>
-                            <span>Replace scheduling data in the selected cloud organization</span>
-                        </label>
-                        <button class="btn btn-primary" type="submit">Upload and link cloud organization</button>
-                    </form>
-
-                    <dl id="cloud-link-summary" class="organization-summary-list" hidden>
-                        <div>
-                            <dt>Linked Cloud API</dt>
-                            <dd id="cloud-link-api">-</dd>
-                        </div>
-                        <div>
-                            <dt>Cloud organization</dt>
-                            <dd id="cloud-link-organization">-</dd>
-                        </div>
-                        <div>
-                            <dt>Linked at</dt>
-                            <dd id="cloud-link-time">-</dd>
-                        </div>
-                    </dl>
-
-                    <div id="cloud-link-status" class="organization-message" role="status" aria-live="polite"></div>
                 </section>
 
                 <form id="invite-form" class="organization-panel">
@@ -166,7 +120,7 @@
                     <label class="form-field">
                         <span>Employee</span>
                         <select id="invite-employee">
-                            <option value="">No employee link</option>
+                            <option value="">Select employee</option>
                         </select>
                     </label>
 
@@ -175,16 +129,7 @@
                         <input id="invite-email" type="email" autocomplete="email" required>
                     </label>
 
-                    <label class="form-field">
-                        <span>Role</span>
-                        <select id="invite-role" required>
-                            <option value="employee">Employee</option>
-                            <option value="scheduler">Scheduler</option>
-                            <option value="admin">Admin</option>
-                            <option value="manager">Manager</option>
-                            <option value="read_only">Read-only</option>
-                        </select>
-                    </label>
+                    <input id="invite-role" type="hidden" value="employee">
 
                     <label class="form-field">
                         <span>Expires in days</span>
@@ -202,7 +147,7 @@
                     </div>
                 </form>
 
-                <section class="organization-panel">
+                <section id="members-panel" class="organization-panel">
                     <div class="settings-section-header">
                         <div>
                             <h3 class="settings-section-title">Members</h3>
@@ -227,7 +172,7 @@
                     </div>
                 </section>
 
-                <section class="organization-panel organization-panel-wide">
+                <section id="invitations-panel" class="organization-panel organization-panel-wide">
                     <div class="settings-section-header">
                         <div>
                             <h3 class="settings-section-title">Invitations</h3>
@@ -257,11 +202,12 @@
         </main>
     </div>
 <script src="/static/js/i18n.js?v={{ app_version }}-employee-schedule"></script>
-<script src="/static/js/auth_client.js?v={{ app_version }}"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-employee-schedule"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-directory-access"></script>
 <script src="/static/js/auth_i18n.js?v={{ app_version }}-cloud-link-status"></script>
-<script src="/static/js/organization.js?v={{ app_version }}-cloud-link-status"></script>
+<script src="/static/js/organization.js?v={{ app_version }}-employee-invite-link"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 
 </html>
+

@@ -4,8 +4,11 @@
         organizationId: null,
         organizationName: "",
         membership: null,
+        members: [],
+        invitations: [],
         employees: [],
         clientConfig: null,
+        cloudLink: null,
     };
 
     const elements = {};
@@ -52,14 +55,22 @@
         const configuredUrl = String(state.clientConfig?.employee_portal_url || "").trim();
         if (configuredUrl) return configuredUrl;
         const publicBaseUrl = configuredPublicBaseUrl();
-        return `${publicBaseUrl || window.location.origin}/login`;
+        if (publicBaseUrl) return `${publicBaseUrl}/login`;
+        return "";
     }
 
     function invitationUrlFromResponse(response) {
         if (response.invitation_url) return response.invitation_url;
         const token = response.invitation_token || "";
         const publicBaseUrl = configuredPublicBaseUrl();
-        return `${publicBaseUrl || window.location.origin}/accept-invitation?token=${encodeURIComponent(token)}`;
+        if (publicBaseUrl && token) {
+            return `${publicBaseUrl}/accept-invitation?token=${encodeURIComponent(token)}`;
+        }
+        const cloudBaseUrl = window.scheduleAuth?.CLOUD_API_FALLBACK_BASE_URL || window.scheduleAuth?.CLOUD_API_BASE_URL || "";
+        if (cloudBaseUrl && token) {
+            return `${cloudBaseUrl.replace(/\/+$/, "")}/accept-invitation?token=${encodeURIComponent(token)}`;
+        }
+        throw new Error("Invitation link was not generated. Check cloud connection and try again.");
     }
 
     function activeMemberships() {
@@ -67,10 +78,12 @@
     }
 
     function canManageInvitations() {
+        if (state.clientConfig?.cloud_employee_portal_mode) return false;
         return INVITATION_ROLES.has(state.membership?.role);
     }
 
     function canViewMembers() {
+        if (state.clientConfig?.cloud_employee_portal_mode) return false;
         return MEMBER_VIEW_ROLES.has(state.membership?.role);
     }
 
@@ -117,11 +130,23 @@
 
     function renderEmployeePortal() {
         if (!elements.employeePortalUrl) return;
-        elements.employeePortalUrl.value = employeePortalUrl();
+        elements.employeePortalUrl.value = employeePortalUrl() || "Employee portal URL is not configured.";
+        if (elements.copyEmployeePortal) {
+            elements.copyEmployeePortal.disabled = !employeePortalUrl();
+        }
     }
 
     function renderPermissions() {
         elements.inviteForm.hidden = !canManageInvitations();
+        if (elements.employeePortalPanel) {
+            elements.employeePortalPanel.hidden = Boolean(state.clientConfig?.cloud_employee_portal_mode);
+        }
+        if (elements.membersPanel) {
+            elements.membersPanel.hidden = !canViewMembers();
+        }
+        if (elements.invitationsPanel) {
+            elements.invitationsPanel.hidden = !canManageInvitations();
+        }
         if (!canManageInvitations()) {
             setInviteResult("");
             renderInvitations([], "Only owners and admins can manage invitations.");
@@ -132,15 +157,16 @@
     }
 
     function renderMembers(members, emptyMessage = "No members found.") {
+        state.members = members;
         if (!members.length) {
-            elements.membersBody.innerHTML = `<tr><td colspan="6">${text(emptyMessage)}</td></tr>`;
+            elements.membersBody.innerHTML = `<tr><td colspan="7">${text(emptyMessage)}</td></tr>`;
             return;
         }
         elements.membersBody.innerHTML = members.map((member) => `
             <tr>
                 <td>${text(member.full_name)}</td>
                 <td>${text(member.email)}</td>
-                <td>${text(member.employee_name || "")}</td>
+                <td>${renderMemberEmployeeCell(member)}</td>
                 <td>${text(member.role)}</td>
                 <td>${text(member.membership_status)}</td>
                 <td>${member.email_verified ? "Yes" : "No"}</td>
@@ -150,7 +176,8 @@
                             class="organization-table-button danger"
                             data-organization-action="remove-member"
                             data-user-id="${Number(member.user_id)}"
-                            data-linked-employee-id="${Number(member.employee_id || 0)}"
+                            data-linked-employee-id="${member.membership_status === "active" ? Number(member.employee_id || 0) : 0}"
+                            data-linked-employee-public-id="${member.membership_status === "active" ? text(member.employee_public_id || "") : ""}"
                             ${member.user_id === state.user.id || member.membership_status !== "active" ? "disabled" : ""}
                             type="button"
                         >
@@ -162,7 +189,13 @@
         `).join("");
     }
 
+    function renderMemberEmployeeCell(member) {
+        if (member.role !== "employee") return "";
+        return text(member.employee_name || uiText("org_member_employee_not_linked", "Not linked"));
+    }
+
     function renderInvitations(invitations, emptyMessage = "No invitations found.") {
+        state.invitations = invitations;
         if (!invitations.length) {
             elements.invitationsBody.innerHTML = `<tr><td colspan="7">${text(emptyMessage)}</td></tr>`;
             return;
@@ -182,6 +215,7 @@
                             data-organization-action="revoke-invitation"
                             data-invitation-id="${Number(invitation.id)}"
                             data-pending-employee-id="${Number(invitation.employee_id || 0)}"
+                            data-pending-employee-public-id="${text(invitation.employee_public_id || "")}"
                             ${invitation.status !== "pending" ? "disabled" : ""}
                             type="button"
                         >
@@ -272,11 +306,13 @@
         const responses = await Promise.all(requests);
         let responseIndex = 0;
         if (canViewMembers()) {
-            renderMembers(responses[responseIndex].members || []);
+            state.members = responses[responseIndex].members || [];
+            renderMembers(state.members);
             responseIndex += 1;
         }
         if (canManageInvitations()) {
-            renderInvitations(responses[responseIndex].invitations || []);
+            state.invitations = responses[responseIndex].invitations || [];
+            renderInvitations(state.invitations);
         }
     }
 
@@ -288,6 +324,7 @@
         }
         try {
             state.employees = await window.scheduleAuth.request("/api/employees");
+            renderMembers(state.members || []);
             renderEmployeeSelector();
         } catch (error) {
             state.employees = [];
@@ -310,23 +347,34 @@
         return ids;
     }
 
+    function linkedEmployeePublicIds() {
+        const ids = new Set();
+        elements.membersBody.querySelectorAll("[data-linked-employee-public-id]").forEach((element) => {
+            const employeePublicId = String(element.dataset.linkedEmployeePublicId || "").trim();
+            if (employeePublicId) ids.add(employeePublicId);
+        });
+        elements.invitationsBody.querySelectorAll("[data-pending-employee-public-id]").forEach((element) => {
+            if (element.disabled) return;
+            const employeePublicId = String(element.dataset.pendingEmployeePublicId || "").trim();
+            if (employeePublicId) ids.add(employeePublicId);
+        });
+        return ids;
+    }
+
     function renderEmployeeSelector() {
         if (!elements.inviteEmployee) return;
         const linkedIds = linkedEmployeeIds();
+        const linkedPublicIds = linkedEmployeePublicIds();
         const currentValue = elements.inviteEmployee.value;
-        const employeeLinkEnabled = elements.inviteRole?.value === "employee";
         elements.inviteEmployee.innerHTML = [
-            `<option value="">${text(uiText("org_no_employee_link", "No employee link"))}</option>`,
+            `<option value="">${text(uiText("preferences_select_employee", "Select employee"))}</option>`,
             ...state.employees.map((employee) => {
-                const disabled = linkedIds.has(Number(employee.id)) ? "disabled" : "";
+                const disabled = linkedIds.has(Number(employee.id)) || linkedPublicIds.has(String(employee.public_id || "")) ? "disabled" : "";
                 const selected = String(employee.id) === currentValue ? "selected" : "";
                 return `<option value="${Number(employee.id)}" ${disabled} ${selected}>${text(employee.full_name)}</option>`;
             }),
         ].join("");
-        elements.inviteEmployee.disabled = !employeeLinkEnabled;
-        if (!employeeLinkEnabled) {
-            elements.inviteEmployee.value = "";
-        }
+        elements.inviteEmployee.required = true;
     }
 
     function bindInviteForm() {
@@ -335,13 +383,18 @@
             if (!canManageInvitations()) return;
             setInviteResult("");
             setMessage("Creating invitation...", "");
+            if (!elements.inviteEmployee.value) {
+                setMessage("Select an employee before creating an employee invitation.", "error");
+                elements.inviteEmployee.focus();
+                return;
+            }
             try {
                 const response = await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/invitations`, {
                     method: "POST",
                     body: JSON.stringify({
                         email: elements.inviteEmail.value,
-                        employee_id: elements.inviteEmployee.value ? Number(elements.inviteEmployee.value) : null,
-                        role: elements.inviteRole.value,
+                        employee_id: Number(elements.inviteEmployee.value),
+                        role: "employee",
                         expires_in_days: Number(elements.inviteDays.value),
                     }),
                 });
@@ -413,8 +466,13 @@
 
     function renderCloudLinkSummary(link) {
         if (!elements.cloudLinkSummary) return;
-        elements.cloudLinkSummary.hidden = !link?.linked;
-        if (!link?.linked) return;
+        state.cloudLink = link?.linked ? link : null;
+        elements.cloudLinkSummary.hidden = !state.cloudLink;
+        if (elements.cloudUnlink) {
+            elements.cloudUnlink.hidden = !state.cloudLink || !canManageInvitations();
+        }
+        renderEmployeePortal();
+        if (!state.cloudLink) return;
         elements.cloudLinkApi.textContent = link.cloud_api_base_url || "-";
         elements.cloudLinkOrganization.textContent = link.cloud_organization_public_id
             ? `${link.cloud_organization_public_id} (#${link.cloud_organization_id})`
@@ -432,6 +490,8 @@
             renderCloudLinkSummary(link);
             if (link.linked) {
                 setCloudStatus(uiText("org_cloud_linked_status", "This installation is linked to cloud."), "success");
+            } else {
+                setCloudStatus("Cloud portal is optional and is not connected for this local organization.", "");
             }
         } catch (error) {
             renderCloudLinkSummary(null);
@@ -537,6 +597,23 @@
         }
     }
 
+    async function unlinkCloudOrganization() {
+        if (!canManageInvitations()) {
+            setCloudStatus("Only owners and admins can disconnect the cloud portal.", "error");
+            return;
+        }
+        setCloudStatus("Disconnecting cloud portal...", "");
+        try {
+            await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-link`, {
+                method: "DELETE",
+            });
+            renderCloudLinkSummary(null);
+            setCloudStatus("Cloud portal disconnected for this local organization.", "success");
+        } catch (error) {
+            setCloudStatus(error.message, "error");
+        }
+    }
+
     function bindActions() {
         elements.organizationSelect.addEventListener("change", async () => {
             window.scheduleAuth.setActiveOrganizationId(Number(elements.organizationSelect.value));
@@ -566,7 +643,7 @@
             event.preventDefault();
             await uploadAndLinkCloudOrganization();
         });
-        elements.inviteRole.addEventListener("change", renderEmployeeSelector);
+        elements.cloudUnlink?.addEventListener("click", unlinkCloudOrganization);
         elements.membersBody.addEventListener("click", (event) => {
             const button = event.target.closest('[data-organization-action="remove-member"]');
             if (!button || button.disabled) return;
@@ -609,6 +686,9 @@
             membersBody: document.getElementById("members-table-body"),
             invitationsBody: document.getElementById("invitations-table-body"),
             inviteForm: document.getElementById("invite-form"),
+            employeePortalPanel: document.getElementById("employee-portal-panel"),
+            membersPanel: document.getElementById("members-panel"),
+            invitationsPanel: document.getElementById("invitations-panel"),
             inviteEmployee: document.getElementById("invite-employee"),
             inviteEmail: document.getElementById("invite-email"),
             inviteRole: document.getElementById("invite-role"),
@@ -628,6 +708,7 @@
             cloudLinkOrganization: document.getElementById("cloud-link-organization"),
             cloudLinkTime: document.getElementById("cloud-link-time"),
             cloudLinkStatus: document.getElementById("cloud-link-status"),
+            cloudUnlink: document.getElementById("cloud-unlink-btn"),
             logout: document.getElementById("logout-btn"),
         });
 

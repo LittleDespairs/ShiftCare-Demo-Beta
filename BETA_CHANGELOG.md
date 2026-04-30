@@ -1,6 +1,114 @@
 # Beta Changelog
 
-This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, and `0.14.x_beta` lines.
+This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
+
+# 0.15.2_beta - 2026-04-30
+
+## Changed
+
+- Added explicit Email / ID card login mode buttons on the authorization dialog while preserving the existing login API shape for compatibility.
+- Allowed employee login by matching the entered ID card number to the linked employee record.
+- Scoped employee schedule access so employee accounts receive only their own schedule entries, assignments, and assigned positions.
+- Made the employee schedule page preselect the primary assigned position and auto-load it on open.
+- Updated Windows packaging metadata, service worker cache keys, and installer output to `0.15.2_beta`.
+
+# 0.15.1_beta - 2026-04-29
+
+## Changed
+
+- Started the desktop-cloud-sync line: the installed app no longer exposes a user-facing Local/Cloud workspace switch.
+- Desktop login now authenticates against the cloud, imports the selected organization into local SQLite, and opens a local desktop session.
+- Added local desktop sync metadata and a `desktop_sync_outbox` table as the foundation for non-blocking background uploads.
+- Kept employee portal pages cloud-hosted and separate from the installed scheduling workspace.
+
+# 0.14.17_beta - 2026-04-29
+
+## Added
+
+- Added PostgreSQL connection adapter for Cloud SQL runtime while keeping SQLite as the desktop runtime.
+- Switched Cloud Run deployment config from ephemeral SQLite to Cloud SQL PostgreSQL with Secret Manager-backed credentials.
+- Updated PostgreSQL baseline schema to match the current application compatibility layer.
+- Disabled SQLite file backup/restore endpoints for PostgreSQL runtime in favor of Cloud SQL managed backups.
+- Deployed and verified Cloud Run `0.14.17_beta` against Cloud SQL PostgreSQL with create/list/delete API smoke coverage.
+- Fixed organization cloud-import SQL so the full legacy SQLite scheduling bundle can import into PostgreSQL.
+- Fixed Settings directory embeds so owner/admin/scheduler access can load Positions, Shift templates, Assignments, and Coverage requirements inside the Settings page.
+- Mapped PostgreSQL restrict/foreign-key violations to the existing validation path so deleting an in-use shift template returns a clear 400 error instead of a server error.
+- Localized the in-use shift template deletion message in the Directories UI.
+- Forced desktop/WebView pages on localhost to use the local SQLite API even if a previous Cloud beta API selection was saved.
+
+# 0.14.16_beta - 2026-04-29
+
+## Fixed
+
+- Support dashboard now reads the local desktop API directly, so Cloud beta portal mode cannot redirect `/support` diagnostics to cloud where developer mode is disabled.
+
+# 0.14.15_beta - 2026-04-29
+
+## Added
+
+- Added private monetization/licensing decisions to ignored local notes.
+- Added developer/support mode feature flag with a read-only `/support` dashboard.
+- Added `/api/support/accounts` for owner/admin diagnostics when `SCHEDULE_APP_DEVELOPER_MODE=1`.
+
+# 0.14.14_beta - 2026-04-29
+
+## Fixed
+
+- Added a temporary cloud API fallback from `https://portal.shiftcare.co.il` to `https://schedule-app-beta.web.app` while DNS delegation is still propagating.
+- Improved the login page error shown when Cloud beta portal is unreachable from the desktop app.
+- Bumped frontend cache markers and Windows packaging metadata to `0.14.14_beta`.
+
+# 0.14.13_beta - 2026-04-29
+
+## Fixed
+
+- Employee invitation URLs now require an explicit organization cloud-link before using the public portal domain.
+- Added owner/admin cloud unlink support for beta testing.
+- Completed the desktop-first checklist items before the Licensing section.
+- Updated Windows packaging metadata to `0.14.13_beta`.
+- Removed the bundled development SQLite database from the Windows package so fresh installs can create the first local owner offline.
+
+## Verified
+
+- `python -m unittest` - 64 tests passed.
+- `tools/build_windows_installer.ps1` built `dist\installer\ShiftCare_Setup_0.14.13-beta.exe`.
+- Packaged exe smoke confirmed a clean local data directory reports `bootstrap_available=true` and can create the first owner.
+
+# 0.14.12_beta - 2026-04-29
+
+## Fixed
+
+- Reworded the Organization page so employee portal and Cloud connection are explicitly optional beta add-ons.
+- Local workspaces no longer display a fake employee portal URL when no public portal URL is configured.
+- Invitation UI fallback no longer fabricates a same-origin public invitation link without a configured portal base URL.
+
+## Verified
+
+- `python -m unittest` - 62 tests passed.
+
+# 0.14.11_beta - 2026-04-29
+
+## Fixed
+
+- Restored desktop-first login behavior: local/same-origin workspace is the default and Cloud beta portal is explicit opt-in.
+- Reworded login connection UI around offline desktop scheduling and optional cloud portal/migration.
+- Added `DESKTOP_FIRST_PRODUCT_PLAN.md` to track the product direction, licensing, offline use, and optional cloud portal work.
+
+## Verified
+
+- `python -m unittest` - 62 tests passed.
+
+# 0.14.10_beta - 2026-04-29
+
+## Fixed
+
+- Kept the Firebase Hosting beta URL usable while `portal.shiftcare.co.il` DNS is still propagating.
+- Hosted Cloud origins now use same-origin API calls instead of forcing the not-yet-live portal domain.
+
+## Verified
+
+- `python -m unittest` - 62 tests passed.
+- `https://schedule-app-beta.web.app/api/client-config` returns portal-facing employee links.
 
 # 0.14.9_beta - 2026-04-29
 

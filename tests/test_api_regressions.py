@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from tests.test_support import database, main
+from db_adapter import CompatRow, PostgresCursorAdapter, _is_postgres_integrity_error, _rewrite_sql_for_postgres
 
 
 class ApiRegressionTests(unittest.TestCase):
@@ -34,10 +35,12 @@ class ApiRegressionTests(unittest.TestCase):
             "auth_password_reset_tokens",
             "auth_sessions",
             "auth_audit_events",
+            "desktop_sync_outbox",
             "organization_invitations",
             "organization_memberships",
             "users",
             "schedule_entries",
+            "app_settings",
             "employee_day_statuses",
             "employee_week_preferences",
             "employee_preferences",
@@ -124,6 +127,7 @@ class ApiRegressionTests(unittest.TestCase):
             "auth_sessions",
             "auth_password_reset_tokens",
             "auth_email_verification_tokens",
+            "desktop_sync_outbox",
             "schema_metadata",
             "schema_migrations",
         ):
@@ -219,13 +223,58 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertFalse(populated_response.json()["bootstrap_available"])
         self.assertEqual(populated_response.json()["active_user_count"], 1)
 
-    def test_health_readiness_blocks_unsupported_database_engine(self):
+    def test_health_readiness_reports_postgres_configuration_errors(self):
         with patch.dict(os.environ, {"DATABASE_ENGINE": "postgresql"}):
             response = self.client.get("/api/health/ready")
         self.assertEqual(response.status_code, 503)
         payload = response.json()["detail"]
         self.assertEqual(payload["status"], "blocked")
         self.assertTrue(payload["runtime"]["issues"])
+        self.assertNotIn("data layer is not yet switched", " ".join(payload["runtime"]["issues"]))
+
+    def test_postgres_adapter_rewrites_sqlite_placeholders_and_rows(self):
+        self.assertEqual(
+            _rewrite_sql_for_postgres("SELECT * FROM users WHERE id = ? AND email = ?"),
+            "SELECT * FROM users WHERE id = %s AND email = %s",
+        )
+        self.assertEqual(
+            _rewrite_sql_for_postgres("ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        )
+        row = CompatRow(["id", "email"], (7, "owner@example.com"))
+        self.assertEqual(row[0], 7)
+        self.assertEqual(row["email"], "owner@example.com")
+        self.assertEqual(dict(row), {"id": 7, "email": "owner@example.com"})
+
+    def test_postgres_schema_cursor_does_not_request_lastrowid(self):
+        class FailingLastvalConnection:
+            def execute(self, sql):
+                raise AssertionError(f"unexpected connection execute: {sql}")
+
+        class FakeCursor:
+            rowcount = 1
+            description = None
+
+            def __init__(self):
+                self.connection = FailingLastvalConnection()
+                self.executed = []
+
+            def execute(self, sql, params=None):
+                self.executed.append((sql, params))
+
+        fake_cursor = FakeCursor()
+        adapter = PostgresCursorAdapter(fake_cursor, track_lastrowid=False)
+        adapter.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)", ("a", "b"))
+        self.assertEqual(fake_cursor.executed, [("INSERT INTO app_settings (key, value) VALUES (%s, %s)", ("a", "b"))])
+        self.assertIsNone(adapter.lastrowid)
+
+    def test_postgres_restrict_violation_maps_to_sqlite_integrity_error(self):
+        RestrictViolation = type(
+            "RestrictViolation",
+            (Exception,),
+            {"__module__": "psycopg.errors", "sqlstate": "23001"},
+        )
+        self.assertTrue(_is_postgres_integrity_error(RestrictViolation("restricted")))
 
     def test_auth_bootstrap_login_me_and_logout_flow(self):
         payload = {
@@ -262,6 +311,272 @@ class ApiRegressionTests(unittest.TestCase):
 
         revoked_response = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(revoked_response.status_code, 401)
+
+    def test_employee_can_login_with_linked_id_card(self):
+        owner_response = self.client.post(
+            "/api/auth/create-organization",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+        employee_id = self._create_employee(headers=owner_headers, full_name="Employee User", id_card="123-456-789")
+
+        invitation_response = self.client.post(
+            f"/api/organizations/{organization_id}/invitations",
+            headers=owner_headers,
+            json={"email": "employee@example.com", "employee_id": employee_id, "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        accept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "password": "EmployeePass123",
+                "confirm_password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        id_login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "123456789", "password": "EmployeePass123"},
+        )
+        self.assertEqual(id_login_response.status_code, 200)
+        membership = id_login_response.json()["user"]["memberships"][0]
+        self.assertEqual(membership["role"], "employee")
+        self.assertEqual(membership["employee_id"], employee_id)
+
+    def test_desktop_cloud_login_imports_cloud_organization_into_local_sqlite(self):
+        cloud_user = {
+            "id": 44,
+            "email": "owner@example.com",
+            "full_name": "Cloud Owner",
+            "status": "active",
+            "email_verified": True,
+            "memberships": [
+                {
+                    "organization_id": 42,
+                    "organization_public_id": "org_cloud",
+                    "organization_name": "Cloud Clinic",
+                    "role": "owner",
+                    "status": "active",
+                    "employee_id": None,
+                }
+            ],
+        }
+        cloud_bundle = {
+            "format": "shiftcare.organization.v1",
+            "app_version": "0.15.1_beta",
+            "organization": {"id": 42, "public_id": "org_cloud", "name": "Cloud Clinic", "status": "active"},
+            "records": {
+                "employees": [
+                    {
+                        "id": 7,
+                        "organization_id": 42,
+                        "public_id": "emp_cloud",
+                        "full_name": "Imported Employee",
+                        "sex": "female",
+                        "min_shifts_per_week": 1,
+                        "target_shifts_per_week": 3,
+                        "max_shifts_per_week": 5,
+                        "can_work_night": 1,
+                        "can_work_weekends": 1,
+                        "can_work_evenings_after_night": 1,
+                        "can_work_mornings_and_evenings": 1,
+                    }
+                ],
+                "positions": [
+                    {
+                        "id": 9,
+                        "organization_id": 42,
+                        "public_id": "pos_cloud",
+                        "name": "Caregiver",
+                        "color": "#eff6ff",
+                        "requires_continuous_coverage": 0,
+                        "minimum_staff_presence": 0,
+                    }
+                ],
+                "shift_templates": [],
+                "shift_requirements": [],
+                "coverage_requirements": [],
+                "employee_preferences": [],
+                "employee_week_preferences": [],
+                "employee_day_statuses": [],
+                "schedule_entries": [],
+                "app_settings": [],
+                "employee_positions": [],
+            },
+        }
+
+        def fake_cloud_request(base_url, path, **kwargs):
+            if path == "/api/auth/login":
+                self.assertEqual(kwargs["method"], "POST")
+                return {"access_token": "cloud-token", "user": cloud_user}
+            if path == "/api/organizations/42/cloud-export":
+                self.assertEqual(kwargs["token"], "cloud-token")
+                return cloud_bundle
+            if path == "/api/organizations/42/members":
+                self.assertEqual(kwargs["token"], "cloud-token")
+                return {
+                    "members": [
+                        {
+                            "user_id": 77,
+                            "email": "employee@example.com",
+                            "full_name": "Imported Employee",
+                            "role": "employee",
+                            "membership_status": "active",
+                            "employee_id": 7,
+                            "employee_public_id": "emp_cloud",
+                            "employee_name": "Imported Employee",
+                        }
+                    ]
+                }
+            if path == "/api/organizations/42/invitations":
+                self.assertEqual(kwargs["token"], "cloud-token")
+                return {
+                    "invitations": [
+                        {
+                            "id": 88,
+                            "email": "pending@example.com",
+                            "employee_id": 7,
+                            "employee_public_id": "emp_cloud",
+                            "employee_name": "Imported Employee",
+                            "role": "employee",
+                            "status": "pending",
+                        }
+                    ]
+                }
+            raise AssertionError(path)
+
+        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+            response = self.client.post(
+                "/api/desktop/cloud-login",
+                json={"email": "owner@example.com", "password": "CorrectHorse123"},
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["user"]["email"], "owner@example.com")
+        self.assertEqual(payload["user"]["memberships"][0]["organization_name"], "Cloud Clinic")
+        self.assertEqual(payload["desktop_sync"]["cloud_organization_id"], 42)
+        self.assertEqual(payload["desktop_sync"]["imported"]["employees"], 1)
+
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT full_name FROM employees WHERE public_id = 'emp_cloud'")
+        self.assertEqual(cursor.fetchone()["full_name"], "Imported Employee")
+        cursor.execute("SELECT value FROM app_settings WHERE key = 'cloud_organization_id'")
+        self.assertEqual(cursor.fetchone()["value"], "42")
+
+    def test_desktop_linked_organization_reads_cloud_members_and_invitations(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Local Linked",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        cursor = self.connection.cursor()
+        for key, value in {
+            "cloud_api_base_url": "https://schedule-app-beta.web.app",
+            "cloud_organization_id": "42",
+            "cloud_organization_public_id": "org_cloud",
+            "desktop_cloud_access_token": "cloud-token",
+        }.items():
+            cursor.execute(
+                """
+                INSERT INTO app_settings (organization_id, key, value)
+                VALUES (1, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+        self.connection.commit()
+
+        def fake_cloud_request(base_url, path, **kwargs):
+            self.assertEqual(base_url, "https://schedule-app-beta.web.app")
+            self.assertEqual(kwargs["token"], "cloud-token")
+            if path == "/api/organizations/42/members":
+                return {
+                    "members": [
+                        {
+                            "user_id": 77,
+                            "email": "employee@example.com",
+                            "full_name": "Imported Employee",
+                            "role": "employee",
+                            "membership_status": "active",
+                            "employee_id": 7,
+                            "employee_public_id": "emp_cloud",
+                            "employee_name": "Imported Employee",
+                        }
+                    ]
+                }
+            if path == "/api/organizations/42/invitations":
+                return {
+                    "invitations": [
+                        {
+                            "id": 88,
+                            "email": "pending@example.com",
+                            "employee_id": 7,
+                            "employee_public_id": "emp_cloud",
+                            "employee_name": "Imported Employee",
+                            "role": "employee",
+                            "status": "pending",
+                        }
+                    ]
+                }
+            if path == "/api/organizations/42/members/77":
+                self.assertEqual(kwargs["method"], "DELETE")
+                return {"message": "Organization member access removed"}
+            if path == "/api/organizations/42/invitations/88/regenerate-token":
+                self.assertEqual(kwargs["method"], "POST")
+                return {
+                    "invitation": {
+                        "id": 88,
+                        "organization_id": 42,
+                        "email": "pending@example.com",
+                        "employee_id": 7,
+                        "role": "employee",
+                        "status": "pending",
+                        "expires_at": "2026-05-07T00:00:00",
+                    },
+                    "invitation_token": "new-cloud-token",
+                    "invitation_url": "https://schedule-app-beta.web.app/accept-invitation?token=new-cloud-token",
+                }
+            if path == "/api/organizations/42/invitations/88":
+                self.assertEqual(kwargs["method"], "DELETE")
+                return {"message": "Invitation revoked"}
+            raise AssertionError(path)
+
+        with (
+            patch.object(main, "request_cloud_json", side_effect=fake_cloud_request),
+            patch.object(main, "is_desktop_invitation_request", return_value=True),
+        ):
+            members_response = self.client.get("/api/organizations/1/members", headers=headers)
+            invitations_response = self.client.get("/api/organizations/1/invitations", headers=headers)
+            remove_member_response = self.client.delete("/api/organizations/1/members/77", headers=headers)
+            regenerate_response = self.client.post(
+                "/api/organizations/1/invitations/88/regenerate-token",
+                headers=headers,
+            )
+            revoke_response = self.client.delete("/api/organizations/1/invitations/88", headers=headers)
+
+        self.assertEqual(members_response.status_code, 200)
+        self.assertEqual(members_response.json()["members"][0]["employee_public_id"], "emp_cloud")
+        self.assertEqual(invitations_response.status_code, 200)
+        self.assertEqual(invitations_response.json()["invitations"][0]["employee_public_id"], "emp_cloud")
+        self.assertEqual(remove_member_response.status_code, 200)
+        self.assertEqual(regenerate_response.status_code, 200)
+        self.assertEqual(regenerate_response.json()["invitation_token"], "new-cloud-token")
+        self.assertEqual(revoke_response.status_code, 200)
 
     def test_cloud_export_import_round_trip_preserves_setup_data(self):
         bootstrap_response = self.client.post(
@@ -339,7 +654,7 @@ class ApiRegressionTests(unittest.TestCase):
         save_link_response = self.client.post(
             f"/api/organizations/{organization_id}/cloud-link",
             json={
-                "cloud_api_base_url": "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app/",
+                "cloud_api_base_url": "https://portal.shiftcare.co.il/",
                 "cloud_organization_id": 42,
                 "cloud_organization_public_id": "org_cloud_public",
                 "linked_at": "2026-04-29T03:00:00.000Z",
@@ -352,9 +667,15 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(linked_response.status_code, 200)
         linked_payload = linked_response.json()
         self.assertTrue(linked_payload["linked"])
-        self.assertEqual(linked_payload["cloud_api_base_url"], "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app")
+        self.assertEqual(linked_payload["cloud_api_base_url"], "https://portal.shiftcare.co.il")
         self.assertEqual(linked_payload["cloud_organization_id"], 42)
         self.assertEqual(linked_payload["cloud_organization_public_id"], "org_cloud_public")
+
+        unlink_response = self.client.delete(f"/api/organizations/{organization_id}/cloud-link", headers=headers)
+        self.assertEqual(unlink_response.status_code, 200)
+        unlinked_response = self.client.get(f"/api/organizations/{organization_id}/cloud-link", headers=headers)
+        self.assertEqual(unlinked_response.status_code, 200)
+        self.assertFalse(unlinked_response.json()["linked"])
 
     def test_new_organization_owned_records_receive_public_ids(self):
         employee_id = self._create_employee()
@@ -635,12 +956,17 @@ class ApiRegressionTests(unittest.TestCase):
             f"https://shiftcare.example.com/accept-invitation?token={invitation_token}",
         )
 
+        preview_response = self.client.get(f"/api/auth/invitation-preview?token={invitation_token}")
+        self.assertEqual(preview_response.status_code, 200)
+        self.assertEqual(preview_response.json()["employee_name"], "Employee User")
+        self.assertFalse(preview_response.json()["requires_name"])
+
         accept_response = self.client.post(
             "/api/auth/accept-invitation",
             json={
                 "token": invitation_token,
-                "full_name": "Employee User",
                 "password": "EmployeePass123",
+                "confirm_password": "EmployeePass123",
             },
         )
         self.assertEqual(accept_response.status_code, 200)
@@ -697,8 +1023,18 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(members_after_remove_response.status_code, 200)
         self.assertNotIn(
             "employee@example.com",
-            [member["email"] for member in members_after_remove_response.json()["members"]],
+            [
+                member["email"]
+                for member in members_after_remove_response.json()["members"]
+                if member["membership_status"] == "active"
+            ],
         )
+        disabled_members = [
+            member
+            for member in members_after_remove_response.json()["members"]
+            if member["email"] == "employee@example.com"
+        ]
+        self.assertEqual(disabled_members[0]["membership_status"], "disabled")
         connection = database.get_connection()
         try:
             cursor = connection.cursor()
@@ -714,10 +1050,34 @@ class ApiRegressionTests(unittest.TestCase):
         finally:
             connection.close()
 
+        reinvite_employee_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers={"Authorization": f"Bearer {owner_token}"},
+            json={
+                "email": "employee@example.com",
+                "employee_id": employee_record_id,
+                "role": "employee",
+                "expires_in_days": 7,
+            },
+        )
+        self.assertEqual(reinvite_employee_response.status_code, 200)
+        reaccept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": reinvite_employee_response.json()["invitation_token"],
+                "password": "EmployeePass123",
+                "confirm_password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(reaccept_response.status_code, 200)
+        reaccepted_membership = reaccept_response.json()["user"]["memberships"][0]
+        self.assertEqual(reaccepted_membership["status"], "active")
+        self.assertEqual(reaccepted_membership["employee_id"], employee_record_id)
+
         pending_invitation_response = self.client.post(
             "/api/organizations/1/invitations",
             headers={"Authorization": f"Bearer {owner_token}"},
-            json={"email": "pending@example.com", "role": "employee", "expires_in_days": 7},
+            json={"email": "pending@example.com", "role": "read_only", "expires_in_days": 7},
         )
         self.assertEqual(pending_invitation_response.status_code, 200)
         pending_invitation_id = pending_invitation_response.json()["invitation"]["id"]
@@ -763,17 +1123,154 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(regenerate_revoked_response.status_code, 409)
 
+    def test_employee_schedule_scope_returns_own_primary_position_and_entries_only(self):
+        owner_response = self.client.post(
+            "/api/auth/create-organization",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+
+        employee_a = self._create_employee(headers=owner_headers, full_name="Employee A", id_card="111111111")
+        employee_b = self._create_employee(headers=owner_headers, full_name="Employee B", id_card="222222222")
+        nurse_position = self._create_position(headers=owner_headers, name="Nurse")
+        caregiver_position = self._create_position(headers=owner_headers, name="Caregiver")
+        other_position = self._create_position(headers=owner_headers, name="Admin")
+        nurse_template = self._create_shift_template(headers=owner_headers, position_id=nurse_position, name="Nurse Morning")
+        caregiver_template = self._create_shift_template(headers=owner_headers, position_id=caregiver_position, name="Caregiver Morning")
+        other_template = self._create_shift_template(headers=owner_headers, position_id=other_position, name="Admin Morning")
+
+        for payload in (
+            {"employee_id": employee_a, "position_id": caregiver_position, "is_primary": False, "priority_score": 30},
+            {"employee_id": employee_a, "position_id": nurse_position, "is_primary": True, "priority_score": 90},
+            {"employee_id": employee_b, "position_id": other_position, "is_primary": True, "priority_score": 90},
+        ):
+            response = self.client.post("/api/employee-positions", headers=owner_headers, json=payload)
+            self.assertEqual(response.status_code, 200)
+
+        for payload in (
+            {"employee_id": employee_a, "position_id": nurse_position, "date": "2026-04-20", "shift_template_id": nurse_template},
+            {"employee_id": employee_a, "position_id": caregiver_position, "date": "2026-04-21", "shift_template_id": caregiver_template},
+            {"employee_id": employee_b, "position_id": other_position, "date": "2026-04-20", "shift_template_id": other_template},
+        ):
+            response = self.client.post("/api/schedule", headers=owner_headers, json=payload)
+            self.assertEqual(response.status_code, 200)
+
+        invitation_response = self.client.post(
+            f"/api/organizations/{organization_id}/invitations",
+            headers=owner_headers,
+            json={"email": "employee-a@example.com", "employee_id": employee_a, "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        accept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={"token": invitation_response.json()["invitation_token"], "password": "EmployeePass123"},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+        employee_headers = {"Authorization": f"Bearer {accept_response.json()['access_token']}"}
+
+        positions_response = self.client.get("/api/positions", headers=employee_headers)
+        self.assertEqual(positions_response.status_code, 200)
+        positions = positions_response.json()
+        self.assertEqual([position["id"] for position in positions], [nurse_position, caregiver_position])
+        self.assertTrue(positions[0]["is_primary"])
+
+        assignments_response = self.client.get("/api/employee-positions", headers=employee_headers)
+        self.assertEqual(assignments_response.status_code, 200)
+        self.assertEqual({item["employee_id"] for item in assignments_response.json()}, {employee_a})
+
+        schedule_response = self.client.get("/api/schedule", headers=employee_headers)
+        self.assertEqual(schedule_response.status_code, 200)
+        schedule_entries = schedule_response.json()
+        self.assertEqual({entry["employee_id"] for entry in schedule_entries}, {employee_a})
+        self.assertEqual({entry["position_id"] for entry in schedule_entries}, {nurse_position, caregiver_position})
+
+    def test_invitation_url_uses_public_app_base_without_manual_cloud_link(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Portal Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+
+        unlinked_employee_id = self._create_employee(headers=headers, full_name="Unlinked Employee")
+        with patch.dict(os.environ, {"PUBLIC_APP_BASE_URL": "https://portal.shiftcare.co.il"}, clear=False):
+            unlinked_invitation = self.client.post(
+                f"/api/organizations/{organization_id}/invitations",
+                headers=headers,
+                json={
+                    "email": "unlinked@example.com",
+                    "employee_id": unlinked_employee_id,
+                    "role": "employee",
+                    "expires_in_days": 7,
+                },
+            )
+        self.assertEqual(unlinked_invitation.status_code, 200)
+        linked_token = unlinked_invitation.json()["invitation_token"]
+        self.assertEqual(
+            unlinked_invitation.json()["invitation_url"],
+            f"https://portal.shiftcare.co.il/accept-invitation?token={linked_token}",
+        )
+
     def test_login_page_returns_auth_shell(self):
         response = self.client.get("/login")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Create first owner", response.text)
+        self.assertIn("Authorize user", response.text)
+        self.assertIn("Add organization", response.text)
+        self.assertIn("Local scheduling workspace", response.text)
+        self.assertIn("Load organization data to this computer", response.text)
+        self.assertIn("data-login-method=\"email\"", response.text)
+        self.assertIn("data-login-method=\"id_card\"", response.text)
+        self.assertNotIn("Cloud portal and migration", response.text)
+        self.assertNotIn("Cloud is the primary workspace", response.text)
         self.assertIn("/static/js/auth.js", response.text)
+
+    def test_login_frontend_uses_desktop_cloud_login_without_workspace_switch(self):
+        auth_js = Path("static/js/auth.js").read_text(encoding="utf-8")
+        auth_client_js = Path("static/js/auth_client.js").read_text(encoding="utf-8")
+        self.assertIn("initializeDefaultApiMode", auth_js)
+        self.assertIn("window.scheduleAuth.useLocalApi();", auth_js)
+        self.assertIn("/api/desktop/cloud-login", auth_js)
+        self.assertIn("/api/desktop/cloud-create-organization", auth_js)
+        self.assertIn("isDesktopLocalOrigin", auth_client_js)
+        self.assertNotIn("apiCloudButton", auth_js)
+        self.assertIn("CLOUD_API_FALLBACK_BASE_URL", auth_client_js)
+        self.assertIn("https://schedule-app-beta.web.app", auth_client_js)
+        self.assertNotIn("initializeCloudFirstMode", auth_js)
+
+    def test_schedule_frontend_auto_loads_employee_primary_position(self):
+        schedule_js = Path("static/js/schedule.js").read_text(encoding="utf-8")
+        self.assertIn("function isEmployeeUser()", schedule_js)
+        self.assertIn("allPositions.find(position => position.is_primary) || allPositions[0]", schedule_js)
+        self.assertIn("await loadSchedulePageData({ showLoadedMessage: false });", schedule_js)
+
+    def test_read_only_role_does_not_get_weekly_preferences_navigation(self):
+        access_control_js = Path("static/js/access_control.js").read_text(encoding="utf-8")
+        self.assertIn('read_only: {\n            pages: new Set(["/", "/schedule", "/organization", "/guide", "/docs"])', access_control_js)
+        self.assertIn('nav: new Set(["/", "/schedule", "/organization"])', access_control_js)
 
     def test_organization_pages_return_auth_shells(self):
         organization_response = self.client.get("/organization")
         self.assertEqual(organization_response.status_code, 200)
         self.assertIn("/static/js/organization.js", organization_response.text)
         self.assertIn("Invite employee", organization_response.text)
+        self.assertIn("Public page for employee wishes", organization_response.text)
+        self.assertIn('id="invite-role" type="hidden" value="employee"', organization_response.text)
+        self.assertNotIn("No employee link", organization_response.text)
+        self.assertNotIn("Optional beta add-on", organization_response.text)
+        self.assertNotIn("Upload and link cloud organization", organization_response.text)
 
         organization_alias_response = self.client.get("/organizations")
         self.assertEqual(organization_alias_response.status_code, 200)
@@ -783,6 +1280,127 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(invitation_response.status_code, 200)
         self.assertIn("/static/js/accept_invitation.js", invitation_response.text)
         self.assertIn("Accept invitation", invitation_response.text)
+
+    def test_organization_frontend_uses_invitation_employee_link_without_manual_member_link(self):
+        organization_js = Path("static/js/organization.js").read_text(encoding="utf-8")
+        self.assertIn('role: "employee"', organization_js)
+        self.assertIn("employee_id: Number(elements.inviteEmployee.value)", organization_js)
+        self.assertNotIn("link-member-employee", organization_js)
+        self.assertNotIn("data-member-employee-select", organization_js)
+
+    def test_cloud_web_is_limited_to_employee_portal_surfaces(self):
+        with patch.dict(os.environ, {"APP_ENV": "staging"}, clear=False):
+            login_response = self.client.get("/login")
+            self.assertEqual(login_response.status_code, 200)
+            self.assertIn("Employee login", login_response.text)
+            self.assertNotIn("Add organization", login_response.text)
+            self.assertNotIn("bootstrap-form", login_response.text)
+
+            blocked_create_response = self.client.post(
+                "/api/auth/create-organization",
+                json={
+                    "organization_name": "Web Org",
+                    "full_name": "Web Owner",
+                    "email": "web-owner@example.com",
+                    "password": "CorrectHorse123",
+                },
+            )
+            self.assertEqual(blocked_create_response.status_code, 404)
+
+            trusted_create_response = self.client.post(
+                "/api/auth/create-organization",
+                headers={"X-ShiftCare-Desktop-Client": "1"},
+                json={
+                    "organization_name": "Desktop Org",
+                    "full_name": "Desktop Owner",
+                    "email": "desktop-owner@example.com",
+                    "password": "CorrectHorse123",
+                },
+            )
+            self.assertEqual(trusted_create_response.status_code, 200)
+
+            self.assertEqual(self.client.get("/employees").status_code, 404)
+            self.assertEqual(self.client.get("/settings").status_code, 404)
+            self.assertEqual(self.client.get("/positions").status_code, 404)
+            self.assertEqual(self.client.get("/weekly-preferences").status_code, 200)
+            self.assertEqual(self.client.get("/schedule").status_code, 200)
+            self.assertEqual(self.client.get("/organization").status_code, 200)
+
+    def test_developer_support_dashboard_requires_feature_flag_and_admin(self):
+        with tempfile.TemporaryDirectory() as disabled_app_data:
+            with patch.dict(os.environ, {"LOCALAPPDATA": disabled_app_data, "SCHEDULE_APP_DEVELOPER_MODE": "0"}, clear=False):
+                page_disabled = self.client.get("/support")
+                self.assertEqual(page_disabled.status_code, 404)
+
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Support Org",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_token = owner_response.json()["access_token"]
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+        with tempfile.TemporaryDirectory() as disabled_app_data:
+            with patch.dict(os.environ, {"LOCALAPPDATA": disabled_app_data, "SCHEDULE_APP_DEVELOPER_MODE": "0"}, clear=False):
+                disabled_api = self.client.get("/api/support/accounts", headers=owner_headers)
+                self.assertEqual(disabled_api.status_code, 404)
+
+        employee_id = self._create_employee(headers=owner_headers, full_name="Linked Employee")
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={
+                "email": "employee@example.com",
+                "role": "employee",
+                "employee_id": employee_id,
+                "expires_in_days": 7,
+            },
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        employee_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "full_name": "Employee User",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(employee_response.status_code, 200)
+        employee_headers = {"Authorization": f"Bearer {employee_response.json()['access_token']}"}
+
+        with patch.dict(os.environ, {"SCHEDULE_APP_DEVELOPER_MODE": "1"}, clear=False):
+            page_enabled = self.client.get("/support")
+            self.assertEqual(page_enabled.status_code, 200)
+            self.assertIn("/static/js/support.js", page_enabled.text)
+            support_js = Path("static/js/support.js").read_text(encoding="utf-8")
+            self.assertIn("nativeFetch", support_js)
+            self.assertNotIn("scheduleAuth.request(\"/api/support/accounts\")", support_js)
+
+            employee_forbidden = self.client.get("/api/support/accounts", headers=employee_headers)
+            self.assertEqual(employee_forbidden.status_code, 403)
+
+            support_response = self.client.get("/api/support/accounts", headers=owner_headers)
+            self.assertEqual(support_response.status_code, 200)
+            payload = support_response.json()
+            self.assertTrue(payload["developer_mode"])
+            self.assertEqual(payload["organizations"][0]["name"], "Support Org")
+            account_emails = {account["email"] for account in payload["accounts"]}
+            self.assertIn("owner@example.com", account_emails)
+            self.assertIn("employee@example.com", account_emails)
+            self.assertEqual(payload["employees"][0]["full_name"], "Linked Employee")
+
+        with tempfile.TemporaryDirectory() as temp_app_data:
+            flag_path = Path(temp_app_data) / "Schedule App" / "developer_mode.flag"
+            flag_path.parent.mkdir(parents=True)
+            flag_path.write_text("enabled", encoding="utf-8")
+            with patch.dict(os.environ, {"LOCALAPPDATA": temp_app_data, "SCHEDULE_APP_DEVELOPER_MODE": "0"}, clear=False):
+                flag_enabled = self.client.get("/api/support/accounts", headers=owner_headers)
+            self.assertEqual(flag_enabled.status_code, 200)
 
     def _save_shift_requirement(self, **overrides):
         payload = {
@@ -987,7 +1605,7 @@ class ApiRegressionTests(unittest.TestCase):
         invitation_response = self.client.post(
             "/api/organizations/1/invitations",
             headers=owner_headers,
-            json={"email": "employee@example.com", "role": "employee", "expires_in_days": 7},
+            json={"email": "employee@example.com", "employee_id": employee_a, "role": "employee", "expires_in_days": 7},
         )
         employee_response = self.client.post(
             "/api/auth/accept-invitation",
@@ -1000,12 +1618,6 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(employee_response.status_code, 200)
         employee_user_id = employee_response.json()["user"]["id"]
         employee_headers = {"Authorization": f"Bearer {employee_response.json()['access_token']}"}
-        cursor = self.connection.cursor()
-        cursor.execute(
-            "UPDATE organization_memberships SET employee_id = ? WHERE user_id = ?",
-            (employee_a, employee_user_id),
-        )
-        self.connection.commit()
 
         own_response = self.client.post(
             "/api/employee-week-preferences",
@@ -1045,6 +1657,7 @@ class ApiRegressionTests(unittest.TestCase):
 
         employee_schedule_response = self.client.get("/api/schedule", headers=employee_headers)
         self.assertEqual(employee_schedule_response.status_code, 200)
+
         denied_day_status = self.client.post(
             "/api/employee-day-statuses",
             headers=employee_headers,
@@ -1058,6 +1671,145 @@ class ApiRegressionTests(unittest.TestCase):
             {item["id"] for item in owner_employee_list_response.json()},
             {employee_a, employee_b},
         )
+
+    def test_employee_invitation_requires_employee_link(self):
+        self._create_employee(full_name="Employee A")
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "employee@example.com", "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 400)
+
+    def test_employee_preference_access_repairs_accepted_invitation_link(self):
+        employee_id = self._create_employee(full_name="Employee A")
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "employee@example.com", "employee_id": employee_id, "role": "employee", "expires_in_days": 7},
+        )
+        employee_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "password": "EmployeePass123",
+            },
+        )
+        employee_user_id = employee_response.json()["user"]["id"]
+        employee_headers = {"Authorization": f"Bearer {employee_response.json()['access_token']}"}
+        cursor = self.connection.cursor()
+        cursor.execute("UPDATE organization_memberships SET employee_id = NULL WHERE user_id = ?", (employee_user_id,))
+        self.connection.commit()
+
+        employee_list_response = self.client.get("/api/employees", headers=employee_headers)
+        self.assertEqual(employee_list_response.status_code, 200)
+        self.assertEqual([item["id"] for item in employee_list_response.json()], [employee_id])
+
+        cursor.execute("SELECT employee_id FROM organization_memberships WHERE user_id = ?", (employee_user_id,))
+        self.assertEqual(cursor.fetchone()["employee_id"], employee_id)
+
+    def test_unlinked_employee_preference_access_returns_specific_error(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "employee@example.com", "role": "read_only", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        employee_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "full_name": "Employee User",
+                "password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(employee_response.status_code, 200)
+        employee_headers = {"Authorization": f"Bearer {employee_response.json()['access_token']}"}
+
+        employee_list_response = self.client.get("/api/employees", headers=employee_headers)
+        self.assertEqual(employee_list_response.status_code, 403)
+        self.assertEqual(employee_list_response.json()["detail"], "Preference permissions are required")
+
+    def test_owner_can_update_employee_member_link(self):
+        employee_id = self._create_employee(full_name="Employee A")
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT public_id FROM employees WHERE id = ?", (employee_id,))
+        employee_public_id = cursor.fetchone()["public_id"]
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "employee@example.com", "employee_id": employee_id, "role": "employee", "expires_in_days": 7},
+        )
+        employee_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={"token": invitation_response.json()["invitation_token"], "password": "EmployeePass123"},
+        )
+        employee_user_id = employee_response.json()["user"]["id"]
+        cursor.execute("UPDATE organization_memberships SET employee_id = NULL WHERE user_id = ?", (employee_user_id,))
+        self.connection.commit()
+
+        link_response = self.client.put(
+            f"/api/organizations/1/members/{employee_user_id}/employee-link",
+            headers=owner_headers,
+            json={"employee_id": employee_id},
+        )
+        self.assertEqual(link_response.status_code, 200)
+
+        cursor.execute("SELECT employee_id FROM organization_memberships WHERE user_id = ?", (employee_user_id,))
+        self.assertEqual(cursor.fetchone()["employee_id"], employee_id)
+
+        cursor.execute("UPDATE organization_memberships SET employee_id = NULL WHERE user_id = ?", (employee_user_id,))
+        self.connection.commit()
+        public_link_response = self.client.put(
+            f"/api/organizations/1/members/{employee_user_id}/employee-link",
+            headers=owner_headers,
+            json={"employee_public_id": employee_public_id},
+        )
+        self.assertEqual(public_link_response.status_code, 200)
+
+        cursor.execute("SELECT employee_id FROM organization_memberships WHERE user_id = ?", (employee_user_id,))
+        self.assertEqual(cursor.fetchone()["employee_id"], employee_id)
 
     def test_schedule_edit_permissions_after_auth_bootstrap(self):
         owner_response = self.client.post(
@@ -2387,11 +3139,17 @@ class ApiRegressionTests(unittest.TestCase):
 
         unauthenticated_list = self.client.get("/api/database/backups")
         self.assertEqual(unauthenticated_list.status_code, 401)
+        employee_record_id = self._create_employee(headers=owner_headers, full_name="Employee User")
 
         invitation_response = self.client.post(
             "/api/organizations/1/invitations",
             headers=owner_headers,
-            json={"email": "employee@example.com", "role": "employee", "expires_in_days": 7},
+            json={
+                "email": "employee@example.com",
+                "employee_id": employee_record_id,
+                "role": "employee",
+                "expires_in_days": 7,
+            },
         )
         self.assertEqual(invitation_response.status_code, 200)
         employee_response = self.client.post(

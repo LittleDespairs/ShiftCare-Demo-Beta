@@ -513,7 +513,8 @@
 
         function t(key, fallback = "") {
             if (typeof translate === "function") {
-                return translate(key);
+                const translated = translate(key);
+                return translated === key ? (fallback || key) : translated;
             }
             return fallback || key;
         }
@@ -597,6 +598,8 @@
            ========================================================= */
 
         document.addEventListener("DOMContentLoaded", async () => {
+            if (!window.scheduleAuth.requireSession()) return;
+            await refreshSessionFromServer();
             bindSidebarToggle();
             applySidebarState(getSavedSidebarState());
 
@@ -619,16 +622,22 @@
            EMPLOYEE LOADING / ЗАГРУЗКА СОТРУДНИКОВ
            ========================================================= */
 
+        async function refreshSessionFromServer() {
+            try {
+                const response = await window.scheduleAuth.request("/api/auth/me");
+                window.scheduleAuth.setSession({
+                    access_token: window.scheduleAuth.getToken(),
+                    user: response.user,
+                });
+                window.applyAccessControl?.();
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
         async function loadEmployees() {
             try {
-                const response = await fetch("/api/employees");
-
-                if (!response.ok) {
-                    showMessage(t("msg_failed_load_employees", "Failed to load employees."), "danger");
-                    return;
-                }
-
-                employees = await response.json();
+                employees = await window.scheduleAuth.request("/api/employees");
 
                 const employeeSelect = document.getElementById("employee_select");
                 employeeSelect.innerHTML = `
@@ -637,6 +646,14 @@
                         <option value="${Number(employee.id)}">${escapeHtml(employee.full_name)}</option>
                     `).join("")}
                 `;
+
+                const membership = window.scheduleAuth.getActiveMembership();
+                if (membership?.role === "employee" && membership.employee_id) {
+                    employeeSelect.value = String(membership.employee_id);
+                    employeeSelect.disabled = true;
+                } else if (employees.length === 1) {
+                    employeeSelect.value = String(employees[0].id);
+                }
 
                 updatePreferencesControlsAvailability();
 
@@ -659,7 +676,8 @@
                 );
             } catch (error) {
                 console.error(error);
-                showMessage(t("msg_server_error_load_employees", "Server error while loading employees."), "danger");
+                const detail = error.message || t("msg_server_error_load_employees", "Server error while loading employees.");
+                showMessage(detail, "danger");
             }
         }
 
@@ -842,11 +860,12 @@
                 </div>
             </footer>
 <script src="/static/js/i18n.js?v={{ app_version }}-employee-schedule"></script>
-<script src="/static/js/auth_client.js?v={{ app_version }}"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-employee-schedule"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-directory-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 
 </html>
+
 

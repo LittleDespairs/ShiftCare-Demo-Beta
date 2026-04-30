@@ -20,84 +20,101 @@
                 <div class="brand-logo">SC</div>
                 <div>
                     <h1 id="auth-title">ShiftCare</h1>
-                    <p>Organization access</p>
+                    <p>Local scheduling workspace</p>
                 </div>
             </div>
 
-            <div class="auth-tabs" role="tablist" aria-label="Authorization mode">
-                <button id="login-tab" class="auth-tab active" type="button" data-auth-tab="login">Login</button>
-                <button id="bootstrap-tab" class="auth-tab" type="button" data-auth-tab="bootstrap">Create first owner</button>
+            <div class="auth-choice-grid" aria-label="Start action">
+                <button id="open-login-modal" class="auth-choice-card" type="button">
+                    <strong>{% if cloud_employee_portal_mode() %}Employee login{% else %}Authorize user{% endif %}</strong>
+                    <span>{% if cloud_employee_portal_mode() %}Open weekly wishes and read-only schedule{% else %}Load organization data to this computer{% endif %}</span>
+                </button>
+                {% if not cloud_employee_portal_mode() %}
+                <button id="open-organization-modal" class="auth-choice-card" type="button">
+                    <strong>Add organization</strong>
+                    <span>Create a cloud organization and start locally</span>
+                </button>
+                {% endif %}
             </div>
-
-            <form id="login-form" class="auth-form" data-auth-form="login">
-                <label class="form-field">
-                    <span>Email</span>
-                    <input id="login-email" type="email" autocomplete="email" required>
-                </label>
-
-                <label class="form-field">
-                    <span>Password</span>
-                    <input id="login-password" type="password" autocomplete="current-password" required>
-                </label>
-
-                <button class="btn btn-primary auth-submit" type="submit">Login</button>
-            </form>
-
-            <form id="bootstrap-form" class="auth-form hidden" data-auth-form="bootstrap">
-                <label class="form-field">
-                    <span>Organization name</span>
-                    <input id="bootstrap-organization" type="text" autocomplete="organization" required minlength="2">
-                </label>
-
-                <label class="form-field">
-                    <span>Your name</span>
-                    <input id="bootstrap-name" type="text" autocomplete="name" required minlength="2">
-                </label>
-
-                <label class="form-field">
-                    <span>Email</span>
-                    <input id="bootstrap-email" type="email" autocomplete="email" required>
-                </label>
-
-                <label class="form-field">
-                    <span>Password</span>
-                    <input id="bootstrap-password" type="password" autocomplete="new-password" required minlength="8">
-                </label>
-
-                <button class="btn btn-primary auth-submit" type="submit">Create owner account</button>
-            </form>
 
             <div id="auth-message" class="auth-message" role="status" aria-live="polite"></div>
+            <div id="current-session" class="auth-session"></div>
         </section>
-
-        <aside class="auth-side">
-            <div class="auth-side-content">
-                <p class="auth-kicker">0.14.x beta</p>
-                <h2>User authorization foundation</h2>
-                <p>
-                    This screen stores the session token locally and connects the desktop workflow
-                    to organization-based access.
-                </p>
-                <div id="current-session" class="auth-session"></div>
-                <div class="api-mode-panel" aria-label="API connection">
-                    <div class="api-mode-title">Connection</div>
-                    <div id="api-mode-status" class="api-mode-status"></div>
-                    <button id="api-advanced-toggle" class="btn btn-secondary api-advanced-toggle" type="button">
-                        Local recovery and migration
-                    </button>
-                    <div class="api-mode-actions">
-                        <button id="api-local-btn" class="btn btn-secondary" type="button">Local</button>
-                        <button id="api-cloud-btn" class="btn btn-soft" type="button">Cloud beta</button>
-                    </div>
-                </div>
-            </div>
-        </aside>
     </main>
 
-    <script src="/static/js/auth_client.js?v={{ app_version }}"></script>
+    <div id="login-modal" class="app-modal-overlay" aria-hidden="true">
+        <div class="app-modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="login-modal-title">
+            <div class="app-modal-header">
+                <h2 id="login-modal-title" class="app-modal-title">Authorize user</h2>
+                <button class="app-modal-close" type="button" data-auth-modal-close aria-label="Close">×</button>
+            </div>
+            <div class="app-modal-body">
+                <form id="login-form" class="auth-form" data-auth-form="login">
+                    <div class="auth-tabs auth-login-methods" role="tablist" aria-label="Login method">
+                        <button id="login-method-email" class="auth-tab active" type="button" data-login-method="email" aria-pressed="true">
+                            Email
+                        </button>
+                        <button id="login-method-id-card" class="auth-tab" type="button" data-login-method="id_card" aria-pressed="false">
+                            ID card
+                        </button>
+                    </div>
+
+                    <label class="form-field">
+                        <span id="login-identifier-label">Email</span>
+                        <input id="login-email" type="text" autocomplete="username" required>
+                    </label>
+
+                    <label class="form-field">
+                        <span>Password</span>
+                        <input id="login-password" type="password" autocomplete="current-password" required>
+                    </label>
+
+                    <button class="btn btn-primary auth-submit" type="submit">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {% if not cloud_employee_portal_mode() %}
+    <div id="organization-modal" class="app-modal-overlay" aria-hidden="true">
+        <div class="app-modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="organization-modal-title">
+            <div class="app-modal-header">
+                <h2 id="organization-modal-title" class="app-modal-title">Add organization</h2>
+                <button class="app-modal-close" type="button" data-auth-modal-close aria-label="Close">×</button>
+            </div>
+            <div class="app-modal-body">
+                <form id="bootstrap-form" class="auth-form" data-auth-form="bootstrap">
+                    <label class="form-field">
+                        <span>Organization name</span>
+                        <input id="bootstrap-organization" type="text" autocomplete="organization" required minlength="2">
+                    </label>
+
+                    <label class="form-field">
+                        <span>Your name</span>
+                        <input id="bootstrap-name" type="text" autocomplete="name" required minlength="2">
+                    </label>
+
+                    <label class="form-field">
+                        <span>Email</span>
+                        <input id="bootstrap-email" type="email" autocomplete="email" required>
+                    </label>
+
+                    <label class="form-field">
+                        <span>Password</span>
+                        <input id="bootstrap-password" type="password" autocomplete="new-password" required minlength="8">
+                    </label>
+
+                    <button class="btn btn-primary auth-submit" type="submit">Create organization</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
     <script src="/static/js/auth_i18n.js?v={{ app_version }}"></script>
     <script src="/static/js/auth.js?v={{ app_version }}"></script>
-<script src="/static/js/online_status.js?v={{ app_version }}"></script>
+    <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 
 </html>

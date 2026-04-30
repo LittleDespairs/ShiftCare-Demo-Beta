@@ -148,6 +148,7 @@ async function handleEmployeeSubmit(event) {
     event.preventDefault();
 
     const fullName = document.getElementById("full_name").value.trim();
+    const idCard = document.getElementById("id_card").value.replace(/\D+/g, "");
     const sex = document.getElementById("sex").value;
     const minShifts = Number(document.getElementById("min_shifts_per_week").value);
     const targetShifts = Number(document.getElementById("target_shifts_per_week").value);
@@ -185,6 +186,7 @@ async function handleEmployeeSubmit(event) {
     }
 
     const employeeData = {
+        id_card: idCard || null,
         full_name: fullName,
         sex: sex,
         min_shifts_per_week: minShifts,
@@ -244,6 +246,7 @@ async function handleEmployeeSubmit(event) {
 
 // Fill form for editing / Заполняем форму для редактирования
 function editEmployee(employee) {
+    document.getElementById("id_card").value = employee.id_card || "";
     document.getElementById("full_name").value = employee.full_name;
     document.getElementById("sex").value = employee.sex;
     document.getElementById("sex").dispatchEvent(new Event("change", { bubbles: true }));
@@ -359,7 +362,7 @@ function renderEmployeesTable(employees) {
     if (employees.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="9" class="employee-meta-cell">
+                <td colspan="10" class="employee-meta-cell">
                     ${typeof renderEmptyState === "function"
                         ? renderEmptyState({
                             title: employeeText("employees_empty_state_title", "No employees yet"),
@@ -375,6 +378,7 @@ function renderEmployeesTable(employees) {
     tableBody.innerHTML = employees.map(employee => `
         <tr>
             <td>${Number(employee.id)}</td>
+            <td class="employee-meta-cell">${escapeHtml(employee.id_card || "")}</td>
             <td class="employee-name-cell">${escapeHtml(employee.full_name)}</td>
             <td>${escapeHtml(employeeSexLabel(employee.sex))}</td>
             <td>${Number(employee.min_shifts_per_week)} / ${Number(employee.target_shifts_per_week)} / ${Number(employee.max_shifts_per_week)}</td>

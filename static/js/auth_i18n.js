@@ -2,7 +2,7 @@
     const translations = {
         en: {
             app_title: "ShiftCare",
-            auth_kicker: "ShiftCare 0.14.x beta",
+            auth_kicker: "Desktop first",
             auth_login: "Login",
             auth_create_owner: "Create first owner",
             auth_email: "Email",
@@ -11,10 +11,10 @@
             auth_org_name: "Organization name",
             auth_your_name: "Your name",
             auth_create_owner_account: "Create owner account",
-            auth_foundation: "User authorization foundation",
-            auth_foundation_text: "Cloud is the primary workspace. Local mode is kept for migration, backups, and emergency access.",
+            auth_foundation: "Local scheduling workspace",
+            auth_foundation_text: "Sign in with your cloud account, load the organization data to this computer, and continue scheduling locally without waiting on the network.",
             auth_connection: "Connection",
-            auth_local_recovery: "Local recovery and migration",
+            auth_local_recovery: "Cloud sync",
             auth_accept_title: "Accept invitation",
             auth_create_account: "Create your account",
             auth_invitation_token: "Invitation token",
@@ -37,15 +37,16 @@
             org_expires: "Expires in days",
             org_create_invitation: "Create invitation",
             org_employee_portal: "Employee portal",
-            org_employee_portal_text: "Public login page for employees.",
+            org_employee_portal_text: "Optional public login page for employees after cloud portal setup.",
             org_employee_site_address: "Employee site address",
             org_cloud_link: "Cloud connection",
-            org_cloud_link_text: "Upload this local organization to the Cloud beta API and link this installation to it.",
+            org_cloud_link_text: "Optional beta add-on. Upload this local organization only when you want employee portal access or migration testing.",
             org_cloud_api: "Cloud API",
             org_cloud_email: "Cloud owner email",
             org_cloud_password: "Cloud owner password",
             org_cloud_replace: "Replace scheduling data in the selected cloud organization",
             org_cloud_upload: "Upload and link cloud organization",
+            org_cloud_unlink: "Disconnect cloud portal",
             org_cloud_linked_status: "This installation is linked to cloud.",
             org_cloud_linked_api: "Linked Cloud API",
             org_cloud_linked_org: "Cloud organization",
@@ -81,7 +82,7 @@
         },
         ru: {
             app_title: "ShiftCare",
-            auth_kicker: "ShiftCare 0.14.x beta",
+            auth_kicker: "Desktop first",
             auth_login: "Войти",
             auth_create_owner: "Создать владельца",
             auth_email: "Email",
@@ -90,10 +91,10 @@
             auth_org_name: "Название организации",
             auth_your_name: "Ваше имя",
             auth_create_owner_account: "Создать аккаунт владельца",
-            auth_foundation: "Основа пользовательской авторизации",
-            auth_foundation_text: "Основное рабочее пространство находится в облаке. Локальный режим оставлен для переноса, резервных копий и аварийного доступа.",
+            auth_foundation: "Локальное рабочее пространство расписаний",
+            auth_foundation_text: "Войдите через облачный аккаунт, загрузите данные организации на этот компьютер и продолжайте работать с расписанием локально без ожидания сети.",
             auth_connection: "Подключение",
-            auth_local_recovery: "Локальное восстановление и перенос",
+            auth_local_recovery: "Синхронизация",
             auth_accept_title: "Принять приглашение",
             auth_create_account: "Создайте аккаунт",
             auth_invitation_token: "Токен приглашения",
@@ -116,15 +117,16 @@
             org_expires: "Действует дней",
             org_create_invitation: "Создать приглашение",
             org_employee_portal: "Портал сотрудников",
-            org_employee_portal_text: "Публичная страница входа для сотрудников.",
+            org_employee_portal_text: "Необязательная публичная страница входа для сотрудников после подключения облачного портала.",
             org_employee_site_address: "Адрес сайта для сотрудников",
             org_cloud_link: "Подключение к облаку",
-            org_cloud_link_text: "Загрузите эту локальную организацию в Cloud beta API и привяжите эту установку к ней.",
+            org_cloud_link_text: "Необязательное beta-дополнение. Загружайте локальную организацию только для портала сотрудников или тестирования миграции.",
             org_cloud_api: "Cloud API",
             org_cloud_email: "Email владельца в облаке",
             org_cloud_password: "Пароль владельца в облаке",
             org_cloud_replace: "Заменить данные расписания в выбранной облачной организации",
             org_cloud_upload: "Загрузить и привязать облачную организацию",
+            org_cloud_unlink: "Отключить облачный портал",
             org_cloud_linked_status: "Эта установка привязана к облаку.",
             org_cloud_linked_api: "Привязанный Cloud API",
             org_cloud_linked_org: "Облачная организация",
@@ -160,7 +162,7 @@
         },
         he: {
             app_title: "ShiftCare",
-            auth_kicker: "ShiftCare 0.14.x beta",
+            auth_kicker: "Desktop first",
             auth_login: "כניסה",
             auth_create_owner: "יצירת בעלים ראשון",
             auth_email: "אימייל",
@@ -169,10 +171,10 @@
             auth_org_name: "שם הארגון",
             auth_your_name: "השם שלך",
             auth_create_owner_account: "צור חשבון בעלים",
-            auth_foundation: "בסיס הרשאות משתמשים",
-            auth_foundation_text: "הענן הוא סביבת העבודה הראשית. מצב מקומי נשמר להעברה, גיבויים וגישה בחירום.",
+            auth_foundation: "סביבת תזמון מקומית",
+            auth_foundation_text: "היכנס עם חשבון הענן, טען את נתוני הארגון למחשב הזה והמשך לעבוד מקומית בלי להמתין לרשת.",
             auth_connection: "חיבור",
-            auth_local_recovery: "שחזור והעברה מקומית",
+            auth_local_recovery: "סנכרון ענן",
             auth_accept_title: "קבלת הזמנה",
             auth_create_account: "יצירת חשבון",
             auth_invitation_token: "טוקן הזמנה",
@@ -195,15 +197,16 @@
             org_expires: "תוקף בימים",
             org_create_invitation: "צור הזמנה",
             org_employee_portal: "פורטל עובדים",
-            org_employee_portal_text: "עמוד כניסה ציבורי לעובדים.",
+            org_employee_portal_text: "עמוד כניסה ציבורי אופציונלי לעובדים לאחר חיבור פורטל הענן.",
             org_employee_site_address: "כתובת אתר לעובדים",
             org_cloud_link: "חיבור לענן",
-            org_cloud_link_text: "העלה את הארגון המקומי ל-Cloud beta API וקשר את ההתקנה הזו אליו.",
+            org_cloud_link_text: "תוסף בטא אופציונלי. העלה את הארגון המקומי רק עבור פורטל עובדים או בדיקות מיגרציה.",
             org_cloud_api: "Cloud API",
             org_cloud_email: "אימייל בעלים בענן",
             org_cloud_password: "סיסמת בעלים בענן",
             org_cloud_replace: "החלף נתוני סידור בארגון הענן שנבחר",
             org_cloud_upload: "העלה וקשר ארגון ענן",
+            org_cloud_unlink: "נתק פורטל ענן",
             org_cloud_linked_status: "התקנה זו מקושרת לענן.",
             org_cloud_linked_api: "Cloud API מקושר",
             org_cloud_linked_org: "ארגון ענן",
@@ -267,8 +270,6 @@
         setText("#bootstrap-form .auth-submit", "auth_create_owner_account");
         setText(".auth-side h2", document.getElementById("accept-title") ? "auth_join_org" : "auth_foundation");
         setText(".auth-side-content > p:not(.auth-kicker):not(.api-mode-status):not(.api-mode-title)", document.getElementById("accept-title") ? "auth_join_text" : "auth_foundation_text");
-        setText(".api-mode-title", "auth_connection");
-        setText("#api-advanced-toggle", "auth_local_recovery");
         setText("#accept-title", "auth_accept_title");
         setText("#accept-form label:nth-of-type(1) span", "auth_invitation_token");
         setText("#accept-form .auth-submit", "auth_accept_button");
@@ -305,6 +306,7 @@
         setText("#cloud-link-form label:nth-of-type(3) span", "org_cloud_password");
         setText("#cloud-link-form .checkbox-row span", "org_cloud_replace");
         setText("#cloud-link-form > .btn", "org_cloud_upload");
+        setText("#cloud-unlink-btn", "org_cloud_unlink");
         setText("#cloud-link-summary dt:nth-of-type(1)", "org_cloud_linked_api");
         setText("#cloud-link-summary div:nth-child(1) dt", "org_cloud_linked_api");
         setText("#cloud-link-summary div:nth-child(2) dt", "org_cloud_linked_org");

@@ -4,8 +4,19 @@
     const ACTIVE_ORGANIZATION_KEY = "schedule_app_active_organization_id";
     const API_BASE_URL_KEY = "schedule_app_api_base_url";
     const API_MODE_KEY = "schedule_app_api_mode";
-    const CLOUD_API_BASE_URL = "https://schedule-app-beta-api-eoewa4enxa-zf.a.run.app";
+    const CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app";
+    const CLOUD_API_FALLBACK_BASE_URL = "https://schedule-app-beta.web.app";
     const nativeFetch = window.fetch.bind(window);
+
+    function isHostedCloudOrigin() {
+        return window.location.hostname.endsWith(".web.app")
+            || window.location.hostname.endsWith(".firebaseapp.com")
+            || window.location.hostname.endsWith(".run.app");
+    }
+
+    function isDesktopLocalOrigin() {
+        return ["127.0.0.1", "localhost", "::1"].includes(window.location.hostname);
+    }
 
     function normalizeApiBaseUrl(value) {
         const trimmed = String(value || "").trim().replace(/\/+$/, "");
@@ -20,10 +31,26 @@
     }
 
     function getApiBaseUrl() {
+        if (isDesktopLocalOrigin()) {
+            localStorage.removeItem(API_BASE_URL_KEY);
+            localStorage.setItem(API_MODE_KEY, "local");
+            return "";
+        }
+        const savedBaseUrl = normalizeApiBaseUrl(localStorage.getItem(API_BASE_URL_KEY));
+        if (isHostedCloudOrigin() && savedBaseUrl === CLOUD_API_BASE_URL) {
+            localStorage.removeItem(API_BASE_URL_KEY);
+            localStorage.setItem(API_MODE_KEY, "cloud");
+            return "";
+        }
         return normalizeApiBaseUrl(localStorage.getItem(API_BASE_URL_KEY));
     }
 
     function setApiBaseUrl(value) {
+        if (isDesktopLocalOrigin()) {
+            localStorage.removeItem(API_BASE_URL_KEY);
+            localStorage.setItem(API_MODE_KEY, "local");
+            return "";
+        }
         const normalized = normalizeApiBaseUrl(value);
         if (!normalized) {
             localStorage.removeItem(API_BASE_URL_KEY);
@@ -41,6 +68,16 @@
     }
 
     function useCloudApi() {
+        if (isDesktopLocalOrigin()) {
+            localStorage.removeItem(API_BASE_URL_KEY);
+            localStorage.setItem(API_MODE_KEY, "local");
+            return "";
+        }
+        if (isHostedCloudOrigin()) {
+            localStorage.removeItem(API_BASE_URL_KEY);
+            localStorage.setItem(API_MODE_KEY, "cloud");
+            return "";
+        }
         return setApiBaseUrl(CLOUD_API_BASE_URL);
     }
 
@@ -48,8 +85,7 @@
         return localStorage.getItem(API_MODE_KEY) || "";
     }
 
-    function resolveApiUrl(input) {
-        const apiBaseUrl = getApiBaseUrl();
+    function resolveApiUrlForBase(input, apiBaseUrl) {
         const rawUrl = typeof input === "string" ? input : input?.url || "";
         if (!apiBaseUrl || !rawUrl) return input;
         if (rawUrl.startsWith("/api/")) {
@@ -61,6 +97,10 @@
         return input;
     }
 
+    function resolveApiUrl(input) {
+        return resolveApiUrlForBase(input, getApiBaseUrl());
+    }
+
     function isApiRequest(input) {
         const rawUrl = typeof input === "string" ? input : input?.url || "";
         if (rawUrl.startsWith("/api/") || rawUrl.startsWith(window.location.origin + "/api/")) return true;
@@ -68,7 +108,8 @@
         return Boolean(apiBaseUrl && rawUrl.startsWith(`${apiBaseUrl}/api/`));
     }
 
-    window.fetch = function scheduleApiFetch(input, options = {}) {
+    window.fetch = async function scheduleApiFetch(input, options = {}) {
+        const apiBaseUrl = getApiBaseUrl();
         const rewrittenInput = resolveApiUrl(input);
         const headers = new Headers(options.headers || {});
         const token = getToken();
@@ -78,7 +119,18 @@
         if (isApiRequest(input) && options.body && !headers.has("Content-Type")) {
             headers.set("Content-Type", "application/json");
         }
-        return nativeFetch(rewrittenInput, { ...options, headers });
+        try {
+            return await nativeFetch(rewrittenInput, { ...options, headers });
+        } catch (error) {
+            const canRetryCloudFallback = apiBaseUrl === CLOUD_API_BASE_URL && isApiRequest(input);
+            if (!canRetryCloudFallback) {
+                throw error;
+            }
+            localStorage.setItem(API_BASE_URL_KEY, CLOUD_API_FALLBACK_BASE_URL);
+            localStorage.setItem(API_MODE_KEY, "cloud");
+            document.dispatchEvent(new CustomEvent("schedule-api-mode-changed"));
+            return nativeFetch(resolveApiUrlForBase(input, CLOUD_API_FALLBACK_BASE_URL), { ...options, headers });
+        }
     };
 
     function getToken() {
@@ -177,11 +229,14 @@
         API_BASE_URL_KEY,
         API_MODE_KEY,
         CLOUD_API_BASE_URL,
+        CLOUD_API_FALLBACK_BASE_URL,
         getApiBaseUrl,
         setApiBaseUrl,
         useLocalApi,
         useCloudApi,
         getApiModePreference,
+        isHostedCloudOrigin,
+        isDesktopLocalOrigin,
         isApiRequest,
         nativeFetch,
     };

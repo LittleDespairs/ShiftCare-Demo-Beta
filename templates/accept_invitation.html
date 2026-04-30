@@ -24,19 +24,26 @@
             </div>
 
             <form id="accept-form" class="auth-form">
-                <label class="form-field">
+                <label id="accept-token-field" class="form-field">
                     <span>Invitation token</span>
                     <textarea id="accept-token" rows="3" required></textarea>
                 </label>
 
-                <label class="form-field">
+                <div id="accept-invitation-summary" class="auth-session"></div>
+
+                <label id="accept-name-field" class="form-field" hidden>
                     <span>Your name</span>
-                    <input id="accept-name" type="text" autocomplete="name" required minlength="2">
+                    <input id="accept-name" type="text" autocomplete="name" minlength="2">
                 </label>
 
                 <label class="form-field">
                     <span>Password</span>
                     <input id="accept-password" type="password" autocomplete="new-password" required minlength="8">
+                </label>
+
+                <label class="form-field">
+                    <span>Confirm password</span>
+                    <input id="accept-confirm-password" type="password" autocomplete="new-password" required minlength="8">
                 </label>
 
                 <button class="btn btn-primary auth-submit" type="submit">Accept invitation</button>
@@ -45,21 +52,13 @@
             <div id="accept-message" class="auth-message" role="status" aria-live="polite"></div>
         </section>
 
-        <aside class="auth-side">
-            <div class="auth-side-content">
-                <p class="auth-kicker">Employee access</p>
-                <h2>Join your organization</h2>
-                <p>
-                    Use the invitation link from your administrator to create your own account.
-                </p>
-            </div>
-        </aside>
     </main>
 
-    <script src="/static/js/auth_client.js?v={{ app_version }}"></script>
+    <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
     <script src="/static/js/auth_i18n.js?v={{ app_version }}"></script>
-    <script src="/static/js/accept_invitation.js?v={{ app_version }}"></script>
+    <script src="/static/js/accept_invitation.js?v={{ app_version }}-invitation-preview-cloud-token"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 
 </html>
+

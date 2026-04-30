@@ -16,7 +16,7 @@
 
     function backendLabel() {
         const apiBaseUrl = window.scheduleAuth?.getApiBaseUrl?.() || "";
-        return apiBaseUrl ? "Cloud API" : "Local API";
+        return apiBaseUrl ? "Cloud API" : "Desktop local API";
     }
 
     function updateStatus() {

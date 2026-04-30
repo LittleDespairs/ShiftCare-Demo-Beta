@@ -748,6 +748,16 @@
             showMessage(`${t("msg_editing_template", "Editing template")}: ${template.name}`, "info");
         }
 
+        function shiftTemplateApiErrorMessage(detail) {
+            if (detail === "Cannot delete shift template because it is used in schedule") {
+                return t(
+                    "msg_template_in_use_delete_blocked",
+                    "This shift template is used in the schedule and cannot be deleted."
+                );
+            }
+            return detail;
+        }
+
         async function deleteShiftTemplate(templateId) {
             let confirmMessage = `<p>${escapeHtml(t("msg_confirm_delete_template", "Are you sure you want to delete this shift template?"))}</p>`;
 
@@ -786,7 +796,10 @@
 
                 if (!response.ok) {
                     const errorData = await response.json();
-                    showMessage(errorData.detail || t("msg_failed_delete_template", "Failed to delete shift template."), "danger");
+                    showMessage(
+                        shiftTemplateApiErrorMessage(errorData.detail) || t("msg_failed_delete_template", "Failed to delete shift template."),
+                        "danger"
+                    );
                     return;
                 }
 
@@ -943,11 +956,12 @@
                 </div>
             </footer>
 <script src="/static/js/i18n.js?v={{ app_version }}-employee-schedule"></script>
-<script src="/static/js/auth_client.js?v={{ app_version }}"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-employee-schedule"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-directory-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 
 </html>
+
 
