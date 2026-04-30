@@ -2,6 +2,23 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.4_beta - 2026-05-01
+
+## Changed
+
+- Updated the cloud employee portal login shell with a cleaner ShiftCare-styled entry panel and cache-busted auth assets.
+- Changed employee web schedule scoping so employees see the full schedule for their selected/primary assigned position, including coworkers in the same role, while still blocking unassigned positions.
+- Updated desktop/cloud sync and desktop-first product checklists to match the current `0.15.x_beta` implementation state and moved owner-dependent decisions into deferred discussion sections.
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.4_beta`.
+
+## Verified
+
+- `node --check static/js/auth.js`
+- `node --check static/js/auth_i18n.js`
+- `node --check static/js/schedule.js`
+- `.venv\Scripts\python.exe -m unittest discover -s tests`
+- Cloud Run smoke checks after deployment.
+
 # 0.15.3_beta - 2026-04-30
 
 ## Fixed

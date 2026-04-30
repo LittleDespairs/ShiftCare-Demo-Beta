@@ -10,10 +10,10 @@
     <link rel="manifest" href="/static/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
-    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}">
+    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}-portal-entry">
 </head>
 
-<body class="app-shell ltr auth-page" data-app-version="{{ app_version }}">
+<body class="app-shell ltr auth-page{% if cloud_employee_portal_mode() %} auth-employee-portal-page{% endif %}" data-app-version="{{ app_version }}">
     <div class="auth-topbar">
         <div class="lang-switcher" aria-label="Language">
             <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
@@ -32,18 +32,39 @@
                 </div>
             </div>
 
+            {% if cloud_employee_portal_mode() %}
+            <div class="auth-portal-entry">
+                <div class="auth-portal-copy">
+                    <div class="auth-portal-kicker" data-i18n="auth_employee_portal">Employee portal</div>
+                    <h2 data-i18n="auth_employee_login">Employee login</h2>
+                    <p data-i18n="auth_employee_login_action_text">Open weekly wishes and read-only schedule</p>
+                </div>
+                <button id="open-login-modal" class="auth-portal-button" type="button">
+                    <span class="auth-portal-button-icon">SC</span>
+                    <span class="auth-portal-button-body">
+                        <strong class="auth-portal-button-title">Employee login</strong>
+                        <em class="auth-portal-button-text">Open weekly wishes and read-only schedule</em>
+                    </span>
+                </button>
+            </div>
+
+            <div class="auth-portal-feature-row" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            {% else %}
             <div class="auth-choice-grid" aria-label="Start action">
                 <button id="open-login-modal" class="auth-choice-card" type="button">
-                    <strong>{% if cloud_employee_portal_mode() %}Employee login{% else %}Authorize user{% endif %}</strong>
-                    <span>{% if cloud_employee_portal_mode() %}Open weekly wishes and read-only schedule{% else %}Load organization data to this computer{% endif %}</span>
+                    <strong>Authorize user</strong>
+                    <span>Load organization data to this computer</span>
                 </button>
-                {% if not cloud_employee_portal_mode() %}
                 <button id="open-organization-modal" class="auth-choice-card" type="button">
                     <strong>Add organization</strong>
                     <span>Create a cloud organization and start locally</span>
                 </button>
-                {% endif %}
             </div>
+            {% endif %}
 
             <div id="auth-message" class="auth-message" role="status" aria-live="polite"></div>
             <div id="current-session" class="auth-session"></div>
@@ -121,8 +142,8 @@
 
     <script src="/static/js/i18n.js?v={{ app_version }}-auth-i18n-fix"></script>
     <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-    <script src="/static/js/auth_i18n.js?v={{ app_version }}"></script>
-    <script src="/static/js/auth.js?v={{ app_version }}"></script>
+    <script src="/static/js/auth_i18n.js?v={{ app_version }}-portal-entry"></script>
+    <script src="/static/js/auth.js?v={{ app_version }}-portal-entry"></script>
     <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

@@ -34,7 +34,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.3_beta"
+APP_VERSION = "0.15.4_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
@@ -1594,6 +1594,22 @@ def employee_scope_from_access(access_context: dict | None) -> int | None:
     if not employee_id:
         raise HTTPException(status_code=403, detail="Employee account is not linked to an employee record")
     return int(employee_id)
+
+
+def require_employee_position_scope(cursor, employee_id: int, position_id: int | None) -> int | None:
+    if position_id is None:
+        return None
+    cursor.execute(
+        """
+        SELECT 1
+        FROM employee_positions
+        WHERE employee_id = ? AND position_id = ?
+        """,
+        (employee_id, position_id),
+    )
+    if not cursor.fetchone():
+        raise HTTPException(status_code=403, detail="Employees can view only schedules for their assigned positions")
+    return position_id
 
 
 def require_employee_preference_scope(preference_context: dict | None, employee_id: int) -> None:
@@ -4978,7 +4994,10 @@ def guide_page(request: Request):
 
 
 @app.get("/api/employees", tags=["Employees"])
-def get_employees(access_context: dict | None = Depends(require_preference_access_if_auth_initialized)):
+def get_employees(
+    position_id: int | None = None,
+    access_context: dict | None = Depends(require_preference_access_if_auth_initialized),
+):
     organization_filter = access_context["membership"]["organization_id"] if access_context else None
     employee_filter = None
     if access_context and access_context["scope"] == "own":
@@ -4986,10 +5005,44 @@ def get_employees(access_context: dict | None = Depends(require_preference_acces
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        if employee_filter:
+        if employee_filter and position_id is not None:
+            require_employee_position_scope(cursor, int(employee_filter), position_id)
+            cursor.execute(
+                """
+                SELECT DISTINCT e.*
+                FROM employees e
+                JOIN employee_positions ep ON ep.employee_id = e.id
+                WHERE ep.position_id = ?
+                ORDER BY e.id
+                """,
+                (position_id,),
+            )
+        elif employee_filter:
             cursor.execute("SELECT * FROM employees WHERE id = ? ORDER BY id", (employee_filter,))
+        elif organization_filter and position_id is not None:
+            cursor.execute(
+                """
+                SELECT DISTINCT e.*
+                FROM employees e
+                JOIN employee_positions ep ON ep.employee_id = e.id
+                WHERE e.organization_id = ? AND ep.position_id = ?
+                ORDER BY e.id
+                """,
+                (organization_filter, position_id),
+            )
         elif organization_filter:
             cursor.execute("SELECT * FROM employees WHERE organization_id = ? ORDER BY id", (organization_filter,))
+        elif position_id is not None:
+            cursor.execute(
+                """
+                SELECT DISTINCT e.*
+                FROM employees e
+                JOIN employee_positions ep ON ep.employee_id = e.id
+                WHERE ep.position_id = ?
+                ORDER BY e.id
+                """,
+                (position_id,),
+            )
         else:
             cursor.execute("SELECT * FROM employees ORDER BY id")
         return [row_to_employee_dict(row) for row in cursor.fetchall()]
@@ -5288,16 +5341,26 @@ def get_position_delete_impact(
 
 
 @app.get("/api/employee-positions", tags=["Assignments"])
-def get_employee_positions(access_context: dict | None = Depends(require_schedule_view_if_auth_initialized)):
+def get_employee_positions(
+    position_id: int | None = None,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
         employee_id = employee_scope_from_access(access_context)
         params: tuple = ()
         where_sql = ""
-        if employee_id is not None:
+        if employee_id is not None and position_id is not None:
+            require_employee_position_scope(cursor, employee_id, position_id)
+            where_sql = "WHERE ep.position_id = ?"
+            params = (position_id,)
+        elif employee_id is not None:
             where_sql = "WHERE ep.employee_id = ?"
             params = (employee_id,)
+        elif position_id is not None:
+            where_sql = "WHERE ep.position_id = ?"
+            params = (position_id,)
         cursor.execute(
             f"""
             SELECT ep.*, e.full_name AS employee_name, p.name AS position_name
@@ -5438,10 +5501,31 @@ def get_employee_position_delete_impact(
 
 
 @app.get("/api/shift-templates", tags=["Shift Templates"])
-def get_shift_templates(active_only: bool = False, position_id: int | None = None):
+def get_shift_templates(
+    active_only: bool = False,
+    position_id: int | None = None,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        employee_id = employee_scope_from_access(access_context)
+        if employee_id is not None:
+            if position_id is not None:
+                require_employee_position_scope(cursor, employee_id, position_id)
+            else:
+                cursor.execute(
+                    """
+                    SELECT position_id
+                    FROM employee_positions
+                    WHERE employee_id = ?
+                    ORDER BY is_primary DESC, is_fallback_only ASC, priority_score DESC, position_id
+                    LIMIT 1
+                    """,
+                    (employee_id,),
+                )
+                row = cursor.fetchone()
+                position_id = int(row["position_id"]) if row else -1
         base_query = """
             SELECT st.*, p.name AS position_name
             FROM shift_templates st
@@ -5595,18 +5679,36 @@ def get_shift_template_delete_impact(
 
 
 @app.get("/api/shift-requirements", tags=["Requirements"])
-def get_shift_requirements():
+def get_shift_requirements(
+    position_id: int | None = None,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute(
-            """
+        employee_id = employee_scope_from_access(access_context)
+        if employee_id is not None and position_id is not None:
+            require_employee_position_scope(cursor, employee_id, position_id)
+        if position_id is None:
+            cursor.execute(
+                """
             SELECT sr.*, p.name AS position_name
             FROM shift_requirements sr
             JOIN positions p ON p.id = sr.position_id
             ORDER BY sr.position_id, sr.shift_category
-            """
-        )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT sr.*, p.name AS position_name
+                FROM shift_requirements sr
+                JOIN positions p ON p.id = sr.position_id
+                WHERE sr.position_id = ?
+                ORDER BY sr.shift_category
+                """,
+                (position_id,),
+            )
         return [dict(row) for row in cursor.fetchall()]
     finally:
         connection.close()
@@ -5645,10 +5747,16 @@ def save_shift_requirement(
 
 
 @app.get("/api/coverage-requirements", tags=["Requirements"])
-def get_coverage_requirements(position_id: int | None = None):
+def get_coverage_requirements(
+    position_id: int | None = None,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        employee_id = employee_scope_from_access(access_context)
+        if employee_id is not None and position_id is not None:
+            require_employee_position_scope(cursor, employee_id, position_id)
         if position_id is None:
             cursor.execute(
                 """
@@ -6003,17 +6111,47 @@ def delete_employee_week_preference(
 
 
 @app.get("/api/employee-day-statuses", tags=["Schedule"])
-def get_employee_day_statuses():
+def get_employee_day_statuses(
+    position_id: int | None = None,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute(
+        employee_id = employee_scope_from_access(access_context)
+        params: tuple = ()
+        where_sql = ""
+        if employee_id is not None and position_id is not None:
+            require_employee_position_scope(cursor, employee_id, position_id)
+            where_sql = """
+            WHERE eds.employee_id IN (
+                SELECT ep.employee_id
+                FROM employee_positions ep
+                WHERE ep.position_id = ?
+            )
             """
+            params = (position_id,)
+        elif employee_id is not None:
+            where_sql = "WHERE eds.employee_id = ?"
+            params = (employee_id,)
+        elif position_id is not None:
+            where_sql = """
+            WHERE eds.employee_id IN (
+                SELECT ep.employee_id
+                FROM employee_positions ep
+                WHERE ep.position_id = ?
+            )
+            """
+            params = (position_id,)
+        cursor.execute(
+            f"""
             SELECT eds.*, e.full_name AS employee_name
             FROM employee_day_statuses eds
             JOIN employees e ON e.id = eds.employee_id
+            {where_sql}
             ORDER BY eds.date, eds.employee_id
-            """
+            """,
+            params,
         )
         return [dict(row) for row in cursor.fetchall()]
     finally:
@@ -6234,10 +6372,18 @@ def get_schedule_entries(
 
 
 @app.get("/api/schedule", tags=["Schedule"])
-def get_schedule(access_context: dict | None = Depends(require_schedule_view_if_auth_initialized)):
+def get_schedule(
+    position_id: int | None = None,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
     connection = get_connection()
     try:
-        return get_schedule_entries(connection, employee_id=employee_scope_from_access(access_context))
+        cursor = connection.cursor()
+        employee_id = employee_scope_from_access(access_context)
+        if employee_id is not None and position_id is not None:
+            require_employee_position_scope(cursor, employee_id, position_id)
+            return get_schedule_entries(connection, position_id=position_id)
+        return get_schedule_entries(connection, position_id=position_id, employee_id=employee_id)
     finally:
         connection.close()
 

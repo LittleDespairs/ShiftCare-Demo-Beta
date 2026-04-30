@@ -287,7 +287,14 @@ Bootstrap state: 1 active organization, 0 active users
 API smoke: create/list/delete employee, position, and shift template -> ok
 ```
 
-Remaining production hardening:
+Production hardening status as of `0.15.4_beta`:
 
-- Add a disposable PostgreSQL CI service for full integration tests instead of relying only on deployed Cloud SQL smoke checks.
-- Add logical export tooling if customer-level export/import is needed beyond Cloud SQL managed backups.
+- The deployed beta path uses Cloud Run, Firebase Hosting, and Cloud SQL-compatible runtime configuration.
+- Local desktop remains SQLite-first and does not require Cloud SQL for offline scheduling.
+- Customer-level logical export/import is already covered by the organization cloud export/import bundle used for portal linking and desktop cloud login.
+
+Deferred owner/infrastructure decisions:
+
+- Add a disposable PostgreSQL CI service if full Cloud SQL parity must be tested before production.
+- Decide whether managed Cloud SQL backups are enough for paid customers or whether a separate downloadable customer export is required.
+- Revisit `portal.shiftcare.co.il` SSL/custom-domain status before replacing the beta web.app URL in customer-facing materials.

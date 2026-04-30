@@ -1223,7 +1223,7 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(regenerate_revoked_response.status_code, 409)
 
-    def test_employee_schedule_scope_returns_own_primary_position_and_entries_only(self):
+    def test_employee_schedule_scope_returns_primary_position_team_entries(self):
         owner_response = self.client.post(
             "/api/auth/create-organization",
             json={
@@ -1239,6 +1239,7 @@ class ApiRegressionTests(unittest.TestCase):
 
         employee_a = self._create_employee(headers=owner_headers, full_name="Employee A", id_card="111111111")
         employee_b = self._create_employee(headers=owner_headers, full_name="Employee B", id_card="222222222")
+        employee_c = self._create_employee(headers=owner_headers, full_name="Employee C", id_card="333333333")
         nurse_position = self._create_position(headers=owner_headers, name="Nurse")
         caregiver_position = self._create_position(headers=owner_headers, name="Caregiver")
         other_position = self._create_position(headers=owner_headers, name="Admin")
@@ -1250,6 +1251,7 @@ class ApiRegressionTests(unittest.TestCase):
             {"employee_id": employee_a, "position_id": caregiver_position, "is_primary": False, "priority_score": 30},
             {"employee_id": employee_a, "position_id": nurse_position, "is_primary": True, "priority_score": 90},
             {"employee_id": employee_b, "position_id": other_position, "is_primary": True, "priority_score": 90},
+            {"employee_id": employee_c, "position_id": nurse_position, "is_primary": True, "priority_score": 90},
         ):
             response = self.client.post("/api/employee-positions", headers=owner_headers, json=payload)
             self.assertEqual(response.status_code, 200)
@@ -1258,6 +1260,7 @@ class ApiRegressionTests(unittest.TestCase):
             {"employee_id": employee_a, "position_id": nurse_position, "date": "2026-04-20", "shift_template_id": nurse_template},
             {"employee_id": employee_a, "position_id": caregiver_position, "date": "2026-04-21", "shift_template_id": caregiver_template},
             {"employee_id": employee_b, "position_id": other_position, "date": "2026-04-20", "shift_template_id": other_template},
+            {"employee_id": employee_c, "position_id": nurse_position, "date": "2026-04-22", "shift_template_id": nurse_template},
         ):
             response = self.client.post("/api/schedule", headers=owner_headers, json=payload)
             self.assertEqual(response.status_code, 200)
@@ -1285,11 +1288,42 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(assignments_response.status_code, 200)
         self.assertEqual({item["employee_id"] for item in assignments_response.json()}, {employee_a})
 
-        schedule_response = self.client.get("/api/schedule", headers=employee_headers)
+        employees_for_position_response = self.client.get(
+            "/api/employees",
+            headers=employee_headers,
+            params={"position_id": nurse_position},
+        )
+        self.assertEqual(employees_for_position_response.status_code, 200)
+        self.assertEqual({item["id"] for item in employees_for_position_response.json()}, {employee_a, employee_c})
+
+        assignments_for_position_response = self.client.get(
+            "/api/employee-positions",
+            headers=employee_headers,
+            params={"position_id": nurse_position},
+        )
+        self.assertEqual(assignments_for_position_response.status_code, 200)
+        self.assertEqual({item["employee_id"] for item in assignments_for_position_response.json()}, {employee_a, employee_c})
+
+        schedule_response = self.client.get(
+            "/api/schedule",
+            headers=employee_headers,
+            params={"position_id": nurse_position},
+        )
         self.assertEqual(schedule_response.status_code, 200)
         schedule_entries = schedule_response.json()
-        self.assertEqual({entry["employee_id"] for entry in schedule_entries}, {employee_a})
-        self.assertEqual({entry["position_id"] for entry in schedule_entries}, {nurse_position, caregiver_position})
+        self.assertEqual({entry["employee_id"] for entry in schedule_entries}, {employee_a, employee_c})
+        self.assertEqual({entry["position_id"] for entry in schedule_entries}, {nurse_position})
+
+        unauthorized_position_response = self.client.get(
+            "/api/schedule",
+            headers=employee_headers,
+            params={"position_id": other_position},
+        )
+        self.assertEqual(unauthorized_position_response.status_code, 403)
+
+        own_schedule_response = self.client.get("/api/schedule", headers=employee_headers)
+        self.assertEqual(own_schedule_response.status_code, 200)
+        self.assertEqual({entry["employee_id"] for entry in own_schedule_response.json()}, {employee_a})
 
     def test_invitation_url_uses_public_app_base_without_manual_cloud_link(self):
         owner_response = self.client.post(

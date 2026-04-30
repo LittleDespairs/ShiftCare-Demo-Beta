@@ -338,8 +338,13 @@
         setText(".auth-brand p", isAcceptInvitation
             ? "auth_create_account"
             : (isLoginShell ? (isCloudEmployeePortal ? "auth_employee_portal" : "auth_foundation") : "auth_org_access"));
-        setText("#open-login-modal strong", isCloudEmployeePortal ? "auth_employee_login" : "auth_authorize_user");
-        setText("#open-login-modal span", isCloudEmployeePortal ? "auth_employee_login_action_text" : "auth_login_action_text");
+        if (isCloudEmployeePortal) {
+            setText("#open-login-modal .auth-portal-button-title", "auth_employee_login");
+            setText("#open-login-modal .auth-portal-button-text", "auth_employee_login_action_text");
+        } else {
+            setText("#open-login-modal strong", "auth_authorize_user");
+            setText("#open-login-modal span", "auth_login_action_text");
+        }
         setText("#open-organization-modal strong", "auth_add_organization");
         setText("#open-organization-modal span", "auth_add_organization_text");
         setText("#login-modal-title", isCloudEmployeePortal ? "auth_employee_login" : "auth_authorize_user");

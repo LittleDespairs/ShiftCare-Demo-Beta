@@ -1070,6 +1070,10 @@
             weekDates = buildWeekDates(weekStart);
 
             try {
+                const employeeScheduleScopeQuery = isEmployeeUser() && positionId
+                    ? `?position_id=${encodeURIComponent(positionId)}`
+                    : "";
+                const employeeScheduleScopeJoiner = employeeScheduleScopeQuery ? "&" : "?";
                 const [
                     employeesResponse,
                     assignmentsResponse,
@@ -1080,14 +1084,14 @@
                     shiftTemplatesResponse,
                     dayStatusesResponse
                 ] = await Promise.all([
-                    fetch("/api/employees"),
-                    fetch("/api/employee-positions"),
-                    fetch("/api/schedule"),
-                    fetch("/api/shift-requirements"),
-                    fetch("/api/coverage-requirements"),
+                    fetch(`/api/employees${employeeScheduleScopeQuery}`),
+                    fetch(`/api/employee-positions${employeeScheduleScopeQuery}`),
+                    fetch(`/api/schedule${employeeScheduleScopeQuery}`),
+                    fetch(`/api/shift-requirements${employeeScheduleScopeQuery}`),
+                    fetch(`/api/coverage-requirements${employeeScheduleScopeQuery}`),
                     fetch("/api/app-settings"),
-                    fetch("/api/shift-templates?active_only=true"),
-                    fetch("/api/employee-day-statuses")
+                    fetch(`/api/shift-templates${employeeScheduleScopeQuery}${employeeScheduleScopeJoiner}active_only=true`),
+                    fetch(`/api/employee-day-statuses${employeeScheduleScopeQuery}`)
                 ]);
 
                 if (

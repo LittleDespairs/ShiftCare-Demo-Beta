@@ -140,8 +140,12 @@
         openOrganizationModalButton?.remove();
         organizationModal?.remove();
         document.querySelector(".auth-brand p").textContent = t("auth_employee_portal", "Employee portal");
-        document.querySelector("#open-login-modal strong").textContent = t("auth_employee_login", "Employee login");
-        document.querySelector("#open-login-modal span").textContent = t("auth_employee_login_action_text", "Open weekly wishes and read-only schedule");
+        const loginTitle = document.querySelector("#open-login-modal .auth-portal-button-title")
+            || document.querySelector("#open-login-modal strong");
+        const loginText = document.querySelector("#open-login-modal .auth-portal-button-text")
+            || document.querySelector("#open-login-modal > span");
+        if (loginTitle) loginTitle.textContent = t("auth_employee_login", "Employee login");
+        if (loginText) loginText.textContent = t("auth_employee_login_action_text", "Open weekly wishes and read-only schedule");
     }
 
     function initializeDefaultApiMode() {

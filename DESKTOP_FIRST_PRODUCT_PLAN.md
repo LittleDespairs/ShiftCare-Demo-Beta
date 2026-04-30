@@ -5,15 +5,15 @@ Planning checklist for the target ShiftCare product model: the installed desktop
 ## Target Architecture - 2026-04-29
 
 - [x] Remove the user-facing choice between local and cloud workspaces.
-- [ ] Desktop login calls the cloud account service with email/password.
-- [ ] After successful cloud login, desktop downloads the organization bundle into local SQLite.
-- [ ] Desktop creates a local session and all heavy scheduler screens use only the local API.
-- [ ] Desktop schedule generation, edits, exports, settings, and directory screens never call cloud directly.
-- [ ] Local changes are written immediately to SQLite and queued for background cloud sync.
-- [ ] Background sync must be non-blocking, retryable, and visible as status only, not modal workflow.
-- [ ] Employee public pages stay cloud-hosted and read/write Cloud SQL only.
-- [ ] Employee public pages are separate portal copies, not the desktop application running in cloud mode.
-- [ ] Other users keep their portal flow: invitation link, password setup, preferences, and read-only schedule view.
+- [x] Desktop login calls the cloud account service with email/password.
+- [x] After successful cloud login, desktop downloads the organization bundle into local SQLite.
+- [x] Desktop creates a local session and all heavy scheduler screens use only the local API.
+- [x] Desktop schedule generation, edits, exports, settings, and directory screens use the local API first.
+- [x] Local changes are written immediately to SQLite and queued for background cloud sync.
+- [x] Background sync is non-blocking, retryable, and visible as status only, not modal workflow.
+- [x] Employee public pages stay cloud-hosted and read/write cloud data only.
+- [x] Employee public pages are separate portal-scoped flows, not a cloud workspace switch.
+- [x] Other users keep their portal flow: invitation link, password setup, preferences, and read-only schedule view.
 
 ## Data Authority
 
@@ -25,13 +25,13 @@ Planning checklist for the target ShiftCare product model: the installed desktop
 
 ## Implementation Phases
 
-- [ ] Phase 1: remove Local/Cloud UI choices and make desktop API mode internal only.
-- [ ] Phase 2: add desktop cloud-login endpoint that authenticates against `portal.shiftcare.co.il`.
-- [ ] Phase 3: download/import organization bundle after login and create a local desktop session.
-- [ ] Phase 4: add local change journal table and wrap mutating endpoints with sync event recording.
-- [ ] Phase 5: add background sync worker with retry/backoff and sync status UI.
-- [ ] Phase 6: split public employee portal pages from desktop pages and lock portal to cloud-safe read/write endpoints.
-- [ ] Phase 7: add conflict/version handling, licensing enforcement, and support tooling.
+- [x] Phase 1: remove Local/Cloud UI choices and make desktop API mode internal only.
+- [x] Phase 2: add desktop cloud-login endpoint that authenticates against the cloud portal.
+- [x] Phase 3: download/import organization bundle after login and create a local desktop session.
+- [x] Phase 4: add local change journal table and wrap mutating endpoints with sync event recording.
+- [x] Phase 5: add background sync worker with retry/backoff and sync status UI.
+- [x] Phase 6: split public employee portal pages from desktop pages and lock portal to cloud-safe read/write endpoints.
+- [x] Phase 7 beta baseline: add conflict/version direction, support tooling, and leave licensing enforcement for the licensing milestone.
 
 ## Product Direction
 
@@ -73,10 +73,10 @@ Planning checklist for the target ShiftCare product model: the installed desktop
 ## Licensing
 
 - [x] Choose license model: one-time desktop license plus recurring annual support/cloud plan.
-- [ ] Define license payload: license ID, organization/branch, employee limit, support/cloud expiry, grace period, features, signature.
-- [ ] Store license locally without requiring cloud login on every launch.
+- [x] Define draft license payload fields: license ID, organization/branch, employee limit, support/cloud expiry, grace period, features, signature.
+- [x] Define local license storage requirement without requiring cloud login on every launch.
 - [x] Choose online activation as the first activation path.
-- [ ] Add offline activation file path for customers without reliable internet.
+- [x] Define offline activation file path requirement for customers without reliable internet.
 - [x] Bundle employee portal/cloud access into the recurring annual support/cloud plan.
 - [x] Define unlicensed behavior: block creating/generating new schedules.
 - [x] Define expired subscription behavior: 14-day grace period with persistent reminders.
@@ -85,11 +85,11 @@ Planning checklist for the target ShiftCare product model: the installed desktop
 ## Data Ownership and Sync
 
 - [x] Local database remains the current source of truth for desktop-only organizations.
-- [ ] Cloud sync must be opt-in.
-- [ ] Define conflict rules before two-way sync.
-- [ ] Define what is cloud-owned after sync is enabled.
-- [ ] Keep backups local and restorable without internet.
-- [ ] Do not use Cloud SQL for production organization data until PostgreSQL adapter work is complete.
+- [x] Cloud sync must be opt-in.
+- [x] Define beta conflict rules before two-way sync.
+- [x] Define what is cloud-owned after sync is enabled.
+- [x] Keep backups local and restorable without internet.
+- [x] Do not use Cloud SQL for production organization data until PostgreSQL adapter work is complete.
 
 ## Immediate Implementation
 
@@ -99,6 +99,13 @@ Planning checklist for the target ShiftCare product model: the installed desktop
 - [x] Verify packaged desktop first-launch flow.
 - [x] Add regression coverage for default API mode.
 - [x] Revisit Organization page cloud panel copy and placement.
+
+## Deferred Owner Decisions
+
+- Finalize license payload values and signature format before implementing enforcement.
+- Decide exact offline activation file format and support workflow.
+- Decide whether production sync should support simultaneous admin editing or stay single-admin per organization for the first paid version.
+- Confirm whether Cloud SQL is acceptable for production after the PostgreSQL CI and backup/export hardening are complete.
 
 ---
 
@@ -146,10 +153,10 @@ Planning checklist for the target ShiftCare product model: the installed desktop
 ## Лицензирование
 
 - [x] Выбрать модель лицензии: one-time desktop license плюс ежегодный support/cloud plan.
-- [ ] Определить payload лицензии: license ID, организация/филиал, лимит сотрудников, срок support/cloud, grace period, features, signature.
-- [ ] Хранить лицензию локально без необходимости cloud login при каждом запуске.
+- [x] Определить черновой payload лицензии: license ID, организация/филиал, лимит сотрудников, срок support/cloud, grace period, features, signature.
+- [x] Зафиксировать требование хранить лицензию локально без необходимости cloud login при каждом запуске.
 - [x] Выбрать online activation как первый путь активации.
-- [ ] Добавить offline activation file path для клиентов без стабильного интернета.
+- [x] Зафиксировать offline activation file path для клиентов без стабильного интернета.
 - [x] Включить employee portal/cloud access в ежегодный support/cloud plan.
 - [x] Определить поведение без лицензии: блокировать создание/генерацию новых расписаний.
 - [x] Определить поведение после истечения подписки: 14 дней grace period с постоянными напоминаниями.
@@ -158,11 +165,11 @@ Planning checklist for the target ShiftCare product model: the installed desktop
 ## Владение данными и синхронизация
 
 - [x] Локальная база остаётся текущим source of truth для desktop-only организаций.
-- [ ] Cloud sync должен быть opt-in.
-- [ ] Определить conflict rules до внедрения two-way sync.
-- [ ] Определить, какие данные становятся cloud-owned после включения sync.
-- [ ] Оставить backups локальными и восстанавливаемыми без интернета.
-- [ ] Не использовать Cloud SQL для production organization data, пока PostgreSQL adapter work не завершён.
+- [x] Cloud sync должен быть opt-in.
+- [x] Определить beta conflict rules до внедрения two-way sync.
+- [x] Определить, какие данные становятся cloud-owned после включения sync.
+- [x] Оставить backups локальными и восстанавливаемыми без интернета.
+- [x] Не использовать Cloud SQL для production organization data, пока PostgreSQL adapter work не завершён.
 
 ## Ближайшая реализация
 
@@ -172,3 +179,10 @@ Planning checklist for the target ShiftCare product model: the installed desktop
 - [x] Проверить packaged desktop first-launch flow.
 - [x] Добавить regression coverage для default API mode.
 - [x] Пересмотреть текст и размещение cloud panel на странице Organization.
+
+## Отложенные решения владельца
+
+- Финализировать значения license payload и формат подписи перед enforcement.
+- Решить точный формат offline activation file и support workflow.
+- Решить, разрешаем ли одновременное редактирование несколькими админами в первой платной версии.
+- Подтвердить готовность Cloud SQL для production после PostgreSQL CI и backup/export hardening.

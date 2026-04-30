@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $pyinstaller = Join-Path $repoRoot ".venv\Scripts\pyinstaller.exe"
-$spec = Join-Path $repoRoot "ShiftCare_0.15.3_beta.spec"
+$spec = Join-Path $repoRoot "ShiftCare_0.15.4_beta.spec"
 $installerScript = Join-Path $repoRoot "installer\ScheduleApp.iss"
 $iconScript = Join-Path $repoRoot "tools\create_windows_icon.py"
 
