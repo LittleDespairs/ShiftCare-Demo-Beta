@@ -28,13 +28,14 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 import auth_repository
+import license_runtime
 from app_config import get_app_config, validate_runtime_config
 from cloud_sql import check_postgres_connection
 from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.4_beta"
+APP_VERSION = "0.15.5_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
@@ -59,6 +60,7 @@ tags_metadata = [
     {"name": "Weekly Preferences", "description": "Weekly preferences / Недельные пожелания"},
     {"name": "Requirements", "description": "Shift and coverage requirements / Требования"},
     {"name": "Schedule", "description": "Schedule management / Расписание"},
+    {"name": "Licensing", "description": "License and support entitlement / Лицензия и поддержка"},
 ]
 
 app = FastAPI(
@@ -102,6 +104,15 @@ def is_developer_mode_enabled() -> bool:
 
 
 templates.env.globals["developer_mode_enabled"] = is_developer_mode_enabled
+
+
+def is_license_bypass_enabled() -> bool:
+    config = get_app_config()
+    if config.is_deployed_env:
+        return False
+    if not is_developer_mode_enabled():
+        return False
+    return os.environ.get("SCHEDULE_APP_LICENSE_BYPASS", "").strip().lower() in TRUTHY_ENV_VALUES
 
 
 def is_cloud_employee_portal_mode() -> bool:
@@ -740,6 +751,14 @@ class DatabaseRestoreRequest(BaseModel):
 class UpdateInstallRequest(BaseModel):
     download_url: str = Field(min_length=1, max_length=2048)
     asset_name: str = Field(min_length=1, max_length=255)
+
+
+class LicenseImportRequest(BaseModel):
+    certificate: dict[str, Any]
+
+
+class LicenseActivationCodeRequest(BaseModel):
+    activation_code: str = Field(min_length=8, max_length=512)
 
 
 class AppSettingsUpdate(BaseModel):
@@ -1663,6 +1682,223 @@ def write_auth_audit_event_record(
         connection.commit()
     finally:
         connection.close()
+
+
+def write_license_event(
+    cursor,
+    event_type: str,
+    organization_id: int = 1,
+    license_id: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    cursor.execute(
+        """
+        INSERT INTO license_events (organization_id, license_id, event_type, metadata_json)
+        VALUES (?, ?, ?, ?)
+        """,
+        (organization_id, license_id, event_type, json.dumps(metadata or {}, ensure_ascii=False)),
+    )
+
+
+def count_organization_employees(cursor, organization_id: int = 1) -> int:
+    cursor.execute("SELECT COUNT(*) FROM employees WHERE organization_id = ?", (organization_id,))
+    return int(cursor.fetchone()[0])
+
+
+def get_default_organization_row(cursor, organization_id: int = 1):
+    cursor.execute(
+        """
+        SELECT id, public_id, name, created_at
+        FROM organizations
+        WHERE id = ?
+        """,
+        (organization_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return row
+
+
+def get_latest_license_certificate(cursor, organization_id: int = 1) -> dict | None:
+    cursor.execute(
+        """
+        SELECT certificate_json, last_verified_at, imported_at, source
+        FROM licenses
+        WHERE organization_id = ?
+          AND revoked_at IS NULL
+        ORDER BY imported_at DESC, id DESC
+        LIMIT 1
+        """,
+        (organization_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    try:
+        certificate = json.loads(row["certificate_json"])
+        certificate["_last_verified_at"] = row["last_verified_at"]
+        certificate["_imported_at"] = row["imported_at"]
+        certificate["_source"] = row["source"]
+        return certificate
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
+def build_license_status_payload(cursor, organization_id: int = 1) -> dict:
+    organization = get_default_organization_row(cursor, organization_id)
+    employee_count = count_organization_employees(cursor, organization_id)
+    if is_license_bypass_enabled():
+        payload = license_runtime.build_developer_bypass_status()
+        payload.update(
+            {
+                "employee_count": employee_count,
+                "organization_id": organization_id,
+                "organization_public_id": organization["public_id"],
+                "organization_name": organization["name"],
+                "key_id": "developer",
+                "last_verified_at": None,
+                "imported_at": None,
+            }
+        )
+        payload["enforcement"] = license_runtime.build_enforcement(
+            payload["status"],
+            int(payload["employee_limit"]),
+            employee_count,
+        )
+        return payload
+
+    certificate = get_latest_license_certificate(cursor, organization_id)
+    if certificate:
+        status = license_runtime.calculate_certificate_status(certificate)
+        employee_limit = int(certificate.get("employee_limit") or license_runtime.TRIAL_EMPLOYEE_LIMIT)
+        payload = {
+            "status": status,
+            "source": "license",
+            "license_id": certificate.get("license_id"),
+            "plan_code": certificate.get("plan_code"),
+            "employee_limit": employee_limit,
+            "employee_count": employee_count,
+            "organization_id": organization_id,
+            "organization_public_id": organization["public_id"],
+            "organization_name": organization["name"],
+            "trial_started_at": certificate.get("trial_started_at"),
+            "trial_expires_at": certificate.get("trial_expires_at"),
+            "support_cloud_expires_at": certificate.get("support_cloud_expires_at"),
+            "grace_ends_at": certificate.get("grace_ends_at"),
+            "features": certificate.get("features") or [],
+            "key_id": certificate.get("key_id"),
+            "last_verified_at": certificate.get("_last_verified_at"),
+            "imported_at": certificate.get("_imported_at"),
+        }
+    else:
+        payload = license_runtime.calculate_trial_status(organization["created_at"])
+        payload.update(
+            {
+                "employee_count": employee_count,
+                "organization_id": organization_id,
+                "organization_public_id": organization["public_id"],
+                "organization_name": organization["name"],
+                "key_id": None,
+                "last_verified_at": None,
+                "imported_at": None,
+            }
+        )
+        employee_limit = int(payload["employee_limit"])
+        status = str(payload["status"])
+    payload["enforcement"] = license_runtime.build_enforcement(status, employee_limit, employee_count)
+    return payload
+
+
+def require_license_capability(cursor, capability: str, organization_id: int = 1) -> dict:
+    payload = build_license_status_payload(cursor, organization_id)
+    enforcement = payload.get("enforcement") or {}
+    if enforcement.get(capability):
+        return payload
+    status = payload.get("status") or "unknown"
+    detail = {
+        "message": "License does not allow this action",
+        "capability": capability,
+        "license_status": status,
+        "plan_code": payload.get("plan_code"),
+        "employee_limit": payload.get("employee_limit"),
+        "employee_count": payload.get("employee_count"),
+        "blocking_reason": enforcement.get("blocking_reason"),
+        "employee_limit_reached": enforcement.get("employee_limit_reached"),
+    }
+    raise HTTPException(status_code=402, detail=detail)
+
+
+def import_license_certificate(cursor, certificate_data: dict[str, Any], organization_id: int = 1, source: str = "imported") -> dict:
+    organization = get_default_organization_row(cursor, organization_id)
+    certificate = license_runtime.normalize_certificate(certificate_data)
+    if certificate["organization_public_id"] != organization["public_id"]:
+        raise HTTPException(status_code=400, detail="License certificate belongs to a different organization")
+    try:
+        license_runtime.verify_certificate_signature(certificate, developer_mode=is_developer_mode_enabled())
+    except license_runtime.LicenseValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    status = license_runtime.calculate_certificate_status(certificate)
+    now = current_utc_timestamp()
+    certificate_json = json.dumps(certificate, ensure_ascii=False, sort_keys=True)
+    cursor.execute(
+        """
+        INSERT INTO licenses (
+            organization_id,
+            license_id,
+            status,
+            plan_code,
+            employee_limit,
+            support_cloud_expires_at,
+            grace_ends_at,
+            certificate_json,
+            signature,
+            key_id,
+            source,
+            imported_at,
+            last_verified_at,
+            revoked_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(license_id)
+        DO UPDATE SET status = excluded.status,
+                      plan_code = excluded.plan_code,
+                      employee_limit = excluded.employee_limit,
+                      support_cloud_expires_at = excluded.support_cloud_expires_at,
+                      grace_ends_at = excluded.grace_ends_at,
+                      certificate_json = excluded.certificate_json,
+                      signature = excluded.signature,
+                      key_id = excluded.key_id,
+                      source = excluded.source,
+                      imported_at = excluded.imported_at,
+                      last_verified_at = excluded.last_verified_at,
+                      revoked_at = excluded.revoked_at
+        """,
+        (
+            organization_id,
+            certificate["license_id"],
+            status,
+            certificate["plan_code"],
+            certificate["employee_limit"],
+            certificate.get("support_cloud_expires_at"),
+            certificate.get("grace_ends_at"),
+            certificate_json,
+            certificate.get("signature"),
+            certificate.get("key_id"),
+            source,
+            now,
+            now,
+            certificate.get("revoked_at"),
+        ),
+    )
+    write_license_event(
+        cursor,
+        "license_imported",
+        organization_id=organization_id,
+        license_id=certificate["license_id"],
+        metadata={"source": source, "status": status, "plan_code": certificate["plan_code"]},
+    )
+    return build_license_status_payload(cursor, organization_id)
 
 
 def audit_context_from_admin(admin_context: dict | None) -> tuple[int | None, int | None]:
@@ -4903,6 +5139,105 @@ def install_update(request_data: UpdateInstallRequest):
     }
 
 
+@app.get("/api/license/status", tags=["Licensing"])
+def get_license_status():
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        return build_license_status_payload(cursor)
+    finally:
+        connection.close()
+
+
+@app.post("/api/license/import-file", tags=["Licensing"])
+def import_license_file(
+    request_data: LicenseImportRequest,
+    admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
+):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        payload = import_license_certificate(cursor, request_data.certificate, source="imported")
+        connection.commit()
+        return {"message": "License imported", "license": payload}
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.post("/api/license/activate-code", tags=["Licensing"])
+def activate_license_code(
+    request_data: LicenseActivationCodeRequest,
+    admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
+):
+    activation_hash = hash_session_token(request_data.activation_code)
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO license_activation_attempts (organization_id, activation_code_hash, status, error)
+            VALUES (1, ?, 'success', NULL)
+            """,
+            (activation_hash,),
+        )
+        certificate = license_runtime.decode_activation_code(request_data.activation_code)
+        payload = import_license_certificate(cursor, certificate, source="activation_code")
+        write_license_event(
+            cursor,
+            "license_activation_succeeded",
+            metadata={"source": "activation_code"},
+            license_id=certificate["license_id"],
+        )
+        connection.commit()
+        return {"message": "License activated", "license": payload}
+    except license_runtime.LicenseValidationError as exc:
+        connection.rollback()
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO license_activation_attempts (organization_id, activation_code_hash, status, error)
+            VALUES (1, ?, 'failed', ?)
+            """,
+            (activation_hash, str(exc)),
+        )
+        write_license_event(
+            cursor,
+            "license_activation_failed",
+            metadata={"reason": str(exc), "source": "activation_code"},
+        )
+        connection.commit()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.post("/api/license/refresh", tags=["Licensing"])
+def refresh_license(
+    admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
+):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        write_license_event(
+            cursor,
+            "license_refresh_skipped",
+            metadata={"reason": "cloud_license_backend_not_configured"},
+        )
+        connection.commit()
+        return {
+            "message": "Cloud license backend is not configured yet",
+            "license": build_license_status_payload(cursor),
+        }
+    finally:
+        connection.close()
+
+
 def desktop_only_page_or_404(template_name: str, request: Request):
     if is_cloud_employee_portal_mode():
         raise HTTPException(status_code=404, detail="This page is available only in the desktop app")
@@ -5056,6 +5391,7 @@ def add_employee(employee: EmployeeCreate, _access: dict | None = Depends(requir
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        require_license_capability(cursor, "can_add_employee", organization_id)
         cursor.execute(
             """
             INSERT INTO employees (
@@ -6394,6 +6730,8 @@ def add_schedule_entry(entry: ScheduleEntryCreate, _access: dict | None = Depend
     try:
         validate_manual_schedule_entry_basics(connection, entry)
         cursor = connection.cursor()
+        organization_id = _access["membership"]["organization_id"] if _access else 1
+        require_license_capability(cursor, "can_create_shift", organization_id)
         cursor.execute(
             """
             INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
@@ -8269,6 +8607,9 @@ def auto_generate_schedule(
 ):
     connection = get_connection()
     try:
+        cursor = connection.cursor()
+        organization_id = _access["membership"]["organization_id"] if _access else 1
+        require_license_capability(cursor, "can_generate_schedule", organization_id)
         pull_cloud_preferences_for_desktop_generation(connection)
         result = run_auto_generate_for_position(connection, request_data.position_id, request_data.week_start_date)
         connection.commit()
@@ -8284,8 +8625,10 @@ def auto_generate_all_schedules(
 ):
     connection = get_connection()
     try:
-        pull_cloud_preferences_for_desktop_generation(connection)
+        organization_id = _access["membership"]["organization_id"] if _access else 1
         cursor = connection.cursor()
+        require_license_capability(cursor, "can_generate_schedule", organization_id)
+        pull_cloud_preferences_for_desktop_generation(connection)
         cursor.execute("SELECT id, name FROM positions ORDER BY id")
         positions = [dict(row) for row in cursor.fetchall()]
         if not positions:

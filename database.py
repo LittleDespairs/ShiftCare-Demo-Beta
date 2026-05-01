@@ -62,7 +62,7 @@ def get_database_path() -> Path:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
-CURRENT_SCHEMA_VERSION = 16
+CURRENT_SCHEMA_VERSION = 17
 POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
 PUBLIC_ID_TABLE_PREFIXES = {
     "employees": "emp",
@@ -588,6 +588,61 @@ def init_db():
         ON desktop_sync_outbox (status, next_attempt_at, created_at)
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS licenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            license_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('trial', 'active', 'payment_due', 'grace', 'expired', 'revoked')),
+            plan_code TEXT NOT NULL,
+            employee_limit INTEGER NOT NULL,
+            support_cloud_expires_at TEXT,
+            grace_ends_at TEXT,
+            certificate_json TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            key_id TEXT,
+            source TEXT NOT NULL DEFAULT 'imported' CHECK (source IN ('imported', 'activation_code', 'refresh', 'support')),
+            imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_verified_at TEXT,
+            revoked_at TEXT,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS license_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            license_id TEXT,
+            event_type TEXT NOT NULL,
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS license_activation_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            activation_code_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
+            error TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_licenses_org_status
+        ON licenses (organization_id, status, imported_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_license_events_org_created
+        ON license_events (organization_id, created_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_license_activation_attempts_org_created
+        ON license_activation_attempts (organization_id, created_at)
+    """)
+
     # =========================
     # Employees / Сотрудники
     # =========================
@@ -1012,7 +1067,7 @@ def init_db():
             cursor,
             previous_schema_version,
             CURRENT_SCHEMA_VERSION,
-            "Add employee Israeli ID login support",
+            "Add local license runtime tables",
         )
         _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
 

@@ -509,6 +509,72 @@
             font-weight: 900;
         }
 
+        .license-status-banner {
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            background: #eff6ff;
+            color: #1e3a8a;
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: center;
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+
+        .license-status-banner.warning {
+            border-color: #fed7aa;
+            background: #fff7ed;
+            color: #9a3412;
+        }
+
+        .license-status-banner.danger {
+            border-color: #fecaca;
+            background: #fef2f2;
+            color: #991b1b;
+        }
+
+        .license-status-title {
+            display: block;
+            font-weight: 900;
+            margin-bottom: 3px;
+        }
+
+        .license-status-text {
+            display: block;
+            color: inherit;
+            opacity: 0.82;
+            font-size: 0.88rem;
+            line-height: 1.4;
+        }
+
+        .license-badge {
+            border-radius: 999px;
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-weight: 900;
+            padding: 8px 12px;
+            white-space: nowrap;
+        }
+
+        .license-status-banner.warning .license-badge {
+            background: #ffedd5;
+            color: #c2410c;
+        }
+
+        .license-status-banner.danger .license-badge {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .license-import-area {
+            min-height: 150px;
+            resize: vertical;
+            font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+            font-size: 0.86rem;
+            line-height: 1.45;
+        }
+
         .settings-language-row {
             display: flex;
             flex-wrap: wrap;
@@ -922,6 +988,14 @@
                         </span>
                     </button>
 
+                    <button class="settings-nav-item" type="button" data-settings-tab="license" aria-selected="false">
+                        <span class="settings-nav-icon">L</span>
+                        <span>
+                            <span class="settings-nav-title" data-i18n="settings_tab_license">License</span>
+                            <span class="settings-nav-text" data-i18n="settings_tab_license_text">Activation, limits and support</span>
+                        </span>
+                    </button>
+
                     <button class="settings-nav-item" type="button" data-settings-tab="about" aria-selected="false">
                         <span class="settings-nav-icon">i</span>
                         <span>
@@ -1251,6 +1325,110 @@
                         </div>
                     </section>
 
+                    <section class="settings-panel" data-settings-panel="license">
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_license_title">License & Support</h3>
+                                    <p class="settings-section-text" data-i18n="settings_license_text">
+                                        Review activation status, employee limits, support dates, and offline license data.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div id="license-message-box"></div>
+                            <div id="license-status-banner" class="license-status-banner">
+                                <span>
+                                    <span id="license-status-title" class="license-status-title" data-i18n="settings_license_loading">Loading license status</span>
+                                    <span id="license-status-text" class="license-status-text"></span>
+                                </span>
+                                <span id="license-status-badge" class="license-badge">...</span>
+                            </div>
+
+                            <div class="settings-summary-grid">
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_license_plan">Plan</span>
+                                    <span id="license-plan" class="settings-summary-value">-</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_license_employees">Employees</span>
+                                    <span id="license-employees" class="settings-summary-value">-</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_license_trial_until">Trial until</span>
+                                    <span id="license-trial" class="settings-summary-value">-</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_license_support_until">Support/cloud until</span>
+                                    <span id="license-support" class="settings-summary-value">-</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_license_grace_until">Grace until</span>
+                                    <span id="license-grace" class="settings-summary-value">-</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_license_id">License ID</span>
+                                    <span id="license-id" class="settings-summary-value">-</span>
+                                </div>
+                                <div class="settings-summary-item">
+                                    <span class="settings-summary-label" data-i18n="settings_license_last_check">Last online check</span>
+                                    <span id="license-last-check" class="settings-summary-value">-</span>
+                                </div>
+                            </div>
+
+                            <div class="settings-actions">
+                                <button id="refresh-license-btn" class="btn btn-secondary" type="button" data-i18n="settings_license_refresh">
+                                    Check license
+                                </button>
+                                <button id="copy-license-diagnostics-btn" class="btn btn-secondary" type="button" data-i18n="settings_license_copy_diagnostics">
+                                    Copy diagnostics
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_license_activation_title">Activate by code</h3>
+                                    <p class="settings-section-text" data-i18n="settings_license_activation_text">
+                                        Enter an activation code from a payment confirmation or support message.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <input id="license-activation-code" class="input" type="text"
+                                data-i18n-placeholder="settings_license_activation_placeholder"
+                                placeholder="SHIFTCARE-..." autocomplete="off">
+
+                            <div class="settings-actions">
+                                <button id="activate-license-btn" class="btn btn-primary" type="button" data-i18n="settings_license_activate">
+                                    Activate license
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_license_import_title">Import license file</h3>
+                                    <p class="settings-section-text" data-i18n="settings_license_import_text">
+                                        Paste the JSON content from a .shiftcare-license file provided by support.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <textarea id="license-import-json" class="input license-import-area" spellcheck="false"
+                                data-i18n-placeholder="settings_license_import_placeholder"
+                                placeholder='{"license_id":"..."}'></textarea>
+
+                            <div class="settings-actions">
+                                <button id="import-license-btn" class="btn btn-primary" type="button" data-i18n="settings_license_import">
+                                    Import license
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
                     <section class="settings-panel" data-settings-panel="about">
                         <div class="settings-panel-card">
                             <div class="settings-section-header">
@@ -1534,6 +1712,7 @@
         };
         let databaseBackups = [];
         let latestUpdate = null;
+        let currentLicenseStatus = null;
 
         function t(key, fallback = "") {
             if (typeof translate === "function") {
@@ -1566,6 +1745,10 @@
 
         function showUpdatesMessage(text, type = "info") {
             renderPageMessage("updates-message-box", text, type);
+        }
+
+        function showLicenseMessage(text, type = "info") {
+            renderPageMessage("license-message-box", text, type);
         }
 
         function normalizeColor(value, fallback) {
@@ -1637,6 +1820,156 @@
                     }
                     return data;
                 });
+        }
+
+        function formatLicenseDate(value) {
+            if (!value) return "-";
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) {
+                return escapeHtml(value);
+            }
+            return date.toLocaleDateString();
+        }
+
+        function formatLicenseError(error) {
+            const detail = error && error.detail ? error.detail : null;
+            if (detail && typeof detail === "object") {
+                return detail.message || JSON.stringify(detail);
+            }
+            return error.message || t("settings_license_failed", "Failed to load license status.");
+        }
+
+        function renderLicenseStatus(payload) {
+            currentLicenseStatus = payload || null;
+            const banner = document.getElementById("license-status-banner");
+            const title = document.getElementById("license-status-title");
+            const text = document.getElementById("license-status-text");
+            const badge = document.getElementById("license-status-badge");
+            if (!banner || !title || !text || !badge) return;
+
+            const status = payload.status || "unknown";
+            banner.classList.remove("warning", "danger");
+            if (["grace", "payment_due"].includes(status)) {
+                banner.classList.add("warning");
+            }
+            if (["expired", "revoked"].includes(status)) {
+                banner.classList.add("danger");
+            }
+
+            const statusLabels = {
+                trial: t("settings_license_status_trial", "Trial active"),
+                active: t("settings_license_status_active", "License active"),
+                payment_due: t("settings_license_status_payment_due", "Payment due"),
+                grace: t("settings_license_status_grace", "Grace period"),
+                expired: t("settings_license_status_expired", "License expired"),
+                revoked: t("settings_license_status_revoked", "License revoked")
+            };
+            title.textContent = payload.message || statusLabels[status] || status;
+            badge.textContent = status;
+            const enforcement = payload.enforcement || {};
+            text.textContent = enforcement.can_generate_schedule
+                ? t("settings_license_generation_allowed", "Schedule generation is available.")
+                : t("settings_license_generation_blocked", "Schedule generation is blocked until the license is renewed.");
+
+            document.getElementById("license-plan").textContent = payload.plan_code || "-";
+            document.getElementById("license-employees").textContent = `${payload.employee_count || 0} / ${payload.employee_limit || "-"}`;
+            document.getElementById("license-trial").textContent = formatLicenseDate(payload.trial_expires_at);
+            document.getElementById("license-support").textContent = formatLicenseDate(payload.support_cloud_expires_at);
+            document.getElementById("license-grace").textContent = formatLicenseDate(payload.grace_ends_at);
+            document.getElementById("license-id").textContent = payload.license_id || "-";
+            document.getElementById("license-last-check").textContent = formatLicenseDate(payload.last_verified_at);
+        }
+
+        async function loadLicenseStatus({ silent = false } = {}) {
+            try {
+                if (!silent) {
+                    showLicenseMessage(t("settings_license_loading", "Loading license status..."), "info");
+                }
+                const payload = await databaseRequest("/api/license/status");
+                renderLicenseStatus(payload);
+                if (!silent) {
+                    showLicenseMessage(t("settings_license_loaded", "License status loaded."), "success");
+                }
+            } catch (error) {
+                showLicenseMessage(formatLicenseError(error), "danger");
+            }
+        }
+
+        async function refreshLicense() {
+            try {
+                const result = await databaseRequest("/api/license/refresh", { method: "POST" });
+                renderLicenseStatus(result.license || {});
+                showLicenseMessage(result.message || t("settings_license_refresh_done", "License check finished."), "success");
+            } catch (error) {
+                showLicenseMessage(formatLicenseError(error), "danger");
+            }
+        }
+
+        async function importLicense() {
+            const input = document.getElementById("license-import-json");
+            const raw = (input && input.value ? input.value : "").trim();
+            if (!raw) {
+                showLicenseMessage(t("settings_license_import_empty", "Paste a license certificate first."), "danger");
+                return;
+            }
+
+            let certificate;
+            try {
+                certificate = JSON.parse(raw);
+            } catch (error) {
+                showLicenseMessage(t("settings_license_import_invalid_json", "License file content is not valid JSON."), "danger");
+                return;
+            }
+
+            try {
+                const result = await databaseRequest("/api/license/import-file", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ certificate })
+                });
+                renderLicenseStatus(result.license || {});
+                showLicenseMessage(t("settings_license_imported", "License imported."), "success");
+                input.value = "";
+            } catch (error) {
+                showLicenseMessage(formatLicenseError(error), "danger");
+            }
+        }
+
+        async function activateLicenseCode() {
+            const input = document.getElementById("license-activation-code");
+            const activationCode = (input && input.value ? input.value : "").trim();
+            if (!activationCode) {
+                showLicenseMessage(t("settings_license_activation_empty", "Enter an activation code first."), "danger");
+                return;
+            }
+
+            try {
+                const result = await databaseRequest("/api/license/activate-code", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ activation_code: activationCode })
+                });
+                renderLicenseStatus(result.license || {});
+                showLicenseMessage(result.message || t("settings_license_activation_done", "License activated."), "success");
+                input.value = "";
+            } catch (error) {
+                showLicenseMessage(formatLicenseError(error), "danger");
+            }
+        }
+
+        async function copyLicenseDiagnostics() {
+            if (!currentLicenseStatus) {
+                showLicenseMessage(t("settings_license_no_diagnostics", "Load license status before copying diagnostics."), "danger");
+                return;
+            }
+
+            const diagnostics = JSON.stringify(currentLicenseStatus, null, 2);
+            try {
+                await navigator.clipboard.writeText(diagnostics);
+                showLicenseMessage(t("settings_license_diagnostics_copied", "License diagnostics copied."), "success");
+            } catch (error) {
+                showLicenseMessage(t("settings_license_diagnostics_failed", "Could not copy license diagnostics."), "danger");
+            }
         }
 
         async function loadDatabaseBackups() {
@@ -1926,8 +2259,13 @@
             document.getElementById("reload-database-backups-btn").addEventListener("click", loadDatabaseBackups);
             document.getElementById("check-updates-btn").addEventListener("click", checkForUpdates);
             document.getElementById("install-update-btn").addEventListener("click", installLatestUpdate);
+            document.getElementById("refresh-license-btn").addEventListener("click", refreshLicense);
+            document.getElementById("activate-license-btn").addEventListener("click", activateLicenseCode);
+            document.getElementById("import-license-btn").addEventListener("click", importLicense);
+            document.getElementById("copy-license-diagnostics-btn").addEventListener("click", copyLicenseDiagnostics);
             loadGenerationSettings();
             loadDatabaseBackups();
+            loadLicenseStatus({ silent: true });
         });
     </script>
 <script src="/static/js/i18n.js?v={{ app_version }}-auth-i18n-fix"></script>

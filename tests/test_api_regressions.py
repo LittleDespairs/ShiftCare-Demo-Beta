@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from tests.test_support import database, main
+import license_runtime
 from db_adapter import CompatRow, PostgresCursorAdapter, _is_postgres_integrity_error, _rewrite_sql_for_postgres
 
 
@@ -35,6 +36,9 @@ class ApiRegressionTests(unittest.TestCase):
             "auth_password_reset_tokens",
             "auth_sessions",
             "auth_audit_events",
+            "license_activation_attempts",
+            "license_events",
+            "licenses",
             "desktop_sync_outbox",
             "organization_invitations",
             "organization_memberships",
@@ -53,7 +57,7 @@ class ApiRegressionTests(unittest.TestCase):
         ):
             cursor.execute(f"DELETE FROM {table}")
         cursor.execute(
-            "UPDATE organizations SET name = 'Local Organization', status = 'active' WHERE id = 1"
+            "UPDATE organizations SET name = 'Local Organization', status = 'active', created_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
         )
         self.connection.commit()
         backup_dir = database.get_backup_dir()
@@ -128,6 +132,9 @@ class ApiRegressionTests(unittest.TestCase):
             "auth_password_reset_tokens",
             "auth_email_verification_tokens",
             "desktop_sync_outbox",
+            "licenses",
+            "license_events",
+            "license_activation_attempts",
             "schema_metadata",
             "schema_migrations",
         ):
@@ -179,6 +186,184 @@ class ApiRegressionTests(unittest.TestCase):
         migration_row = cursor.fetchone()
         self.assertIsNotNone(migration_row)
         self.assertEqual(migration_row["to_version"], database.CURRENT_SCHEMA_VERSION)
+
+    def test_license_status_defaults_to_trial_runtime(self):
+        response = self.client.get("/api/license/status")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "trial")
+        self.assertEqual(payload["source"], "trial")
+        self.assertEqual(payload["plan_code"], "trial")
+        self.assertEqual(payload["employee_limit"], 15)
+        self.assertTrue(payload["enforcement"]["can_generate_schedule"])
+
+    def test_license_status_uses_local_developer_bypass_only_with_developer_mode(self):
+        with patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "development",
+                "K_SERVICE": "",
+                "SCHEDULE_APP_DEVELOPER_MODE": "1",
+                "SCHEDULE_APP_LICENSE_BYPASS": "1",
+            },
+            clear=False,
+        ):
+            response = self.client.get("/api/license/status")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "active")
+        self.assertEqual(payload["source"], "developer_bypass")
+        self.assertEqual(payload["plan_code"], "developer")
+        self.assertEqual(payload["employee_limit"], 9999)
+        self.assertTrue(payload["developer_bypass"])
+        self.assertEqual(payload["message"], "Developer license bypass enabled")
+        self.assertTrue(payload["enforcement"]["can_generate_schedule"])
+
+    def test_license_bypass_is_ignored_in_deployed_runtime(self):
+        with patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "staging",
+                "K_SERVICE": "",
+                "SCHEDULE_APP_DEVELOPER_MODE": "1",
+                "SCHEDULE_APP_LICENSE_BYPASS": "1",
+            },
+            clear=False,
+        ):
+            response = self.client.get("/api/license/status")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "trial")
+        self.assertEqual(payload["source"], "trial")
+        self.assertNotIn("developer_bypass", payload)
+
+    def test_license_import_stores_signed_certificate_and_updates_status(self):
+        certificate = {
+            "license_id": "lic_test_001",
+            "organization_public_id": "local-default",
+            "customer_legal_name": "Beta Clinic",
+            "branch_id": "main",
+            "plan_code": "team_35",
+            "employee_limit": 35,
+            "features": ["desktop", "employee_portal"],
+            "issued_at": "2026-05-01T00:00:00",
+            "support_cloud_expires_at": "2027-05-01",
+            "grace_ends_at": "2027-05-15",
+            "key_id": "dev",
+            "signature_scheme": "unsigned-dev-v1",
+            "signature": "development",
+        }
+        with patch.dict(os.environ, {"SCHEDULE_APP_DEVELOPER_MODE": "1"}):
+            response = self.client.post("/api/license/import-file", json={"certificate": certificate})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["license"]
+        self.assertEqual(payload["status"], "active")
+        self.assertEqual(payload["source"], "license")
+        self.assertEqual(payload["license_id"], "lic_test_001")
+        self.assertEqual(payload["employee_limit"], 35)
+
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT event_type FROM license_events WHERE license_id = ?", ("lic_test_001",))
+        self.assertEqual(cursor.fetchone()["event_type"], "license_imported")
+
+    def test_license_import_rejects_wrong_organization(self):
+        certificate = {
+            "license_id": "lic_test_wrong_org",
+            "organization_public_id": "other-org",
+            "plan_code": "team_35",
+            "employee_limit": 35,
+            "issued_at": "2026-05-01T00:00:00",
+            "signature_scheme": "unsigned-dev-v1",
+            "signature": "development",
+        }
+        with patch.dict(os.environ, {"SCHEDULE_APP_DEVELOPER_MODE": "1"}):
+            response = self.client.post("/api/license/import-file", json={"certificate": certificate})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "License certificate belongs to a different organization")
+
+    def test_license_activation_code_imports_signed_certificate(self):
+        certificate = {
+            "license_id": "lic_activation_001",
+            "organization_public_id": "local-default",
+            "plan_code": "team_75",
+            "employee_limit": 75,
+            "features": ["desktop", "employee_portal"],
+            "issued_at": "2026-05-01T00:00:00Z",
+            "support_cloud_expires_at": "2027-05-01",
+            "grace_ends_at": "2027-05-15",
+            "key_id": "test",
+            "signature_scheme": "hmac-sha256-v1",
+        }
+        certificate["signature"] = license_runtime.hmac_signature(certificate, "test-secret")
+        activation_code = license_runtime.encode_activation_code(certificate)
+
+        with patch.dict(os.environ, {"SCHEDULE_APP_LICENSE_SIGNING_SECRET": "test-secret"}):
+            response = self.client.post("/api/license/activate-code", json={"activation_code": activation_code})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["license"]
+        self.assertEqual(payload["license_id"], "lic_activation_001")
+        self.assertEqual(payload["employee_limit"], 75)
+        self.assertEqual(payload["source"], "license")
+
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT status FROM license_activation_attempts ORDER BY id DESC LIMIT 1")
+        self.assertEqual(cursor.fetchone()["status"], "success")
+
+    def test_expired_trial_blocks_employee_creation_manual_schedule_and_generation(self):
+        employee_id = self._create_employee(full_name="Licensed Employee")
+        position_id = self._create_position(name="Licensed Position")
+        template_id = self._create_shift_template(position_id=position_id, name="Licensed Morning")
+
+        cursor = self.connection.cursor()
+        cursor.execute("UPDATE organizations SET created_at = '2026-01-01T00:00:00' WHERE id = 1")
+        self.connection.commit()
+
+        employee_response = self.client.post("/api/employees", json=self._employee_payload(full_name="Blocked Employee"))
+        self.assertEqual(employee_response.status_code, 402)
+        self.assertEqual(employee_response.json()["detail"]["license_status"], "expired")
+
+        schedule_response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-05-03",
+                "shift_template_id": template_id,
+            },
+        )
+        self.assertEqual(schedule_response.status_code, 402)
+        self.assertEqual(schedule_response.json()["detail"]["capability"], "can_create_shift")
+
+        generate_response = self.client.post(
+            "/api/schedule/auto-generate",
+            json={"position_id": position_id, "week_start_date": "2026-05-03"},
+        )
+        self.assertEqual(generate_response.status_code, 402)
+        self.assertEqual(generate_response.json()["detail"]["capability"], "can_generate_schedule")
+
+    def test_trial_employee_limit_blocks_new_employee_and_developer_bypass_allows_it(self):
+        for index in range(15):
+            self._create_employee(full_name=f"Trial Employee {index}")
+
+        blocked_response = self.client.post("/api/employees", json=self._employee_payload(full_name="Blocked Limit"))
+        self.assertEqual(blocked_response.status_code, 402)
+        detail = blocked_response.json()["detail"]
+        self.assertEqual(detail["capability"], "can_add_employee")
+        self.assertTrue(detail["employee_limit_reached"])
+
+        with patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "development",
+                "K_SERVICE": "",
+                "SCHEDULE_APP_DEVELOPER_MODE": "1",
+                "SCHEDULE_APP_LICENSE_BYPASS": "1",
+            },
+            clear=False,
+        ):
+            bypass_response = self.client.post("/api/employees", json=self._employee_payload(full_name="Bypass Employee"))
+        self.assertEqual(bypass_response.status_code, 200)
 
     def test_health_endpoints_report_runtime_readiness(self):
         live_response = self.client.get("/api/health/live")

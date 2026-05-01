@@ -2,6 +2,28 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.5_beta - 2026-05-01
+
+## Added
+
+- Added the local licensing runtime for paid/trial status, employee limits, grace periods, and desktop enforcement.
+- Added the `Settings -> License & Support` panel with license status, last online check, activation code entry, offline license import, and support diagnostics copy.
+- Added `tools/issue_license.py` for support-issued `.shiftcare-license` files and activation codes.
+- Added regression coverage for SQLite/PostgreSQL schema parity and license enforcement.
+
+## Changed
+
+- Updated SQLite and PostgreSQL baseline schemas to version `17` with license tables.
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.5_beta`.
+
+## Verified
+
+- `node --check static/js/i18n.js`
+- `node --check static/js/auth.js`
+- `node --check static/js/auth_i18n.js`
+- `node --check static/js/schedule.js`
+- `.venv\Scripts\python.exe -m unittest discover -s tests`
+
 # 0.15.4_beta - 2026-05-01
 
 ## Changed

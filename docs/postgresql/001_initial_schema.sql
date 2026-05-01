@@ -163,6 +163,42 @@ CREATE TABLE IF NOT EXISTS desktop_sync_outbox (
     synced_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS licenses (
+    id BIGSERIAL PRIMARY KEY,
+    organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+    license_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('trial', 'active', 'payment_due', 'grace', 'expired', 'revoked')),
+    plan_code TEXT NOT NULL,
+    employee_limit INTEGER NOT NULL,
+    support_cloud_expires_at TEXT,
+    grace_ends_at TEXT,
+    certificate_json TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    key_id TEXT,
+    source TEXT NOT NULL DEFAULT 'imported' CHECK (source IN ('imported', 'activation_code', 'refresh', 'support')),
+    imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_verified_at TEXT,
+    revoked_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS license_events (
+    id BIGSERIAL PRIMARY KEY,
+    organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+    license_id TEXT,
+    event_type TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS license_activation_attempts (
+    id BIGSERIAL PRIMARY KEY,
+    organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+    activation_code_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS employee_positions (
     employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
     position_id BIGINT NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
@@ -332,6 +368,9 @@ CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active ON auth_sessions (user_
 CREATE INDEX IF NOT EXISTS idx_auth_password_reset_tokens_user ON auth_password_reset_tokens (user_id, expires_at, used_at);
 CREATE INDEX IF NOT EXISTS idx_auth_email_verification_tokens_user ON auth_email_verification_tokens (user_id, expires_at, used_at);
 CREATE INDEX IF NOT EXISTS idx_desktop_sync_outbox_pending ON desktop_sync_outbox (status, next_attempt_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_licenses_org_status ON licenses (organization_id, status, imported_at);
+CREATE INDEX IF NOT EXISTS idx_license_events_org_created ON license_events (organization_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_license_activation_attempts_org_created ON license_activation_attempts (organization_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_employees_org ON employees (organization_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_org_id_card ON employees (organization_id, id_card) WHERE id_card IS NOT NULL AND id_card <> '';
 CREATE INDEX IF NOT EXISTS idx_positions_org ON positions (organization_id, id);
@@ -349,5 +388,5 @@ CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position ON coverage_re
 CREATE INDEX IF NOT EXISTS idx_app_settings_organization ON app_settings (organization_id, key);
 
 INSERT INTO schema_metadata (key, value)
-VALUES ('schema_version', '16')
+VALUES ('schema_version', '17')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
