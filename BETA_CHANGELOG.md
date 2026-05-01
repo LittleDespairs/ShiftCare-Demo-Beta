@@ -2,6 +2,25 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.7_beta - 2026-05-01
+
+## Fixed
+
+- Rebuilt the hosted employee portal login entry so the call-to-action no longer overlaps the text panel on wide desktop screens.
+- Treated `shiftcare.co.il` and `*.shiftcare.co.il` as hosted cloud origins in the auth client.
+- Updated Cloud Build defaults to use `https://portal.shiftcare.co.il` as the public app base URL.
+
+## Changed
+
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.7_beta`.
+
+## Verified
+
+- `node --check static/js/auth_client.js`
+- `node --check static/js/auth.js`
+- `node --check static/js/auth_i18n.js`
+- `.venv\Scripts\python.exe -m unittest discover -s tests`
+
 # 0.15.6_beta - 2026-05-01
 
 ## Fixed

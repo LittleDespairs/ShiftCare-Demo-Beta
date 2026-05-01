@@ -104,21 +104,20 @@
 }
 
 .auth-portal-entry {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.56fr);
+    display: flex;
+    flex-direction: column;
     gap: 18px;
-    align-items: stretch;
-    padding: 18px;
+    padding: 22px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: #f8fafc;
+    background:
+        linear-gradient(135deg, rgba(239, 246, 255, 0.9), rgba(248, 250, 252, 0.94));
 }
 
 .auth-portal-copy {
     display: grid;
-    align-content: center;
     gap: 8px;
-    padding: 6px 2px;
+    padding: 0;
 }
 
 .auth-portal-kicker {
@@ -132,8 +131,8 @@
 .auth-portal-copy h2 {
     margin: 0;
     color: var(--text);
-    font-size: 1.8rem;
-    line-height: 1.08;
+    font-size: 1.55rem;
+    line-height: 1.15;
 }
 
 .auth-portal-copy p {
@@ -151,9 +150,10 @@
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 14px;
-    min-height: 120px;
-    padding: 18px;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 72px;
+    padding: 14px 16px;
     text-align: start;
     box-shadow: 0 14px 30px rgba(35, 87, 214, 0.24);
     transition: background var(--transition), box-shadow var(--transition), transform var(--transition);
@@ -171,8 +171,8 @@
 }
 
 .auth-portal-button-icon {
-    flex: 0 0 48px;
-    height: 48px;
+    flex: 0 0 42px;
+    height: 42px;
     border-radius: 8px;
     display: grid;
     place-items: center;
@@ -184,8 +184,9 @@
 
 .auth-portal-button-body {
     display: grid;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
+    flex: 1;
 }
 
 .auth-portal-button-title {
@@ -198,6 +199,7 @@
     color: rgba(255, 255, 255, 0.84);
     font-style: normal;
     line-height: 1.42;
+    font-size: 0.88rem;
 }
 
 .auth-portal-feature-row {
@@ -607,12 +609,11 @@
     }
 
     .auth-portal-entry {
-        grid-template-columns: 1fr;
         padding: 14px;
     }
 
     .auth-portal-button {
-        min-height: 96px;
+        min-height: 70px;
     }
 
     .auth-portal-copy h2 {

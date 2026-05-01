@@ -11,7 +11,9 @@
     function isHostedCloudOrigin() {
         return window.location.hostname.endsWith(".web.app")
             || window.location.hostname.endsWith(".firebaseapp.com")
-            || window.location.hostname.endsWith(".run.app");
+            || window.location.hostname.endsWith(".run.app")
+            || window.location.hostname === "shiftcare.co.il"
+            || window.location.hostname.endsWith(".shiftcare.co.il");
     }
 
     function isDesktopLocalOrigin() {

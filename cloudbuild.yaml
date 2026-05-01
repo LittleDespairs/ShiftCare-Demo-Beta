@@ -4,7 +4,7 @@ substitutions:
   _REPOSITORY: schedule-app
   _IMAGE: schedule-app-api
   _TAG: manual
-  _PUBLIC_APP_BASE_URL: https://schedule-app-beta.web.app
+  _PUBLIC_APP_BASE_URL: https://portal.shiftcare.co.il
   _CLOUD_SQL_CONNECTION_NAME: schedule-app-beta:me-west1:schedule-beta-db
   _DATABASE_NAME: schedule_beta
   _DATABASE_USER: schedule_app
