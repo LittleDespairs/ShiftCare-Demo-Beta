@@ -2,6 +2,27 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.6_beta - 2026-05-01
+
+## Fixed
+
+- Polished the Organization page with a language switcher, translated labels/messages/statuses, and corrected field labels in the invitation form.
+- Employee portal and invitation links now render as full URLs with open/copy actions instead of raw tokens or unconfigured text.
+- Desktop client config now falls back to `https://portal.shiftcare.co.il` for employee portal and invitation URLs.
+
+## Changed
+
+- Added the payment provider and selling-site concept to the private payment/license checklist.
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.6_beta`.
+
+## Verified
+
+- `node --check static/js/organization.js`
+- `node --check static/js/auth_i18n.js`
+- `node --check static/js/i18n.js`
+- `node --check static/js/auth.js`
+- `.venv\Scripts\python.exe -m unittest discover -s tests`
+
 # 0.15.5_beta - 2026-05-01
 
 ## Added

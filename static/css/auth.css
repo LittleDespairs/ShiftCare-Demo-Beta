@@ -526,6 +526,23 @@
     margin-top: 10px;
 }
 
+.organization-link-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.organization-link-button {
+    text-align: center;
+    text-decoration: none;
+}
+
+.organization-link-button[aria-disabled="true"] {
+    pointer-events: none;
+    opacity: 0.55;
+}
+
 .organization-summary-list {
     display: grid;
     gap: 10px;

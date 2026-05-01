@@ -61,8 +61,10 @@
             org_expires: "Expires in days",
             org_create_invitation: "Create invitation",
             org_employee_portal: "Employee portal",
-            org_employee_portal_text: "Optional public login page for employees after cloud portal setup.",
+            org_employee_portal_text: "Public employee login page for weekly wishes and read-only schedules.",
             org_employee_site_address: "Employee site address",
+            org_employee_portal_not_configured: "Employee portal URL is not configured.",
+            org_open_link: "Open link",
             org_cloud_link: "Cloud connection",
             org_cloud_link_text: "Optional beta add-on. Upload this local organization only when you want employee portal access or migration testing.",
             org_cloud_api: "Cloud API",
@@ -87,6 +89,9 @@
             org_invitation_link: "Invitation link",
             org_employee: "Employee",
             org_no_employee_link: "No employee link",
+            org_member_employee_not_linked: "Not linked",
+            org_no_members: "No members found.",
+            org_no_invitations: "No invitations found.",
             org_copy_link: "Copy link",
             org_table_name: "Name",
             org_table_status: "Status",
@@ -102,6 +107,42 @@
             org_msg_invitation_revoked: "Invitation revoked.",
             org_msg_invitation_link_generated: "Invitation link generated.",
             org_msg_employee_portal_copied: "Employee portal link copied.",
+            org_msg_invitation_copied: "Invitation link copied.",
+            org_msg_no_active_organization: "Current user has no active organization.",
+            org_msg_creating_invitation: "Creating invitation...",
+            org_msg_select_employee_first: "Select an employee before creating an employee invitation.",
+            org_msg_invitation_created: "Invitation created.",
+            org_msg_saving_profile: "Saving profile...",
+            org_msg_profile_saved: "Profile saved.",
+            org_msg_changing_password: "Changing password...",
+            org_msg_password_changed: "Password changed.",
+            org_no_organization: "No organization",
+            org_role_owner: "Owner",
+            org_role_admin: "Admin",
+            org_role_manager: "Manager",
+            org_role_scheduler: "Scheduler",
+            org_role_employee: "Employee",
+            org_status_active: "Active",
+            org_status_disabled: "Disabled",
+            org_status_invited: "Invited",
+            org_status_pending: "Pending",
+            org_status_accepted: "Accepted",
+            org_status_expired: "Expired",
+            org_status_revoked: "Revoked",
+            org_cloud_not_connected: "Cloud portal is optional and is not connected for this local organization.",
+            org_cloud_only_admin_connect: "Only owners and admins can connect this organization to cloud.",
+            org_cloud_enter_valid_url: "Enter a valid Cloud API URL.",
+            org_cloud_preparing_export: "Preparing local organization export...",
+            org_cloud_signing_in: "Signing in to Cloud beta API...",
+            org_cloud_owner_required: "Cloud account must be an owner or admin of the target organization.",
+            org_cloud_uploading: "Uploading local organization to cloud...",
+            org_cloud_saving_link: "Saving cloud link locally...",
+            org_cloud_linked_imported: "Linked. Imported {employees} employees, {positions} positions, {shift_templates} shift templates.",
+            org_cloud_only_admin_disconnect: "Only owners and admins can disconnect the cloud portal.",
+            org_cloud_disconnecting: "Disconnecting cloud portal...",
+            org_cloud_disconnected: "Cloud portal disconnected for this local organization.",
+            common_yes: "Yes",
+            common_no: "No",
             common_delete: "Delete",
         },
         ru: {
@@ -165,8 +206,10 @@
             org_expires: "Действует дней",
             org_create_invitation: "Создать приглашение",
             org_employee_portal: "Портал сотрудников",
-            org_employee_portal_text: "Необязательная публичная страница входа для сотрудников после подключения облачного портала.",
+            org_employee_portal_text: "Публичная страница входа сотрудников для пожеланий и просмотра расписания.",
             org_employee_site_address: "Адрес сайта для сотрудников",
+            org_employee_portal_not_configured: "Адрес портала сотрудников не настроен.",
+            org_open_link: "Открыть ссылку",
             org_cloud_link: "Подключение к облаку",
             org_cloud_link_text: "Необязательное beta-дополнение. Загружайте локальную организацию только для портала сотрудников или тестирования миграции.",
             org_cloud_api: "Cloud API",
@@ -191,6 +234,9 @@
             org_invitation_link: "Ссылка приглашения",
             org_employee: "Сотрудник",
             org_no_employee_link: "Без привязки к сотруднику",
+            org_member_employee_not_linked: "Не привязан",
+            org_no_members: "Участники не найдены.",
+            org_no_invitations: "Приглашения не найдены.",
             org_copy_link: "Копировать ссылку",
             org_table_name: "Имя",
             org_table_status: "Статус",
@@ -206,6 +252,42 @@
             org_msg_invitation_revoked: "Приглашение отозвано.",
             org_msg_invitation_link_generated: "Ссылка приглашения создана.",
             org_msg_employee_portal_copied: "Ссылка портала сотрудников скопирована.",
+            org_msg_invitation_copied: "Ссылка приглашения скопирована.",
+            org_msg_no_active_organization: "У текущего пользователя нет активной организации.",
+            org_msg_creating_invitation: "Создание приглашения...",
+            org_msg_select_employee_first: "Сначала выберите сотрудника для приглашения.",
+            org_msg_invitation_created: "Приглашение создано.",
+            org_msg_saving_profile: "Сохранение профиля...",
+            org_msg_profile_saved: "Профиль сохранён.",
+            org_msg_changing_password: "Смена пароля...",
+            org_msg_password_changed: "Пароль изменён.",
+            org_no_organization: "Нет организации",
+            org_role_owner: "Владелец",
+            org_role_admin: "Администратор",
+            org_role_manager: "Менеджер",
+            org_role_scheduler: "Планировщик",
+            org_role_employee: "Сотрудник",
+            org_status_active: "Активен",
+            org_status_disabled: "Отключён",
+            org_status_invited: "Приглашён",
+            org_status_pending: "Ожидает",
+            org_status_accepted: "Принято",
+            org_status_expired: "Истекло",
+            org_status_revoked: "Отозвано",
+            org_cloud_not_connected: "Облачный портал необязателен и не подключён для этой локальной организации.",
+            org_cloud_only_admin_connect: "Только владелец или администратор может подключить организацию к облаку.",
+            org_cloud_enter_valid_url: "Введите корректный Cloud API URL.",
+            org_cloud_preparing_export: "Подготовка экспорта локальной организации...",
+            org_cloud_signing_in: "Вход в Cloud beta API...",
+            org_cloud_owner_required: "Облачный аккаунт должен быть владельцем или администратором целевой организации.",
+            org_cloud_uploading: "Загрузка локальной организации в облако...",
+            org_cloud_saving_link: "Сохранение облачной привязки локально...",
+            org_cloud_linked_imported: "Привязано. Импортировано: сотрудники {employees}, должности {positions}, шаблоны смен {shift_templates}.",
+            org_cloud_only_admin_disconnect: "Только владелец или администратор может отключить облачный портал.",
+            org_cloud_disconnecting: "Отключение облачного портала...",
+            org_cloud_disconnected: "Облачный портал отключён для этой локальной организации.",
+            common_yes: "Да",
+            common_no: "Нет",
             common_delete: "Удалить",
         },
         he: {
@@ -269,8 +351,10 @@
             org_expires: "תוקף בימים",
             org_create_invitation: "צור הזמנה",
             org_employee_portal: "פורטל עובדים",
-            org_employee_portal_text: "עמוד כניסה ציבורי אופציונלי לעובדים לאחר חיבור פורטל הענן.",
+            org_employee_portal_text: "עמוד כניסה ציבורי לעובדים עבור בקשות שבועיות וצפייה בסידור.",
             org_employee_site_address: "כתובת אתר לעובדים",
+            org_employee_portal_not_configured: "כתובת פורטל העובדים לא הוגדרה.",
+            org_open_link: "פתח קישור",
             org_cloud_link: "חיבור לענן",
             org_cloud_link_text: "תוסף בטא אופציונלי. העלה את הארגון המקומי רק עבור פורטל עובדים או בדיקות מיגרציה.",
             org_cloud_api: "Cloud API",
@@ -295,6 +379,9 @@
             org_invitation_link: "קישור הזמנה",
             org_employee: "עובד",
             org_no_employee_link: "ללא קישור לעובד",
+            org_member_employee_not_linked: "לא מקושר",
+            org_no_members: "לא נמצאו חברים.",
+            org_no_invitations: "לא נמצאו הזמנות.",
             org_copy_link: "העתק קישור",
             org_table_name: "שם",
             org_table_status: "סטטוס",
@@ -310,6 +397,42 @@
             org_msg_invitation_revoked: "ההזמנה בוטלה.",
             org_msg_invitation_link_generated: "קישור ההזמנה נוצר.",
             org_msg_employee_portal_copied: "קישור פורטל העובדים הועתק.",
+            org_msg_invitation_copied: "קישור ההזמנה הועתק.",
+            org_msg_no_active_organization: "למשתמש הנוכחי אין ארגון פעיל.",
+            org_msg_creating_invitation: "יוצר הזמנה...",
+            org_msg_select_employee_first: "יש לבחור עובד לפני יצירת הזמנה.",
+            org_msg_invitation_created: "ההזמנה נוצרה.",
+            org_msg_saving_profile: "שומר פרופיל...",
+            org_msg_profile_saved: "הפרופיל נשמר.",
+            org_msg_changing_password: "משנה סיסמה...",
+            org_msg_password_changed: "הסיסמה שונתה.",
+            org_no_organization: "אין ארגון",
+            org_role_owner: "בעלים",
+            org_role_admin: "אדמין",
+            org_role_manager: "מנהל",
+            org_role_scheduler: "מתזמן",
+            org_role_employee: "עובד",
+            org_status_active: "פעיל",
+            org_status_disabled: "מושבת",
+            org_status_invited: "הוזמן",
+            org_status_pending: "ממתין",
+            org_status_accepted: "התקבל",
+            org_status_expired: "פג תוקף",
+            org_status_revoked: "בוטל",
+            org_cloud_not_connected: "פורטל הענן אופציונלי ואינו מחובר לארגון המקומי הזה.",
+            org_cloud_only_admin_connect: "רק בעלים או אדמין יכולים לחבר את הארגון לענן.",
+            org_cloud_enter_valid_url: "הזן Cloud API URL תקין.",
+            org_cloud_preparing_export: "מכין ייצוא ארגון מקומי...",
+            org_cloud_signing_in: "מתחבר ל-Cloud beta API...",
+            org_cloud_owner_required: "חשבון הענן חייב להיות בעלים או אדמין בארגון היעד.",
+            org_cloud_uploading: "מעלה את הארגון המקומי לענן...",
+            org_cloud_saving_link: "שומר קישור ענן מקומית...",
+            org_cloud_linked_imported: "קושר. יובאו {employees} עובדים, {positions} תפקידים, {shift_templates} תבניות משמרת.",
+            org_cloud_only_admin_disconnect: "רק בעלים או אדמין יכולים לנתק את פורטל הענן.",
+            org_cloud_disconnecting: "מנתק פורטל ענן...",
+            org_cloud_disconnected: "פורטל הענן נותק עבור הארגון המקומי הזה.",
+            common_yes: "כן",
+            common_no: "לא",
             common_delete: "מחיקה",
         },
     };
@@ -335,6 +458,7 @@
         const isCloudEmployeePortal = Boolean(window.scheduleAuth?.isHostedCloudOrigin?.());
 
         setText("#auth-title", "app_title");
+        setText(".brand-subtitle", "org_title");
         setText(".auth-brand p", isAcceptInvitation
             ? "auth_create_account"
             : (isLoginShell ? (isCloudEmployeePortal ? "auth_employee_portal" : "auth_foundation") : "auth_org_access"));
@@ -374,6 +498,8 @@
         setText(".nav-item[href='/organization'] .nav-label", "org_title");
         setText(".nav-item[href='/settings'] .nav-label", "nav_settings");
         setText("#organization-selector-wrap span", "org_selector");
+        setText(".organization-panel:first-of-type .settings-section-title", "org_account");
+        setText(".organization-panel:first-of-type .settings-section-text", "org_account_text");
         setText("#profile-form label:nth-of-type(1) span", "org_full_name");
         setText("#profile-form label:nth-of-type(2) span", "auth_email");
         setText("#profile-form .btn", "org_save_profile");
@@ -384,12 +510,12 @@
         setText("#invite-form .settings-section-text", "org_invite_text");
         setText("#invite-form label:nth-of-type(1) span", "org_employee");
         setText("#invite-form label:nth-of-type(2) span", "auth_email");
-        setText("#invite-form label:nth-of-type(3) span", "org_role");
-        setText("#invite-form label:nth-of-type(4) span", "org_expires");
+        setText("#invite-form label:nth-of-type(3) span", "org_expires");
         setText("#invite-form > .btn", "org_create_invitation");
         setText("#employee-portal-panel .settings-section-title", "org_employee_portal");
         setText("#employee-portal-panel .settings-section-text", "org_employee_portal_text");
         setText("#employee-portal-panel label span", "org_employee_site_address");
+        setText("#open-employee-portal-link", "org_open_link");
         setText("#copy-employee-portal-btn", "org_copy_link");
         setText("#cloud-link-panel .settings-section-title", "org_cloud_link");
         setText("#cloud-link-panel .settings-section-text", "org_cloud_link_text");
@@ -404,7 +530,12 @@
         setText("#cloud-link-summary div:nth-child(2) dt", "org_cloud_linked_org");
         setText("#cloud-link-summary div:nth-child(3) dt", "org_cloud_linked_at");
         setText("#invite-result-wrap label span", "org_invitation_link");
+        setText("#open-invite-link", "org_open_link");
         setText("#copy-invite-btn", "org_copy_link");
+        setText("#members-panel .settings-section-title", "org_members");
+        setText("#members-panel .settings-section-text", "org_members_text");
+        setText("#invitations-panel .settings-section-title", "org_invitations");
+        setText("#invitations-panel .settings-section-text", "org_invitations_text");
         setText(".organization-table th:nth-child(1)", "org_table_name");
         setText(".organization-table th:nth-child(4)", "org_table_status");
         setText(".organization-table:first-of-type th:nth-child(5)", "org_email_verified");

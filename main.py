@@ -35,9 +35,10 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.5_beta"
+APP_VERSION = "0.15.6_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
+DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
 GITHUB_REPO_OWNER = "LittleDespairs"
 GITHUB_REPO_NAME = "Schedule_app_releases"
@@ -143,7 +144,7 @@ def get_public_app_base_url() -> str:
         return configured_url
     if config.is_deployed_env:
         return DEFAULT_CLOUD_API_BASE_URL
-    return ""
+    return DEFAULT_PUBLIC_APP_BASE_URL
 
 
 def build_public_app_url(path: str) -> str:

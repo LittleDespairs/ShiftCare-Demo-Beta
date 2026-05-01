@@ -45,6 +45,10 @@
     function setInviteResult(value) {
         elements.inviteResult.value = value || "";
         elements.inviteResultWrap.hidden = !value;
+        if (elements.openInviteLink) {
+            elements.openInviteLink.href = value || "#";
+            elements.openInviteLink.setAttribute("aria-disabled", value ? "false" : "true");
+        }
     }
 
     function configuredPublicBaseUrl() {
@@ -60,13 +64,16 @@
     }
 
     function invitationUrlFromResponse(response) {
-        if (response.invitation_url) return response.invitation_url;
-        const token = response.invitation_token || "";
         const publicBaseUrl = configuredPublicBaseUrl();
+        const cloudBaseUrl = window.scheduleAuth?.CLOUD_API_FALLBACK_BASE_URL || window.scheduleAuth?.CLOUD_API_BASE_URL || "";
+        const rawUrl = String(response.invitation_url || "").trim();
+        if (/^https?:\/\//i.test(rawUrl)) return rawUrl;
+        if (rawUrl.startsWith("/") && publicBaseUrl) return `${publicBaseUrl}${rawUrl}`;
+        if (rawUrl.startsWith("/") && cloudBaseUrl) return `${cloudBaseUrl.replace(/\/+$/, "")}${rawUrl}`;
+        const token = response.invitation_token || "";
         if (publicBaseUrl && token) {
             return `${publicBaseUrl}/accept-invitation?token=${encodeURIComponent(token)}`;
         }
-        const cloudBaseUrl = window.scheduleAuth?.CLOUD_API_FALLBACK_BASE_URL || window.scheduleAuth?.CLOUD_API_BASE_URL || "";
         if (cloudBaseUrl && token) {
             return `${cloudBaseUrl.replace(/\/+$/, "")}/accept-invitation?token=${encodeURIComponent(token)}`;
         }
@@ -121,18 +128,23 @@
         elements.identity.innerHTML = `
             <strong>${text(state.user.full_name)}</strong>
             <span>${text(state.user.email)}</span>
-            <span>${text(state.membership?.organization_name || "No organization")} · ${text(state.membership?.role || "no role")}</span>
+            <span>${text(state.membership?.organization_name || uiText("org_no_organization", "No organization"))} · ${text(formatRole(state.membership?.role || "no role"))}</span>
         `;
-        elements.title.textContent = state.organizationName || "Organization";
+        elements.title.textContent = state.organizationName || uiText("org_title", "Organization");
         elements.profileName.value = state.user.full_name || "";
         elements.profileEmail.value = state.user.email || "";
     }
 
     function renderEmployeePortal() {
         if (!elements.employeePortalUrl) return;
-        elements.employeePortalUrl.value = employeePortalUrl() || "Employee portal URL is not configured.";
+        const url = employeePortalUrl();
+        elements.employeePortalUrl.value = url || uiText("org_employee_portal_not_configured", "Employee portal URL is not configured.");
         if (elements.copyEmployeePortal) {
-            elements.copyEmployeePortal.disabled = !employeePortalUrl();
+            elements.copyEmployeePortal.disabled = !url;
+        }
+        if (elements.openEmployeePortalLink) {
+            elements.openEmployeePortalLink.href = url || "#";
+            elements.openEmployeePortalLink.setAttribute("aria-disabled", url ? "false" : "true");
         }
     }
 
@@ -156,7 +168,19 @@
         }
     }
 
-    function renderMembers(members, emptyMessage = "No members found.") {
+    function formatRole(role) {
+        return uiText(`org_role_${role}`, role || "-");
+    }
+
+    function formatStatus(status) {
+        return uiText(`org_status_${status}`, status || "-");
+    }
+
+    function yesNo(value) {
+        return value ? uiText("common_yes", "Yes") : uiText("common_no", "No");
+    }
+
+    function renderMembers(members, emptyMessage = uiText("org_no_members", "No members found.")) {
         state.members = members;
         if (!members.length) {
             elements.membersBody.innerHTML = `<tr><td colspan="7">${text(emptyMessage)}</td></tr>`;
@@ -167,9 +191,9 @@
                 <td>${text(member.full_name)}</td>
                 <td>${text(member.email)}</td>
                 <td>${renderMemberEmployeeCell(member)}</td>
-                <td>${text(member.role)}</td>
-                <td>${text(member.membership_status)}</td>
-                <td>${member.email_verified ? "Yes" : "No"}</td>
+                <td>${text(formatRole(member.role))}</td>
+                <td>${text(formatStatus(member.membership_status))}</td>
+                <td>${text(yesNo(member.email_verified))}</td>
                 <td>
                     <div class="organization-table-actions">
                         <button
@@ -194,7 +218,7 @@
         return text(member.employee_name || uiText("org_member_employee_not_linked", "Not linked"));
     }
 
-    function renderInvitations(invitations, emptyMessage = "No invitations found.") {
+    function renderInvitations(invitations, emptyMessage = uiText("org_no_invitations", "No invitations found.")) {
         state.invitations = invitations;
         if (!invitations.length) {
             elements.invitationsBody.innerHTML = `<tr><td colspan="7">${text(emptyMessage)}</td></tr>`;
@@ -204,8 +228,8 @@
             <tr>
                 <td>${text(invitation.email)}</td>
                 <td>${text(invitation.employee_name || "")}</td>
-                <td>${text(invitation.role)}</td>
-                <td>${text(invitation.status)}</td>
+                <td>${text(formatRole(invitation.role))}</td>
+                <td>${text(formatStatus(invitation.status))}</td>
                 <td>${text(invitation.expires_at)}</td>
                 <td>${text(invitation.accepted_at || "")}</td>
                 <td>
@@ -291,7 +315,7 @@
 
     async function loadOrganizationData() {
         if (!state.organizationId) {
-            setMessage("Current user has no active organization.", "error");
+            setMessage(uiText("org_msg_no_active_organization", "Current user has no active organization."), "error");
             return;
         }
 
@@ -382,9 +406,9 @@
             event.preventDefault();
             if (!canManageInvitations()) return;
             setInviteResult("");
-            setMessage("Creating invitation...", "");
+            setMessage(uiText("org_msg_creating_invitation", "Creating invitation..."), "");
             if (!elements.inviteEmployee.value) {
-                setMessage("Select an employee before creating an employee invitation.", "error");
+                setMessage(uiText("org_msg_select_employee_first", "Select an employee before creating an employee invitation."), "error");
                 elements.inviteEmployee.focus();
                 return;
             }
@@ -403,7 +427,7 @@
                 elements.inviteDays.value = "7";
                 await loadOrganizationData();
                 renderEmployeeSelector();
-                setMessage("Invitation created.", "success");
+                setMessage(uiText("org_msg_invitation_created", "Invitation created."), "success");
             } catch (error) {
                 setMessage(error.message, "error");
             }
@@ -413,7 +437,7 @@
     function bindProfileForms() {
         elements.profileForm.addEventListener("submit", async (event) => {
             event.preventDefault();
-            setMessage("Saving profile...", "");
+            setMessage(uiText("org_msg_saving_profile", "Saving profile..."), "");
             try {
                 const response = await window.scheduleAuth.request("/api/auth/profile", {
                     method: "PUT",
@@ -427,7 +451,7 @@
                 selectMembership();
                 renderOrganizationSelector();
                 renderIdentity();
-                setMessage("Profile saved.", "success");
+                setMessage(uiText("org_msg_profile_saved", "Profile saved."), "success");
             } catch (error) {
                 setMessage(error.message, "error");
             }
@@ -435,7 +459,7 @@
 
         elements.passwordForm.addEventListener("submit", async (event) => {
             event.preventDefault();
-            setMessage("Changing password...", "");
+            setMessage(uiText("org_msg_changing_password", "Changing password..."), "");
             try {
                 await window.scheduleAuth.request("/api/auth/change-password", {
                     method: "POST",
@@ -445,7 +469,7 @@
                     }),
                 });
                 elements.passwordForm.reset();
-                setMessage("Password changed.", "success");
+                setMessage(uiText("org_msg_password_changed", "Password changed."), "success");
             } catch (error) {
                 setMessage(error.message, "error");
             }
@@ -491,7 +515,7 @@
             if (link.linked) {
                 setCloudStatus(uiText("org_cloud_linked_status", "This installation is linked to cloud."), "success");
             } else {
-                setCloudStatus("Cloud portal is optional and is not connected for this local organization.", "");
+                setCloudStatus(uiText("org_cloud_not_connected", "Cloud portal is optional and is not connected for this local organization."), "");
             }
         } catch (error) {
             renderCloudLinkSummary(null);
@@ -545,25 +569,25 @@
 
     async function uploadAndLinkCloudOrganization() {
         if (!canManageInvitations()) {
-            setCloudStatus("Only owners and admins can connect this organization to cloud.", "error");
+            setCloudStatus(uiText("org_cloud_only_admin_connect", "Only owners and admins can connect this organization to cloud."), "error");
             return;
         }
         const cloudBaseUrl = normalizeCloudApiBaseUrl(elements.cloudApiBaseUrl.value);
         if (!cloudBaseUrl) {
-            setCloudStatus("Enter a valid Cloud API URL.", "error");
+            setCloudStatus(uiText("org_cloud_enter_valid_url", "Enter a valid Cloud API URL."), "error");
             return;
         }
         setMessage("", "");
-        setCloudStatus("Preparing local organization export...", "");
+        setCloudStatus(uiText("org_cloud_preparing_export", "Preparing local organization export..."), "");
         try {
             const localBundle = await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-export`);
-            setCloudStatus("Signing in to Cloud beta API...", "");
+            setCloudStatus(uiText("org_cloud_signing_in", "Signing in to Cloud beta API..."), "");
             const cloudSession = await loginOrBootstrapCloud(cloudBaseUrl);
             const cloudMembership = getCloudMembership(cloudSession.user);
             if (!cloudMembership || !["owner", "admin"].includes(cloudMembership.role)) {
-                throw new Error("Cloud account must be an owner or admin of the target organization.");
+                throw new Error(uiText("org_cloud_owner_required", "Cloud account must be an owner or admin of the target organization."));
             }
-            setCloudStatus("Uploading local organization to cloud...", "");
+            setCloudStatus(uiText("org_cloud_uploading", "Uploading local organization to cloud..."), "");
             const importResponse = await cloudRequest(
                 cloudBaseUrl,
                 `/api/organizations/${cloudMembership.organization_id}/cloud-import`,
@@ -576,7 +600,7 @@
                 },
                 cloudSession.access_token,
             );
-            setCloudStatus("Saving cloud link locally...", "");
+            setCloudStatus(uiText("org_cloud_saving_link", "Saving cloud link locally..."), "");
             await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-link`, {
                 method: "POST",
                 body: JSON.stringify({
@@ -587,7 +611,10 @@
                 }),
             });
             setCloudStatus(
-                `Linked. Imported ${importResponse.imported.employees} employees, ${importResponse.imported.positions} positions, ${importResponse.imported.shift_templates} shift templates.`,
+                uiText("org_cloud_linked_imported", "Linked. Imported {employees} employees, {positions} positions, {shift_templates} shift templates.")
+                    .replace("{employees}", importResponse.imported.employees)
+                    .replace("{positions}", importResponse.imported.positions)
+                    .replace("{shift_templates}", importResponse.imported.shift_templates),
                 "success",
             );
             await loadCloudLinkStatus();
@@ -599,16 +626,16 @@
 
     async function unlinkCloudOrganization() {
         if (!canManageInvitations()) {
-            setCloudStatus("Only owners and admins can disconnect the cloud portal.", "error");
+            setCloudStatus(uiText("org_cloud_only_admin_disconnect", "Only owners and admins can disconnect the cloud portal."), "error");
             return;
         }
-        setCloudStatus("Disconnecting cloud portal...", "");
+        setCloudStatus(uiText("org_cloud_disconnecting", "Disconnecting cloud portal..."), "");
         try {
             await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-link`, {
                 method: "DELETE",
             });
             renderCloudLinkSummary(null);
-            setCloudStatus("Cloud portal disconnected for this local organization.", "success");
+            setCloudStatus(uiText("org_cloud_disconnected", "Cloud portal disconnected for this local organization."), "success");
         } catch (error) {
             setCloudStatus(error.message, "error");
         }
@@ -632,7 +659,7 @@
         elements.copyInvite.addEventListener("click", async () => {
             if (!elements.inviteResult.value) return;
             await navigator.clipboard.writeText(elements.inviteResult.value);
-            setMessage("Invitation link copied.", "success");
+            setMessage(uiText("org_msg_invitation_copied", "Invitation link copied."), "success");
         });
         elements.copyEmployeePortal?.addEventListener("click", async () => {
             if (!elements.employeePortalUrl.value) return;
@@ -695,8 +722,10 @@
             inviteDays: document.getElementById("invite-days"),
             inviteResult: document.getElementById("invite-result"),
             inviteResultWrap: document.getElementById("invite-result-wrap"),
+            openInviteLink: document.getElementById("open-invite-link"),
             copyInvite: document.getElementById("copy-invite-btn"),
             employeePortalUrl: document.getElementById("employee-portal-url"),
+            openEmployeePortalLink: document.getElementById("open-employee-portal-link"),
             copyEmployeePortal: document.getElementById("copy-employee-portal-btn"),
             cloudLinkForm: document.getElementById("cloud-link-form"),
             cloudApiBaseUrl: document.getElementById("cloud-api-base-url"),
