@@ -15,29 +15,36 @@
 <body class="app-shell ltr" data-app-version="{{ app_version }}">
     <div class="app-layout">
         <aside class="sidebar">
-            <div class="brand">
-                <div class="brand-logo">SC</div>
-                <div class="brand-text">
-                    <h1 class="brand-title">ShiftCare</h1>
-                    <p class="brand-subtitle">Organization</p>
+            <div class="sidebar-top-row">
+                <div class="brand">
+                    <div class="brand-logo">SC</div>
+                    <div class="brand-text">
+                        <h1 class="brand-title" data-i18n="app_title">ShiftCare</h1>
+                        <p class="brand-subtitle" data-i18n="nav_organization">Organization</p>
+                    </div>
                 </div>
+                <button id="sidebar-toggle" class="sidebar-toggle" type="button" data-i18n-title="toggle_sidebar"
+                    title="Toggle menu">
+                    ☰
+                </button>
             </div>
+            <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
             <nav class="nav-list">
                 <a href="/" class="nav-item">
-                    <span class="nav-icon">⌂</span>
-                    <span class="nav-label">Home</span>
+                    <span class="nav-icon" aria-hidden="true">⌂</span>
+                    <span class="nav-label" data-i18n="nav_dashboard">Home</span>
                 </a>
                 <a href="/schedule" class="nav-item">
-                    <span class="nav-icon">🗓</span>
-                    <span class="nav-label">Schedule</span>
+                    <span class="nav-icon" aria-hidden="true">🗓</span>
+                    <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
                 </a>
                 <a href="/organization" class="nav-item active">
-                    <span class="nav-icon">◎</span>
-                    <span class="nav-label">Organization</span>
+                    <span class="nav-icon" aria-hidden="true">◎</span>
+                    <span class="nav-label" data-i18n="nav_organization">Organization</span>
                 </a>
                 <a href="/settings" class="nav-item">
-                    <span class="nav-icon">⚙</span>
-                    <span class="nav-label">Settings</span>
+                    <span class="nav-icon" aria-hidden="true">⚙</span>
+                    <span class="nav-label" data-i18n="nav_settings">Settings</span>
                 </a>
             </nav>
         </aside>
@@ -46,7 +53,7 @@
             <header class="topbar">
                 <div class="page-heading">
                     <h2 id="organization-title" class="page-title">Organization</h2>
-                    <p class="page-subtitle">Members, roles, and employee invitation links.</p>
+                    <p class="page-subtitle" data-i18n="org_subtitle">Members, roles, and employee invitation links.</p>
                 </div>
                 <div class="topbar-actions">
                     <div class="lang-switcher">
@@ -55,11 +62,11 @@
                         <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
                     </div>
                     <label id="organization-selector-wrap" class="organization-selector" hidden>
-                        <span>Organization</span>
+                        <span data-i18n="org_selector">Organization</span>
                         <select id="organization-select"></select>
                     </label>
                     <div id="organization-identity" class="organization-identity"></div>
-                    <button id="logout-btn" class="btn btn-secondary" type="button">Logout</button>
+                    <button id="logout-btn" class="btn btn-secondary" type="button" data-i18n="common_logout">Logout</button>
                 </div>
             </header>
 
@@ -67,52 +74,52 @@
                 <section class="organization-panel">
                     <div class="settings-section-header">
                         <div>
-                            <h3 class="settings-section-title">Account</h3>
-                            <p class="settings-section-text">Profile details and password.</p>
+                            <h3 class="settings-section-title" data-i18n="org_account">Account</h3>
+                            <p class="settings-section-text" data-i18n="org_account_text">Profile details and password.</p>
                         </div>
                     </div>
 
                     <form id="profile-form" class="organization-form-stack">
                         <label class="form-field">
-                            <span>Full name</span>
+                            <span data-i18n="org_full_name">Full name</span>
                             <input id="profile-name" type="text" autocomplete="name" required>
                         </label>
                         <label class="form-field">
-                            <span>Email</span>
+                            <span data-i18n="auth_email">Email</span>
                             <input id="profile-email" type="email" autocomplete="email" readonly>
                         </label>
-                        <button class="btn btn-primary" type="submit">Save profile</button>
+                        <button class="btn btn-primary" type="submit" data-i18n="org_save_profile">Save profile</button>
                     </form>
 
                     <form id="password-form" class="organization-form-stack">
                         <label class="form-field">
-                            <span>Current password</span>
+                            <span data-i18n="org_current_password">Current password</span>
                             <input id="current-password" type="password" autocomplete="current-password" required>
                         </label>
                         <label class="form-field">
-                            <span>New password</span>
+                            <span data-i18n="org_new_password">New password</span>
                             <input id="new-password" type="password" autocomplete="new-password" minlength="8" required>
                         </label>
-                        <button class="btn btn-secondary" type="submit">Change password</button>
+                        <button class="btn btn-secondary" type="submit" data-i18n="org_change_password">Change password</button>
                     </form>
                 </section>
 
                 <section id="employee-portal-panel" class="organization-panel">
                     <div class="settings-section-header">
                         <div>
-                            <h3 class="settings-section-title">Employee portal</h3>
-                            <p class="settings-section-text">Public page for employee wishes and read-only schedules.</p>
+                            <h3 class="settings-section-title" data-i18n="org_employee_portal">Employee portal</h3>
+                            <p class="settings-section-text" data-i18n="org_employee_portal_text">Public page for employee wishes and read-only schedules.</p>
                         </div>
                     </div>
 
                     <div class="invite-result">
                         <label class="form-field">
-                            <span>Employee site address</span>
+                            <span data-i18n="org_employee_site_address">Employee site address</span>
                             <input id="employee-portal-url" type="url" readonly>
                         </label>
                         <div class="organization-link-actions">
-                            <a id="open-employee-portal-link" class="btn btn-secondary organization-link-button" href="#" target="_blank" rel="noopener">Open link</a>
-                            <button id="copy-employee-portal-btn" class="btn btn-secondary" type="button">Copy link</button>
+                            <a id="open-employee-portal-link" class="btn btn-secondary organization-link-button" href="#" target="_blank" rel="noopener" data-i18n="org_open_link">Open link</a>
+                            <button id="copy-employee-portal-btn" class="btn btn-secondary" type="button" data-i18n="org_copy_link">Copy link</button>
                         </div>
                     </div>
                 </section>
@@ -120,40 +127,40 @@
                 <form id="invite-form" class="organization-panel">
                     <div class="settings-section-header">
                         <div>
-                            <h3 class="settings-section-title">Invite employee</h3>
-                            <p class="settings-section-text">Create a one-time invitation link.</p>
+                            <h3 class="settings-section-title" data-i18n="org_invite">Invite employee</h3>
+                            <p class="settings-section-text" data-i18n="org_invite_text">Create a one-time invitation link.</p>
                         </div>
                     </div>
 
                     <label class="form-field">
-                        <span>Employee</span>
+                        <span data-i18n="org_employee">Employee</span>
                         <select id="invite-employee">
-                            <option value="">Select employee</option>
+                            <option value="" data-i18n="preferences_select_employee">Select employee</option>
                         </select>
                     </label>
 
                     <label class="form-field">
-                        <span>Email</span>
+                        <span data-i18n="auth_email">Email</span>
                         <input id="invite-email" type="email" autocomplete="email" required>
                     </label>
 
                     <input id="invite-role" type="hidden" value="employee">
 
                     <label class="form-field">
-                        <span>Expires in days</span>
+                        <span data-i18n="org_expires">Expires in days</span>
                         <input id="invite-days" type="number" min="1" max="30" value="7" required>
                     </label>
 
-                    <button class="btn btn-primary" type="submit">Create invitation</button>
+                    <button class="btn btn-primary" type="submit" data-i18n="org_create_invitation">Create invitation</button>
 
                     <div id="invite-result-wrap" class="invite-result" hidden>
                         <label class="form-field">
-                            <span>Invitation link</span>
+                            <span data-i18n="org_invitation_link">Invitation link</span>
                             <input id="invite-result" type="url" readonly>
                         </label>
                         <div class="organization-link-actions">
-                            <a id="open-invite-link" class="btn btn-secondary organization-link-button" href="#" target="_blank" rel="noopener">Open link</a>
-                            <button id="copy-invite-btn" class="btn btn-secondary" type="button">Copy link</button>
+                            <a id="open-invite-link" class="btn btn-secondary organization-link-button" href="#" target="_blank" rel="noopener" data-i18n="org_open_link">Open link</a>
+                            <button id="copy-invite-btn" class="btn btn-secondary" type="button" data-i18n="org_copy_link">Copy link</button>
                         </div>
                     </div>
                 </form>
@@ -161,21 +168,21 @@
                 <section id="members-panel" class="organization-panel">
                     <div class="settings-section-header">
                         <div>
-                            <h3 class="settings-section-title">Members</h3>
-                            <p class="settings-section-text">Active users and organization roles.</p>
+                            <h3 class="settings-section-title" data-i18n="org_members">Members</h3>
+                            <p class="settings-section-text" data-i18n="org_members_text">Active users and organization roles.</p>
                         </div>
                     </div>
                     <div class="organization-table-wrap">
                         <table class="organization-table">
                             <thead>
                                 <tr>
-                                    <th>Name</th>
-                                    <th>Email</th>
-                                    <th>Employee</th>
-                                    <th>Role</th>
-                                    <th>Status</th>
-                                    <th>Email verified</th>
-                                    <th>Actions</th>
+                                    <th data-i18n="org_table_name">Name</th>
+                                    <th data-i18n="auth_email">Email</th>
+                                    <th data-i18n="org_employee">Employee</th>
+                                    <th data-i18n="org_role">Role</th>
+                                    <th data-i18n="org_table_status">Status</th>
+                                    <th data-i18n="org_email_verified">Email verified</th>
+                                    <th data-i18n="org_table_actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="members-table-body"></tbody>
@@ -186,21 +193,21 @@
                 <section id="invitations-panel" class="organization-panel organization-panel-wide">
                     <div class="settings-section-header">
                         <div>
-                            <h3 class="settings-section-title">Invitations</h3>
-                            <p class="settings-section-text">Pending, accepted, expired, and revoked links.</p>
+                            <h3 class="settings-section-title" data-i18n="org_invitations">Invitations</h3>
+                            <p class="settings-section-text" data-i18n="org_invitations_text">Pending, accepted, expired, and revoked links.</p>
                         </div>
                     </div>
                     <div class="organization-table-wrap">
                         <table class="organization-table">
                             <thead>
                                 <tr>
-                                    <th>Email</th>
-                                    <th>Employee</th>
-                                    <th>Role</th>
-                                    <th>Status</th>
-                                    <th>Expires</th>
-                                    <th>Accepted</th>
-                                    <th>Actions</th>
+                                    <th data-i18n="auth_email">Email</th>
+                                    <th data-i18n="org_employee">Employee</th>
+                                    <th data-i18n="org_role">Role</th>
+                                    <th data-i18n="org_table_status">Status</th>
+                                    <th data-i18n="org_expires">Expires</th>
+                                    <th data-i18n="org_table_accepted">Accepted</th>
+                                    <th data-i18n="org_table_actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="invitations-table-body"></tbody>

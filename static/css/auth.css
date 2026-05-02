@@ -383,6 +383,7 @@
     background: #ffffff;
     box-shadow: var(--shadow);
     padding: 20px;
+    min-width: 0;
 }
 
 .organization-panel-wide {
@@ -435,6 +436,7 @@
 }
 
 .organization-table-wrap {
+    max-width: 100%;
     overflow-x: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -597,6 +599,18 @@
     }
 
     .organization-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .organization-identity,
+    .organization-selector,
+    .organization-table-select {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .organization-link-actions {
+        display: grid;
         grid-template-columns: 1fr;
     }
 

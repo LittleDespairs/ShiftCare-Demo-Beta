@@ -2,6 +2,29 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.8_beta - 2026-05-02
+
+## Fixed
+
+- Stabilized sidebar navigation so active items keep the same height and alignment as inactive items.
+- Normalized role-based navigation ordering and icons, including the Organization tab in desktop and employee portal views.
+- Added the missing Organization sidebar collapse control and translated Organization page labels.
+- Fixed missing translation keys that could surface as raw technical IDs in the interface.
+- Removed mobile horizontal overflow from Organization, support, and directory pages.
+
+## Changed
+
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.8_beta`.
+
+## Verified
+
+- `node --check static/js/access_control.js`
+- `node --check static/js/organization.js`
+- `node --check static/js/i18n.js`
+- `node --check static/js/auth_i18n.js`
+- `.venv\Scripts\python.exe -m unittest discover -s tests`
+- Playwright desktop/mobile layout checks against local pages.
+
 # 0.15.7_beta - 2026-05-01
 
 ## Fixed

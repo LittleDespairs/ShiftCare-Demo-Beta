@@ -205,6 +205,7 @@ const I18N_TRANSLATIONS = {
         msg_server_error_load_schedule: "Server error while loading schedule.",
         msg_schedule_loaded: "Schedule loaded successfully.",
         msg_failed_save_schedule_display: "Failed to save coverage display mode.",
+        msg_export_failed: "Export failed.",
 
         msg_auto_generate_failed: "Auto-generation failed.",
         msg_auto_generate_done: "Auto-generation finished.",
@@ -507,7 +508,9 @@ const I18N_TRANSLATIONS = {
         msg_nothing_to_save: "Nothing to save.",
         msg_some_preferences_not_saved: "Some preferences were not saved.",
         msg_preferences_saved: "Preferences saved successfully.",
+        msg_preference_deleted: "Preference cleared successfully.",
         msg_server_error_save_preferences: "Server error while saving preferences.",
+        msg_server_error_delete_preference: "Server error while clearing preference.",
         positions_page_title: "Positions",
         positions_page_subtitle: "Create and manage department positions used by the scheduling system.",
 
@@ -528,6 +531,7 @@ const I18N_TRANSLATIONS = {
         positions_limit_general: "General",
 
         positions_add_button: "Add position",
+        positions_update_button: "Update position",
 
         positions_list_title: "Position list",
         positions_list_subtitle: "All positions currently saved in the system.",
@@ -540,6 +544,8 @@ const I18N_TRANSLATIONS = {
         positions_table_generation_limits: "Generation limits",
 
         positions_empty_list: "No positions yet",
+        positions_edit_button: "Edit",
+        positions_delete_button: "Delete",
 
         positions_notes_title: "Notes",
         positions_note_1: "A position can later be assigned to multiple employees.",
@@ -549,6 +555,7 @@ const I18N_TRANSLATIONS = {
         msg_enter_position_name: "Please enter position name.",
         msg_failed_add_position: "Failed to add position.",
         msg_server_error_save_position: "Server error while saving position.",
+        msg_editing_position: "Editing position",
         templates_page_title: "Shift templates",
         templates_page_subtitle: "Create and manage reusable shift templates for schedule generation and manual assignment.",
 
@@ -629,6 +636,7 @@ const I18N_TRANSLATIONS = {
         assignments_is_fallback_only: "Fallback only",
 
         assignments_add_button: "Assign position",
+        assignments_update_button: "Update assignment",
 
         assignments_list_title: "Assignment list",
         assignments_list_subtitle: "All employee-to-position links currently saved in the system.",
@@ -642,6 +650,7 @@ const I18N_TRANSLATIONS = {
         assignments_table_actions: "Actions",
 
         assignments_empty_list: "No assignments yet",
+        assignments_edit_button: "Edit",
         assignments_delete_button: "Remove",
 
         assignments_notes_title: "Notes",
@@ -653,6 +662,7 @@ const I18N_TRANSLATIONS = {
         msg_server_error_load_assignment_data: "Server error while loading assignment data.",
         msg_failed_assign_position: "Failed to assign position.",
         msg_server_error_save_assignment: "Server error while saving assignment.",
+        msg_editing_assignment: "Editing assignment",
         msg_confirm_delete_assignment: "Are you sure you want to remove this assignment?",
         msg_failed_delete_assignment: "Failed to delete assignment.",
         msg_server_error_delete_assignment: "Server error while deleting assignment.",
@@ -1181,6 +1191,7 @@ const I18N_TRANSLATIONS = {
         msg_server_error_load_schedule: "Ошибка сервера при загрузке расписания.",
         msg_schedule_loaded: "Расписание успешно загружено.",
         msg_failed_save_schedule_display: "Не удалось сохранить режим отображения покрытия.",
+        msg_export_failed: "Не удалось выполнить экспорт.",
 
         msg_auto_generate_failed: "Автогенерация не удалась.",
         msg_auto_generate_done: "Автогенерация завершена.",
@@ -1430,7 +1441,9 @@ const I18N_TRANSLATIONS = {
         msg_nothing_to_save: "Нечего сохранять.",
         msg_some_preferences_not_saved: "Некоторые пожелания не были сохранены.",
         msg_preferences_saved: "Пожелания успешно сохранены.",
+        msg_preference_deleted: "Пожелание очищено.",
         msg_server_error_save_preferences: "Ошибка сервера при сохранении пожеланий.",
+        msg_server_error_delete_preference: "Ошибка сервера при очистке пожелания.",
         positions_page_title: "Должности",
         positions_page_subtitle: "Создание и управление должностями отдела, используемыми системой расписания.",
 
@@ -1451,6 +1464,7 @@ const I18N_TRANSLATIONS = {
         positions_limit_general: "Общий",
 
         positions_add_button: "Добавить должность",
+        positions_update_button: "Обновить должность",
 
         positions_list_title: "Список должностей",
         positions_list_subtitle: "Все должности, сохранённые в системе.",
@@ -1463,6 +1477,8 @@ const I18N_TRANSLATIONS = {
         positions_table_generation_limits: "Лимиты генерации",
 
         positions_empty_list: "Должностей пока нет",
+        positions_edit_button: "Редактировать",
+        positions_delete_button: "Удалить",
 
         positions_notes_title: "Заметки",
         positions_note_1: "Одна должность в дальнейшем может быть назначена нескольким сотрудникам.",
@@ -1472,6 +1488,7 @@ const I18N_TRANSLATIONS = {
         msg_enter_position_name: "Пожалуйста, введите название должности.",
         msg_failed_add_position: "Не удалось добавить должность.",
         msg_server_error_save_position: "Ошибка сервера при сохранении должности.",
+        msg_editing_position: "Редактируется должность",
         templates_page_title: "Шаблоны смен",
         templates_page_subtitle: "Создание и управление шаблонами смен для автогенерации и ручного назначения.",
 
@@ -1548,6 +1565,7 @@ const I18N_TRANSLATIONS = {
         assignments_is_fallback_only: "Только как резерв",
 
         assignments_add_button: "Назначить должность",
+        assignments_update_button: "Обновить назначение",
 
         assignments_list_title: "Список назначений",
         assignments_list_subtitle: "Все связи сотрудник-должность, сохранённые в системе.",
@@ -1561,6 +1579,7 @@ const I18N_TRANSLATIONS = {
         assignments_table_actions: "Действия",
 
         assignments_empty_list: "Назначений пока нет",
+        assignments_edit_button: "Редактировать",
         assignments_delete_button: "Удалить",
 
         assignments_notes_title: "Заметки",
@@ -1572,6 +1591,7 @@ const I18N_TRANSLATIONS = {
         msg_server_error_load_assignment_data: "Ошибка сервера при загрузке данных назначений.",
         msg_failed_assign_position: "Не удалось назначить должность.",
         msg_server_error_save_assignment: "Ошибка сервера при сохранении назначения.",
+        msg_editing_assignment: "Редактируется назначение",
         msg_confirm_delete_assignment: "Вы уверены, что хотите удалить это назначение?",
         msg_failed_delete_assignment: "Не удалось удалить назначение.",
         msg_server_error_delete_assignment: "Ошибка сервера при удалении назначения.",
@@ -2053,6 +2073,7 @@ const I18N_TRANSLATIONS = {
         msg_server_error_load_schedule: "שגיאת שרת בזמן טעינת סידור העבודה.",
         msg_schedule_loaded: "סידור העבודה נטען בהצלחה.",
         msg_failed_save_schedule_display: "שמירת מצב תצוגת הכיסוי נכשלה.",
+        msg_export_failed: "הייצוא נכשל.",
 
         msg_auto_generate_failed: "היצירה האוטומטית נכשלה.",
         msg_auto_generate_done: "היצירה האוטומטית הסתיימה.",
@@ -2350,7 +2371,9 @@ const I18N_TRANSLATIONS = {
         msg_nothing_to_save: "אין מה לשמור.",
         msg_some_preferences_not_saved: "חלק מההעדפות לא נשמרו.",
         msg_preferences_saved: "ההעדפות נשמרו בהצלחה.",
+        msg_preference_deleted: "ההעדפה נוקתה.",
         msg_server_error_save_preferences: "שגיאת שרת בזמן שמירת ההעדפות.",
+        msg_server_error_delete_preference: "שגיאת שרת בזמן ניקוי ההעדפה.",
         positions_page_title: "תפקידים",
         positions_page_subtitle: "יצירה וניהול תפקידי מחלקה המשמשים את מערכת סידור העבודה.",
 
@@ -2371,6 +2394,7 @@ const I18N_TRANSLATIONS = {
         positions_limit_general: "כללי",
 
         positions_add_button: "הוסף תפקיד",
+        positions_update_button: "עדכן תפקיד",
 
         positions_list_title: "רשימת תפקידים",
         positions_list_subtitle: "כל התפקידים השמורים כרגע במערכת.",
@@ -2383,6 +2407,8 @@ const I18N_TRANSLATIONS = {
         positions_table_generation_limits: "מגבלות יצירה",
 
         positions_empty_list: "אין עדיין תפקידים",
+        positions_edit_button: "ערוך",
+        positions_delete_button: "מחק",
 
         positions_notes_title: "הערות",
         positions_note_1: "בהמשך ניתן לשייך תפקיד אחד למספר עובדים.",
@@ -2392,6 +2418,7 @@ const I18N_TRANSLATIONS = {
         msg_enter_position_name: "אנא הזן שם תפקיד.",
         msg_failed_add_position: "הוספת התפקיד נכשלה.",
         msg_server_error_save_position: "שגיאת שרת בזמן שמירת התפקיד.",
+        msg_editing_position: "עורך תפקיד",
         templates_page_title: "תבניות משמרת",
         templates_page_subtitle: "יצירה וניהול תבניות משמרת לשימוש ביצירה אוטומטית ובהקצאה ידנית.",
 
@@ -2468,6 +2495,7 @@ const I18N_TRANSLATIONS = {
         assignments_is_fallback_only: "לשימוש כגיבוי בלבד",
 
         assignments_add_button: "שייך תפקיד",
+        assignments_update_button: "עדכן שיוך",
 
         assignments_list_title: "רשימת שיוכים",
         assignments_list_subtitle: "כל הקישורים עובד-תפקיד השמורים כרגע במערכת.",
@@ -2481,6 +2509,7 @@ const I18N_TRANSLATIONS = {
         assignments_table_actions: "פעולות",
 
         assignments_empty_list: "אין עדיין שיוכים",
+        assignments_edit_button: "ערוך",
         assignments_delete_button: "הסר",
 
         assignments_notes_title: "הערות",
@@ -2492,6 +2521,7 @@ const I18N_TRANSLATIONS = {
         msg_server_error_load_assignment_data: "שגיאת שרת בזמן טעינת נתוני השיוך.",
         msg_failed_assign_position: "שיוך התפקיד נכשל.",
         msg_server_error_save_assignment: "שגיאת שרת בזמן שמירת השיוך.",
+        msg_editing_assignment: "עורך שיוך",
         msg_confirm_delete_assignment: "האם אתה בטוח שברצונך להסיר את השיוך הזה?",
         msg_failed_delete_assignment: "מחיקת השיוך נכשלה.",
         msg_server_error_delete_assignment: "שגיאת שרת בזמן מחיקת השיוך.",

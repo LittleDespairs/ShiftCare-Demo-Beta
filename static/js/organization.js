@@ -24,7 +24,37 @@
             const translated = window.organizationAuthText(key);
             return translated === key ? (fallback || key) : translated;
         }
+        if (typeof window.translate === "function") {
+            const translated = window.translate(key);
+            return translated === key ? (fallback || key) : translated;
+        }
         return fallback || key;
+    }
+
+    function setupSidebarToggle() {
+        const toggle = document.getElementById("sidebar-toggle");
+        if (!toggle) return;
+        const applyResponsiveState = () => {
+            document.body.classList.remove("sidebar-collapsed", "mobile-sidebar-hidden");
+            if (window.matchMedia("(max-width: 920px)").matches) {
+                document.body.classList.add("mobile-sidebar-hidden");
+                return;
+            }
+            if (localStorage.getItem("sidebarCollapsed") === "true") {
+                document.body.classList.add("sidebar-collapsed");
+            }
+        };
+        toggle.addEventListener("click", () => {
+            if (window.matchMedia("(max-width: 920px)").matches) {
+                document.body.classList.toggle("mobile-sidebar-hidden");
+                return;
+            }
+            const collapsedNow = !document.body.classList.contains("sidebar-collapsed");
+            document.body.classList.toggle("sidebar-collapsed", collapsedNow);
+            localStorage.setItem("sidebarCollapsed", collapsedNow ? "true" : "false");
+        });
+        window.addEventListener("resize", applyResponsiveState);
+        applyResponsiveState();
     }
 
     async function confirmAction(message) {
@@ -698,6 +728,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", async () => {
+        setupSidebarToggle();
         Object.assign(elements, {
             title: document.getElementById("organization-title"),
             identity: document.getElementById("organization-identity"),

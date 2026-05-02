@@ -89,18 +89,28 @@
     function ensureStandardNav() {
         const nav = document.querySelector(".nav-list");
         if (!nav) return;
-        [
+        const items = [
+            ["/", "⌂", "nav_dashboard", "Dashboard"],
             ["/schedule", "🗓", "nav_schedule", "Schedule"],
             ["/employees", "👥", "nav_employees", "Employees"],
-            ["/weekly-preferences", "☑", "nav_requests", "Preferences"],
+            ["/weekly-preferences", "✦", "nav_requests", "Preferences"],
             ["/organization", "◎", "nav_organization", "Organization"],
             ["/settings", "⚙", "nav_settings", "Settings"],
-        ].forEach(([href, icon, key, fallback]) => {
-            if (nav.querySelector(`a[href="${href}"]`)) return;
-            const item = document.createElement("a");
-            item.href = href;
-            item.className = "nav-item";
-            item.innerHTML = `<span class="nav-icon">${icon}</span><span class="nav-label" data-i18n="${key}">${fallback}</span>`;
+        ];
+        const existing = new Map();
+        Array.from(nav.querySelectorAll("a[href]")).forEach((link) => {
+            const path = canonicalPath(new URL(link.getAttribute("href"), window.location.origin).pathname);
+            if (!existing.has(path)) existing.set(path, link);
+        });
+        items.forEach(([href, icon, key, fallback]) => {
+            let item = existing.get(href);
+            if (!item) {
+                item = document.createElement("a");
+                item.href = href;
+                item.className = "nav-item";
+            }
+            item.dataset.navPath = href;
+            item.innerHTML = `<span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-label" data-i18n="${key}">${fallback}</span>`;
             nav.appendChild(item);
         });
     }

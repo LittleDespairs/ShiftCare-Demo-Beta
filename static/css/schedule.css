@@ -1221,7 +1221,8 @@
         }
 
         body.sidebar-collapsed .nav-icon {
-            width: auto;
+            width: 22px;
+            height: 22px;
         }
 
         /* Responsive / Адаптивность */
