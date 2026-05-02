@@ -98,11 +98,17 @@
             ["/settings", "⚙", "nav_settings", "Settings"],
         ];
         const existing = new Map();
+        const duplicates = [];
         Array.from(nav.querySelectorAll("a[href]")).forEach((link) => {
             const path = canonicalPath(new URL(link.getAttribute("href"), window.location.origin).pathname);
-            if (!existing.has(path)) existing.set(path, link);
+            if (!existing.has(path)) {
+                existing.set(path, link);
+            } else {
+                duplicates.push(link);
+            }
         });
-        items.forEach(([href, icon, key, fallback]) => {
+        duplicates.forEach((link) => link.remove());
+        items.forEach(([href, icon, key, fallback], index) => {
             let item = existing.get(href);
             if (!item) {
                 item = document.createElement("a");
@@ -110,13 +116,20 @@
                 item.className = "nav-item";
             }
             item.dataset.navPath = href;
-            item.innerHTML = `<span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-label" data-i18n="${key}">${fallback}</span>`;
-            nav.appendChild(item);
+            const currentIcon = item.querySelector(".nav-icon")?.textContent?.trim() || "";
+            const currentLabel = item.querySelector(".nav-label");
+            if (currentIcon !== icon || currentLabel?.dataset.i18n !== key) {
+                item.innerHTML = `<span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-label" data-i18n="${key}">${fallback}</span>`;
+            }
+            if (nav.children[index] !== item) {
+                nav.insertBefore(item, nav.children[index] || null);
+            }
         });
     }
 
     function applyNavLabels() {
         const labels = {
+            "/": ["nav_dashboard", "Dashboard"],
             "/schedule": ["nav_schedule", "Schedule"],
             "/employees": ["nav_employees", "Employees"],
             "/weekly-preferences": ["nav_requests", "Preferences"],
@@ -199,25 +212,11 @@
         disableScheduleEditingForReadOnlyRoles();
     }
 
-    let applyingAccessControl = false;
-    function applyAccessControlSoon() {
-        if (applyingAccessControl) return;
-        applyingAccessControl = true;
-        window.requestAnimationFrame(() => {
-            applyingAccessControl = false;
-            applyAccessControl();
-        });
-    }
-
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", applyAccessControl);
     } else {
         applyAccessControl();
     }
     document.addEventListener("app-language-changed", applyAccessControl);
-    new MutationObserver(applyAccessControlSoon).observe(document.documentElement, {
-        childList: true,
-        subtree: true,
-    });
     window.scheduleAccessControl = { apply: applyAccessControl, accessForRole };
 })();

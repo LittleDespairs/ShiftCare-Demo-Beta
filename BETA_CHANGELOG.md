@@ -2,6 +2,24 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.9_beta - 2026-05-02
+
+## Fixed
+
+- Fixed sidebar navigation becoming effectively unclickable after the 0.15.8 navigation normalization.
+- Prevented access-control navigation normalization from repeatedly replacing sidebar links through the page mutation observer.
+- Kept role-based navigation ordering stable without recreating link DOM nodes on every observer pass.
+
+## Changed
+
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.9_beta`.
+
+## Verified
+
+- `node --check static/js/access_control.js`
+- Playwright click-through check from the sidebar to `/organization`.
+- `.venv\Scripts\python.exe -m unittest discover -s tests`
+
 # 0.15.8_beta - 2026-05-02
 
 ## Fixed
