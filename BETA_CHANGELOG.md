@@ -2,6 +2,24 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.10_beta - 2026-05-03
+
+## Fixed
+
+- Fixed the organization invitation employee selector placeholder so it is translated instead of showing `Select employee` in the Russian interface.
+- Renamed the Russian employee ID-card table column to `Номер ID`, avoiding the duplicate `ID / ID` header during demos.
+- Render empty employee ID-card values as `—` so the employee table does not look broken when ID numbers are not filled yet.
+
+## Changed
+
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.10_beta`.
+
+## Verified
+
+- `node --check static/js/auth_i18n.js static/js/i18n.js static/js/employees.js`
+- Local UI smoke test for sidebar navigation, schedule loading, weekly preferences, organization, settings, employees, support, and guide pages.
+- `.venv\Scripts\python.exe -m unittest discover -s tests`
+
 # 0.15.9_beta - 2026-05-02
 
 ## Fixed

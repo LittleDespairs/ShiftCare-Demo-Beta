@@ -378,7 +378,7 @@ function renderEmployeesTable(employees) {
     tableBody.innerHTML = employees.map(employee => `
         <tr>
             <td>${Number(employee.id)}</td>
-            <td class="employee-meta-cell">${escapeHtml(employee.id_card || "")}</td>
+            <td class="employee-meta-cell">${escapeHtml(employee.id_card || "—")}</td>
             <td class="employee-name-cell">${escapeHtml(employee.full_name)}</td>
             <td>${escapeHtml(employeeSexLabel(employee.sex))}</td>
             <td>${Number(employee.min_shifts_per_week)} / ${Number(employee.target_shifts_per_week)} / ${Number(employee.max_shifts_per_week)}</td>

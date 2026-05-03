@@ -1361,7 +1361,7 @@ const I18N_TRANSLATIONS = {
         employees_list_subtitle: "Текущие сотрудники, доступные в системе.",
 
         employees_table_id: "ID",
-        employees_table_id_card: "ID",
+        employees_table_id_card: "Номер ID",
         employees_table_name: "Полное имя",
         employees_table_sex: "Пол",
         employees_table_min_target_max: "Мин / Цель / Макс",
