@@ -1,0 +1,14 @@
+.git
+.gitignore
+.gcloudignore
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+backups/
+tmp_demo_qa/
+tmp_demo_qa_01510/
+*.db
+*.sqlite
+*.schedulebackup
