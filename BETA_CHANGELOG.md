@@ -2,6 +2,26 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.11_beta - 2026-05-06
+
+## Added
+
+- Added permanent employee preferences with separate strict and soft rules for each weekday.
+- Added employee-screen controls for editing permanent preferences in the employee modal.
+- Added generation support for strict permanent rules and soft scoring penalties during automatic schedule generation.
+
+## Changed
+
+- Added `employee_recurring_preferences` to SQLite, PostgreSQL baseline, organization export/import, cleanup, backup/restore, and employee delete impact reporting.
+- Restricted permanent preference management to owners and admins after authorization is initialized.
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.11_beta`.
+
+## Verified
+
+- `node --check static/js/employees.js static/js/i18n.js`
+- `.venv\Scripts\python.exe -m unittest tests.test_api_regressions tests.test_generation_reports`
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.15.11-beta.exe`
+
 # 0.15.10_beta - 2026-05-03
 
 ## Fixed

@@ -288,6 +288,21 @@ CREATE TABLE IF NOT EXISTS employee_week_preferences (
     UNIQUE (public_id)
 );
 
+CREATE TABLE IF NOT EXISTS employee_recurring_preferences (
+    id BIGSERIAL PRIMARY KEY,
+    employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    preference_kind TEXT NOT NULL CHECK (preference_kind IN ('strict', 'soft')),
+    day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+    preference_type TEXT NOT NULL CHECK (preference_type IN ('off_day', 'vacation', 'only_morning', 'only_evening', 'only_night', 'not_morning', 'not_evening', 'not_night', 'no_morning_evening_combo')),
+    organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+    public_id TEXT NOT NULL DEFAULT ('rpr_' || lower(encode(gen_random_bytes(16), 'hex'))),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE (employee_id, preference_kind, day_of_week),
+    UNIQUE (public_id)
+);
+
 CREATE TABLE IF NOT EXISTS employee_day_statuses (
     id BIGSERIAL PRIMARY KEY,
     employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -383,10 +398,12 @@ CREATE INDEX IF NOT EXISTS idx_employee_positions_position_employee ON employee_
 CREATE INDEX IF NOT EXISTS idx_employee_day_statuses_employee_date ON employee_day_statuses (employee_id, date);
 CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_employee_week ON employee_week_preferences (employee_id, week_start_date, preference_date);
 CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_org_week ON employee_week_preferences (organization_id, week_start_date, preference_date);
+CREATE INDEX IF NOT EXISTS idx_employee_recurring_preferences_employee ON employee_recurring_preferences (employee_id, preference_kind, day_of_week);
+CREATE INDEX IF NOT EXISTS idx_employee_recurring_preferences_org_employee ON employee_recurring_preferences (organization_id, employee_id, preference_kind, day_of_week);
 CREATE INDEX IF NOT EXISTS idx_coverage_requirements_position ON coverage_requirements (position_id, start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position ON coverage_requirements (organization_id, position_id);
 CREATE INDEX IF NOT EXISTS idx_app_settings_organization ON app_settings (organization_id, key);
 
 INSERT INTO schema_metadata (key, value)
-VALUES ('schema_version', '17')
+VALUES ('schema_version', '18')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;

@@ -62,7 +62,7 @@ def get_database_path() -> Path:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
-CURRENT_SCHEMA_VERSION = 17
+CURRENT_SCHEMA_VERSION = 18
 POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
 PUBLIC_ID_TABLE_PREFIXES = {
     "employees": "emp",
@@ -72,6 +72,7 @@ PUBLIC_ID_TABLE_PREFIXES = {
     "shift_requirements": "shr",
     "employee_preferences": "prf",
     "employee_week_preferences": "wpr",
+    "employee_recurring_preferences": "rpr",
     "employee_day_statuses": "dst",
     "coverage_requirements": "cov",
 }
@@ -893,6 +894,38 @@ def init_db():
         ON employee_week_preferences (employee_id, week_start_date, preference_date)
     """)
 
+    # ==============================================================
+    # Permanent employee preferences / Постоянные пожелания
+    # ==============================================================
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS employee_recurring_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            preference_kind TEXT NOT NULL CHECK (preference_kind IN ('strict', 'soft')),
+            day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+            preference_type TEXT NOT NULL CHECK (
+                preference_type IN (
+                    'off_day',
+                    'vacation',
+                    'only_morning',
+                    'only_evening',
+                    'only_night',
+                    'not_morning',
+                    'not_evening',
+                    'not_night',
+                    'no_morning_evening_combo'
+                )
+            ),
+            UNIQUE(employee_id, preference_kind, day_of_week),
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        )
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_recurring_preferences_employee
+        ON employee_recurring_preferences (employee_id, preference_kind, day_of_week)
+    """)
+
     cursor.execute("""
         UPDATE schedule_entries
         SET no_show = 1
@@ -1018,6 +1051,7 @@ def init_db():
         "shift_requirements",
         "employee_preferences",
         "employee_week_preferences",
+        "employee_recurring_preferences",
         "employee_day_statuses",
         "coverage_requirements",
     )
@@ -1057,6 +1091,10 @@ def init_db():
         ON employee_week_preferences (organization_id, week_start_date, preference_date)
     """)
     cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_recurring_preferences_org_employee
+        ON employee_recurring_preferences (organization_id, employee_id, preference_kind, day_of_week)
+    """)
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position
         ON coverage_requirements (organization_id, position_id)
     """)
@@ -1067,7 +1105,7 @@ def init_db():
             cursor,
             previous_schema_version,
             CURRENT_SCHEMA_VERSION,
-            "Add local license runtime tables",
+            "Add permanent employee recurring preferences",
         )
         _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
 

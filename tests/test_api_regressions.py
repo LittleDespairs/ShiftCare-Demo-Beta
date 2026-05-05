@@ -46,6 +46,7 @@ class ApiRegressionTests(unittest.TestCase):
             "schedule_entries",
             "app_settings",
             "employee_day_statuses",
+            "employee_recurring_preferences",
             "employee_week_preferences",
             "employee_preferences",
             "coverage_requirements",
@@ -158,6 +159,7 @@ class ApiRegressionTests(unittest.TestCase):
             "shift_requirements",
             "employee_preferences",
             "employee_week_preferences",
+            "employee_recurring_preferences",
             "employee_day_statuses",
             "coverage_requirements",
         ):
@@ -987,6 +989,20 @@ class ApiRegressionTests(unittest.TestCase):
             },
         )
         self.assertEqual(schedule_response.status_code, 200)
+        recurring_response = self.client.post(
+            "/api/employee-recurring-preferences",
+            json={
+                "employee_id": employee_id,
+                "rules": [
+                    {
+                        "preference_kind": "strict",
+                        "day_of_week": 1,
+                        "preference_type": "only_morning",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(recurring_response.status_code, 200)
 
         cursor = self.connection.cursor()
         for table_name, prefix in database.PUBLIC_ID_TABLE_PREFIXES.items():
@@ -1407,6 +1423,79 @@ class ApiRegressionTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {owner_token}"},
         )
         self.assertEqual(regenerate_revoked_response.status_code, 409)
+
+    def test_recurring_preferences_require_admin_or_owner_after_auth_bootstrap(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        employee_id = self._create_employee(headers=owner_headers, full_name="Employee User")
+
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={
+                "email": "employee@example.com",
+                "employee_id": employee_id,
+                "role": "employee",
+                "expires_in_days": 7,
+            },
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        accept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "password": "EmployeePass123",
+                "confirm_password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(accept_response.status_code, 200)
+        employee_headers = {"Authorization": f"Bearer {accept_response.json()['access_token']}"}
+
+        payload = {
+            "employee_id": employee_id,
+            "rules": [
+                {
+                    "preference_kind": "strict",
+                    "day_of_week": 0,
+                    "preference_type": "only_night",
+                },
+                {
+                    "preference_kind": "soft",
+                    "day_of_week": 1,
+                    "preference_type": "off_day",
+                },
+            ],
+        }
+        forbidden_save = self.client.post("/api/employee-recurring-preferences", headers=employee_headers, json=payload)
+        self.assertEqual(forbidden_save.status_code, 403)
+        forbidden_read = self.client.get(
+            "/api/employee-recurring-preferences",
+            headers=employee_headers,
+            params={"employee_id": employee_id},
+        )
+        self.assertEqual(forbidden_read.status_code, 403)
+
+        owner_save = self.client.post("/api/employee-recurring-preferences", headers=owner_headers, json=payload)
+        self.assertEqual(owner_save.status_code, 200)
+        owner_read = self.client.get(
+            "/api/employee-recurring-preferences",
+            headers=owner_headers,
+            params={"employee_id": employee_id},
+        )
+        self.assertEqual(owner_read.status_code, 200)
+        self.assertEqual(
+            {(rule["preference_kind"], rule["day_of_week"], rule["preference_type"]) for rule in owner_read.json()},
+            {("strict", 0, "only_night"), ("soft", 1, "off_day")},
+        )
 
     def test_employee_schedule_scope_returns_primary_position_team_entries(self):
         owner_response = self.client.post(
@@ -3123,6 +3212,21 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
         response = self.client.post(
+            "/api/employee-recurring-preferences",
+            json={
+                "employee_id": employee_id,
+                "rules": [
+                    {
+                        "preference_kind": "strict",
+                        "day_of_week": 0,
+                        "preference_type": "only_night",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(
             "/api/employee-day-statuses",
             json={
                 "employee_id": employee_id,
@@ -3180,6 +3284,7 @@ class ApiRegressionTests(unittest.TestCase):
                 "schedule_entries": 1,
                 "general_preferences": 1,
                 "weekly_preferences": 1,
+                "recurring_preferences": 1,
                 "day_statuses": 1,
             },
         )
@@ -3572,6 +3677,19 @@ class ApiRegressionTests(unittest.TestCase):
             },
         )
         self.client.post(
+            "/api/employee-recurring-preferences",
+            json={
+                "employee_id": employee_id,
+                "rules": [
+                    {
+                        "preference_kind": "soft",
+                        "day_of_week": 2,
+                        "preference_type": "off_day",
+                    }
+                ],
+            },
+        )
+        self.client.post(
             "/api/employee-day-statuses",
             json={"employee_id": employee_id, "date": "2026-04-22", "status_type": "day_off"},
         )
@@ -3592,6 +3710,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/employee-positions").json(), [])
         self.assertEqual(self.client.get("/api/schedule").json(), [])
         self.assertEqual(self.client.get("/api/employee-day-statuses").json(), [])
+        self.assertEqual(self.client.get("/api/employee-recurring-preferences").json(), [])
         preferences = self.client.get("/api/employee-week-preferences", params={"week_start_date": "2026-04-20"}).json()
         self.assertEqual(preferences, [])
 

@@ -94,6 +94,72 @@
             flex-shrink: 0;
         }
 
+        .permanent-preferences-box {
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: #fff;
+            padding: 14px;
+        }
+
+        .permanent-preferences-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .permanent-preferences-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .permanent-preference-panel {
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: #f8fafc;
+            padding: 12px;
+            min-width: 0;
+        }
+
+        .permanent-preference-panel h5 {
+            margin: 0 0 6px;
+            font-size: 0.9rem;
+            font-weight: 800;
+        }
+
+        .permanent-preference-panel p {
+            margin: 0 0 10px;
+            color: var(--muted);
+            font-size: 0.78rem;
+            line-height: 1.4;
+        }
+
+        .recurring-preference-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .recurring-preference-row {
+            display: grid;
+            grid-template-columns: minmax(92px, 0.7fr) minmax(120px, 1fr);
+            gap: 8px;
+            align-items: center;
+        }
+
+        .recurring-preference-day {
+            color: var(--text);
+            font-size: 0.84rem;
+            font-weight: 800;
+        }
+
+        .recurring-preference-row .select {
+            min-height: 40px;
+            padding-block: 8px;
+            font-size: 0.84rem;
+        }
+
         /* Messages / Сообщения */
         #message-box {
             margin-bottom: 16px;
@@ -258,7 +324,7 @@
         }
 
         .employee-modal {
-            width: min(720px, 100%);
+            width: min(920px, 100%);
         }
 
         .employee-modal .form-grid {
@@ -380,6 +446,14 @@
 
             .employee-modal-actions .btn {
                 width: 100%;
+            }
+
+            .permanent-preferences-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .recurring-preference-row {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -630,6 +704,42 @@
                                             Can work morning and evening on the same day
                                         </span>
                                     </label>
+                                </div>
+                            </div>
+
+                            <div id="permanent-preferences-box" class="permanent-preferences-box">
+                                <div class="permanent-preferences-header">
+                                    <div>
+                                        <h4 class="rules-title" data-i18n="employees_permanent_preferences_title">
+                                            Permanent wishes
+                                        </h4>
+                                        <div class="helper-text" data-i18n="employees_permanent_preferences_hint">
+                                            These rules are saved for the employee and applied every week.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="permanent-preferences-grid">
+                                    <section class="permanent-preference-panel">
+                                        <h5 data-i18n="employees_permanent_strict_title">Strict wishes</h5>
+                                        <p data-i18n="employees_permanent_strict_text">
+                                            The generator must respect these wishes.
+                                        </p>
+                                        <div id="recurring-strict-preferences" class="recurring-preference-list"></div>
+                                    </section>
+
+                                    <section class="permanent-preference-panel">
+                                        <h5 data-i18n="employees_permanent_soft_title">Preferences</h5>
+                                        <p data-i18n="employees_permanent_soft_text">
+                                            The generator uses these wishes when coverage allows.
+                                        </p>
+                                        <div id="recurring-soft-preferences" class="recurring-preference-list"></div>
+                                    </section>
+                                </div>
+
+                                <div id="permanent-preferences-disabled-note" class="helper-text" hidden
+                                    data-i18n="employees_permanent_preferences_admin_only">
+                                    Permanent wishes can be changed only by an admin or owner.
                                 </div>
                             </div>
 

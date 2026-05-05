@@ -35,7 +35,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.10_beta"
+APP_VERSION = "0.15.11_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
@@ -49,6 +49,22 @@ AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT
 AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS", "900"))
 AUTH_LOGIN_ATTEMPTS: dict[str, dict] = {}
 AUTH_LOGIN_ATTEMPTS_LOCK = threading.Lock()
+WEEKLY_PREFERENCE_TYPES = (
+    "no_preference",
+    "off_day",
+    "vacation",
+    "only_morning",
+    "only_evening",
+    "only_night",
+    "not_morning",
+    "not_evening",
+    "not_night",
+    "no_morning_evening_combo",
+)
+PERSISTED_RECURRING_PREFERENCE_TYPES = tuple(value for value in WEEKLY_PREFERENCE_TYPES if value != "no_preference")
+SOFT_PREFERENCE_PENALTY = 350
+SOFT_DAY_OFF_PENALTY = 1200
+SOFT_COMBO_PENALTY = 500
 
 tags_metadata = [
     {"name": "Auth", "description": "Authorization and organization access / Авторизация и доступ к организации"},
@@ -59,6 +75,7 @@ tags_metadata = [
     {"name": "Shift Templates", "description": "Shift templates / Шаблоны смен"},
     {"name": "Preferences", "description": "Employee preferences / Пожелания"},
     {"name": "Weekly Preferences", "description": "Weekly preferences / Недельные пожелания"},
+    {"name": "Permanent Preferences", "description": "Permanent employee preferences / Постоянные пожелания"},
     {"name": "Requirements", "description": "Shift and coverage requirements / Требования"},
     {"name": "Schedule", "description": "Schedule management / Расписание"},
     {"name": "Licensing", "description": "License and support entitlement / Лицензия и поддержка"},
@@ -686,6 +703,38 @@ class EmployeeWeekPreferenceCreate(BaseModel):
     ]
 
 
+class EmployeeRecurringPreferenceRule(BaseModel):
+    preference_kind: Literal["strict", "soft"]
+    day_of_week: int = Field(ge=0, le=6)
+    preference_type: Literal[
+        "no_preference",
+        "off_day",
+        "vacation",
+        "only_morning",
+        "only_evening",
+        "only_night",
+        "not_morning",
+        "not_evening",
+        "not_night",
+        "no_morning_evening_combo",
+    ]
+
+
+class EmployeeRecurringPreferencesUpdate(BaseModel):
+    employee_id: int
+    rules: list[EmployeeRecurringPreferenceRule] = Field(default_factory=list, max_length=14)
+
+    @model_validator(mode="after")
+    def validate_unique_rules(self):
+        seen = set()
+        for rule in self.rules:
+            key = (rule.preference_kind, rule.day_of_week)
+            if key in seen:
+                raise ValueError("Each permanent preference kind/day pair can appear only once")
+            seen.add(key)
+        return self
+
+
 class EmployeeDayStatusCreate(BaseModel):
     employee_id: int
     date: str
@@ -851,6 +900,11 @@ def get_week_start_for_date(date_string: str) -> str:
     current = parse_date_string(date_string)
     days_since_sunday = (current.weekday() + 1) % 7
     return (current - timedelta(days=days_since_sunday)).isoformat()
+
+
+def recurring_day_of_week(date_string: str) -> int:
+    # App weeks start on Sunday: Sunday=0, Monday=1, ..., Saturday=6.
+    return (parse_date_string(date_string).weekday() + 1) % 7
 
 
 def get_week_end_date(week_start_date: str) -> str:
@@ -1604,6 +1658,10 @@ def require_setup_edit_if_auth_initialized(authorization: str | None = Header(de
     return require_roles_if_auth_initialized({"owner", "admin", "scheduler"}, authorization)
 
 
+def require_permanent_preference_admin_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
+    return require_roles_if_auth_initialized({"owner", "admin"}, authorization)
+
+
 def employee_scope_from_access(access_context: dict | None) -> int | None:
     if not access_context:
         return None
@@ -1932,6 +1990,7 @@ ORGANIZATION_EXPORT_TABLES = (
     "coverage_requirements",
     "employee_preferences",
     "employee_week_preferences",
+    "employee_recurring_preferences",
     "employee_day_statuses",
     "schedule_entries",
     "app_settings",
@@ -1940,6 +1999,7 @@ ORGANIZATION_EXPORT_TABLES = (
 ORGANIZATION_IMPORT_DELETE_ORDER = (
     "schedule_entries",
     "employee_day_statuses",
+    "employee_recurring_preferences",
     "employee_week_preferences",
     "employee_preferences",
     "coverage_requirements",
@@ -2283,6 +2343,31 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
                 new_employee_id,
                 row.get("week_start_date"),
                 row.get("preference_date"),
+                row.get("preference_type"),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+
+    for row in records.get("employee_recurring_preferences") or []:
+        new_employee_id = employee_id_map.get(int(row["employee_id"]))
+        if not new_employee_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO employee_recurring_preferences (
+                organization_id, public_id, employee_id, preference_kind, day_of_week,
+                preference_type, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                new_employee_id,
+                row.get("preference_kind"),
+                int(row.get("day_of_week") or 0),
                 row.get("preference_type"),
                 row.get("created_at") or now,
                 row.get("updated_at") or now,
@@ -2717,6 +2802,8 @@ def explain_same_day_pairing_rejection(
             return "employee cannot work morning and evening on the same day"
         if get_week_preference(connection, employee["id"], date_string) == "no_morning_evening_combo":
             return "weekly preference blocks morning-evening combo"
+        if get_recurring_preference(connection, employee["id"], date_string, "strict") == "no_morning_evening_combo":
+            return "permanent strict preference blocks morning-evening combo"
 
         morning_evening_break = get_break_minutes_between_same_day_categories(
             connection,
@@ -2804,6 +2891,60 @@ def get_week_preference(connection, employee_id: int, date_string: str) -> str:
     return row["preference_type"] if row else "no_preference"
 
 
+def get_recurring_preference(connection, employee_id: int, date_string: str, preference_kind: str) -> str:
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT preference_type
+        FROM employee_recurring_preferences
+        WHERE employee_id = ? AND preference_kind = ? AND day_of_week = ?
+        """,
+        (employee_id, preference_kind, recurring_day_of_week(date_string)),
+    )
+    row = cursor.fetchone()
+    return row["preference_type"] if row else "no_preference"
+
+
+def preference_allows_category(preference_type: str, category: str) -> bool:
+    if preference_type in ("no_preference", "no_morning_evening_combo"):
+        return True
+    if preference_type in ("off_day", "vacation"):
+        return False
+    if preference_type.startswith("only_"):
+        return preference_type == f"only_{category}"
+    if preference_type == f"not_{category}":
+        return False
+    return True
+
+
+def soft_recurring_preference_penalty(
+    connection,
+    employee_id: int,
+    date_string: str,
+    assignment_templates: list[dict],
+    projected_entries: list[dict] | None = None,
+) -> int:
+    preference_type = get_recurring_preference(connection, employee_id, date_string, "soft")
+    if preference_type == "no_preference" or not assignment_templates:
+        return 0
+    if preference_type in ("off_day", "vacation"):
+        return SOFT_DAY_OFF_PENALTY
+
+    penalty = 0
+    assignment_categories = [template["category"] for template in assignment_templates]
+    for category in assignment_categories:
+        if not preference_allows_category(preference_type, category):
+            penalty += SOFT_PREFERENCE_PENALTY
+
+    if preference_type == "no_morning_evening_combo":
+        projected_categories = set(assignment_categories)
+        projected_categories.update(entry_category(entry) for entry in (projected_entries or []))
+        if "morning" in projected_categories and "evening" in projected_categories:
+            penalty += SOFT_COMBO_PENALTY
+
+    return penalty
+
+
 def get_employee_day_status(connection, employee_id: int, date_string: str):
     cursor = connection.cursor()
     cursor.execute(
@@ -2851,11 +2992,11 @@ def category_allowed_by_preferences(connection, employee: dict, date_string: str
         return False
 
     weekly = get_week_preference(connection, employee["id"], date_string)
-    if weekly in ("off_day", "vacation"):
+    if not preference_allows_category(weekly, category):
         return False
-    if weekly.startswith("only_") and weekly != f"only_{category}":
-        return False
-    if weekly == f"not_{category}":
+
+    strict_recurring = get_recurring_preference(connection, employee["id"], date_string, "strict")
+    if not preference_allows_category(strict_recurring, category):
         return False
     return True
 
@@ -3745,6 +3886,33 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
                 local_employee_id,
                 row.get("week_start_date"),
                 row.get("preference_date"),
+                row.get("preference_type"),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                None,
+            ),
+        )
+
+    cursor.execute("DELETE FROM employee_recurring_preferences WHERE organization_id = 1")
+    for row in records.get("employee_recurring_preferences") or []:
+        public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
+        local_employee_id = local_employee_ids.get(str(public_id))
+        if not local_employee_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO employee_recurring_preferences (
+                organization_id, public_id, employee_id, preference_kind, day_of_week,
+                preference_type, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1,
+                row.get("public_id"),
+                local_employee_id,
+                row.get("preference_kind"),
+                int(row.get("day_of_week") or 0),
                 row.get("preference_type"),
                 row.get("created_at") or now,
                 row.get("updated_at") or now,
@@ -5526,6 +5694,11 @@ def get_employee_delete_impact(employee_id: int, _access: dict | None = Depends(
                 "SELECT COUNT(*) FROM employee_week_preferences WHERE employee_id = ?",
                 (employee_id,),
             ),
+            "recurring_preferences": fetch_count(
+                cursor,
+                "SELECT COUNT(*) FROM employee_recurring_preferences WHERE employee_id = ?",
+                (employee_id,),
+            ),
             "day_statuses": fetch_count(
                 cursor,
                 "SELECT COUNT(*) FROM employee_day_statuses WHERE employee_id = ?",
@@ -6447,6 +6620,111 @@ def delete_employee_week_preference(
         connection.close()
 
 
+@app.get("/api/employee-recurring-preferences", tags=["Permanent Preferences"])
+def get_employee_recurring_preferences(
+    employee_id: int | None = None,
+    admin_context: dict | None = Depends(require_permanent_preference_admin_if_auth_initialized),
+):
+    organization_id = admin_context["membership"]["organization_id"] if admin_context else 1
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        filters = ["erp.organization_id = ?"]
+        params: list = [organization_id]
+        if employee_id is not None:
+            fetch_one_or_404(
+                cursor,
+                "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+                (employee_id, organization_id),
+                "Employee not found",
+            )
+            filters.append("erp.employee_id = ?")
+            params.append(employee_id)
+        cursor.execute(
+            f"""
+            SELECT erp.*, e.full_name AS employee_name
+            FROM employee_recurring_preferences erp
+            JOIN employees e ON e.id = erp.employee_id
+            WHERE {" AND ".join(filters)}
+            ORDER BY erp.employee_id, erp.preference_kind, erp.day_of_week
+            """,
+            tuple(params),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        connection.close()
+
+
+@app.post("/api/employee-recurring-preferences", tags=["Permanent Preferences"])
+def save_employee_recurring_preferences(
+    request_data: EmployeeRecurringPreferencesUpdate,
+    admin_context: dict | None = Depends(require_permanent_preference_admin_if_auth_initialized),
+):
+    organization_id = admin_context["membership"]["organization_id"] if admin_context else 1
+    user_id = admin_context["user"]["id"] if admin_context else None
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+            (request_data.employee_id, organization_id),
+            "Employee not found",
+        )
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            DELETE FROM employee_recurring_preferences
+            WHERE organization_id = ? AND employee_id = ?
+            """,
+            (organization_id, request_data.employee_id),
+        )
+        saved_rules = []
+        for rule in request_data.rules:
+            if rule.preference_type == "no_preference":
+                continue
+            if rule.preference_type not in PERSISTED_RECURRING_PREFERENCE_TYPES:
+                raise HTTPException(status_code=400, detail="Unsupported permanent preference type")
+            cursor.execute(
+                """
+                INSERT INTO employee_recurring_preferences (
+                    organization_id, employee_id, preference_kind, day_of_week,
+                    preference_type, created_at, updated_at, updated_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    organization_id,
+                    request_data.employee_id,
+                    rule.preference_kind,
+                    rule.day_of_week,
+                    rule.preference_type,
+                    now,
+                    now,
+                    user_id,
+                ),
+            )
+            saved_rules.append(rule.model_dump())
+        write_auth_audit_event(
+            cursor,
+            "employee_recurring_preferences_saved",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={"employee_id": request_data.employee_id, "rule_count": len(saved_rules)},
+        )
+        connection.commit()
+        return {
+            "message": "Permanent preferences saved successfully",
+            "employee_id": request_data.employee_id,
+            "rules": saved_rules,
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 @app.get("/api/employee-day-statuses", tags=["Schedule"])
 def get_employee_day_statuses(
     position_id: int | None = None,
@@ -7274,6 +7552,13 @@ def choose_best_interval_candidate(
                 elif score <= 0:
                     continue
 
+                soft_preference_penalty = soft_recurring_preference_penalty(
+                    connection,
+                    employee["id"],
+                    date_string,
+                    assignment_templates,
+                    projected_entries,
+                )
                 fatigue_penalty = sum(
                     get_fatigue_penalty(connection, employee["id"], date_string, assignment_template)
                     for assignment_template in assignment_templates
@@ -7301,6 +7586,7 @@ def choose_best_interval_candidate(
                 candidates.append((
                     (
                         -target_shortage_gain if target_slot is not None else -score,
+                        soft_preference_penalty,
                         -score,
                         overage_cost,
                         fatigue_penalty,
@@ -8071,6 +8357,17 @@ def fill_day_by_legacy_categories(
                         ):
                             fatigue_penalty = get_fatigue_penalty(connection, employee["id"], date_string, template)
                             preview = create_entry_preview(employee, position_id, date_string, template)
+                            projected_entries = [
+                                *get_employee_entries_for_date(connection, employee["id"], date_string),
+                                preview,
+                            ]
+                            soft_preference_penalty = soft_recurring_preference_penalty(
+                                connection,
+                                employee["id"],
+                                date_string,
+                                [template],
+                                projected_entries,
+                            )
                             projected_same_category_count, projected_same_category_streak = get_projected_category_metrics(
                                 connection,
                                 employee,
@@ -8092,6 +8389,7 @@ def fill_day_by_legacy_categories(
                                 app_settings,
                             )
                             candidates.append((
+                                soft_preference_penalty,
                                 fatigue_penalty,
                                 projected_same_category_count,
                                 projected_same_category_streak,
@@ -8128,7 +8426,7 @@ def fill_day_by_legacy_categories(
                 )
                 break
             candidates.sort()
-            _, _, _, _, _, _, _, employee, template = candidates[0]
+            _, _, _, _, _, _, _, _, employee, template = candidates[0]
             insert_generated_entry(cursor, employee, position_id, date_string, template, created_entries)
 
 

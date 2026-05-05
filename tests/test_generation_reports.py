@@ -10,6 +10,7 @@ class GenerationReportTests(unittest.TestCase):
         for table in (
             "schedule_entries",
             "employee_day_statuses",
+            "employee_recurring_preferences",
             "employee_week_preferences",
             "employee_preferences",
             "coverage_requirements",
@@ -951,6 +952,204 @@ class GenerationReportTests(unittest.TestCase):
             ),
             "employee preferences or permissions block this shift",
         )
+
+    def test_permanent_strict_preference_blocks_day_shift(self):
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (1, 'Employee A', 'female', 0, 4, 6, 1, 1, 1, 1)
+            """
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.execute(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (1, 1, 1, 100, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO employee_recurring_preferences (
+                employee_id, preference_kind, day_of_week, preference_type
+            )
+            VALUES (1, 'strict', 0, 'only_night')
+            """
+        )
+        employee = {
+            "id": 1,
+            "full_name": "Employee A",
+            "sex": "female",
+            "min_shifts_per_week": 0,
+            "target_shifts_per_week": 4,
+            "max_shifts_per_week": 6,
+            "can_work_night": True,
+            "can_work_weekends": True,
+            "can_work_evenings_after_night": True,
+            "can_work_mornings_and_evenings": True,
+        }
+        template = {
+            "id": 1,
+            "name": "Morning",
+            "category": "morning",
+            "start_time": "06:00",
+            "end_time": "14:00",
+            "is_overnight": False,
+            "is_active": True,
+            "is_split_only": False,
+        }
+
+        self.assertFalse(
+            main.can_employee_take_template(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[0],
+                template,
+                WEEK_START_DATE,
+            )
+        )
+        self.assertEqual(
+            main.explain_employee_template_rejection(
+                self.connection,
+                employee,
+                1,
+                WEEK_DATES[0],
+                template,
+                WEEK_START_DATE,
+            ),
+            "employee preferences or permissions block this shift",
+        )
+
+    def test_permanent_soft_preference_avoids_employee_when_alternative_exists(self):
+        cursor = self.connection.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (?, ?, 'female', 0, 4, 6, 1, 1, 1, 1)
+            """,
+            [(1, "Employee A"), (2, "Employee B")],
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.executemany(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (?, 1, 1, 100, 0)
+            """,
+            [(1,), (2,)],
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (
+                id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only
+            )
+            VALUES (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO employee_recurring_preferences (
+                employee_id, preference_kind, day_of_week, preference_type
+            )
+            VALUES (1, 'soft', 0, 'off_day')
+            """
+        )
+        employees = [
+            {
+                "id": 1,
+                "full_name": "Employee A",
+                "sex": "female",
+                "min_shifts_per_week": 0,
+                "target_shifts_per_week": 4,
+                "max_shifts_per_week": 6,
+                "can_work_night": True,
+                "can_work_weekends": True,
+                "can_work_evenings_after_night": True,
+                "can_work_mornings_and_evenings": True,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+            {
+                "id": 2,
+                "full_name": "Employee B",
+                "sex": "female",
+                "min_shifts_per_week": 0,
+                "target_shifts_per_week": 4,
+                "max_shifts_per_week": 6,
+                "can_work_night": True,
+                "can_work_weekends": True,
+                "can_work_evenings_after_night": True,
+                "can_work_mornings_and_evenings": True,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        ]
+        templates = [
+            {
+                "id": 1,
+                "name": "Morning",
+                "category": "morning",
+                "start_time": "06:00",
+                "end_time": "14:00",
+                "is_overnight": False,
+                "is_active": True,
+                "is_split_only": False,
+            }
+        ]
+        requirements = [
+            {
+                "shift_category": "morning",
+                "required_total": 1,
+                "required_female_min": 0,
+                "required_male_min": 0,
+            }
+        ]
+        created_entries = []
+        errors = []
+        reports = []
+
+        main.fill_day_by_legacy_categories(
+            self.connection,
+            cursor,
+            employees,
+            templates,
+            requirements,
+            1,
+            WEEK_START_DATE,
+            WEEK_DATES[0],
+            created_entries,
+            errors,
+            reports,
+        )
+
+        cursor.execute("SELECT employee_id FROM schedule_entries")
+        self.assertEqual(cursor.fetchone()["employee_id"], 2)
+        self.assertEqual(errors, [])
+        self.assertEqual(reports, [])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,29 @@
 let editingEmployeeId = null; // Track editing mode / Отслеживаем режим редактирования
 let currentEmployees = [];
+let currentRecurringPreferences = createEmptyRecurringPreferenceState();
+
+const RECURRING_PREFERENCE_KINDS = ["strict", "soft"];
+const RECURRING_PREFERENCE_DAYS = [
+    ["weekday_sunday", "Sunday"],
+    ["weekday_monday", "Monday"],
+    ["weekday_tuesday", "Tuesday"],
+    ["weekday_wednesday", "Wednesday"],
+    ["weekday_thursday", "Thursday"],
+    ["weekday_friday", "Friday"],
+    ["weekday_saturday", "Saturday"],
+];
+const RECURRING_PREFERENCE_OPTIONS = [
+    ["no_preference", "preference_no_preference", "No preference"],
+    ["off_day", "preference_off_day", "Day off"],
+    ["vacation", "preference_vacation", "Vacation"],
+    ["only_morning", "preference_only_morning", "Only morning"],
+    ["only_evening", "preference_only_evening", "Only evening"],
+    ["only_night", "preference_only_night", "Only night"],
+    ["not_morning", "preference_not_morning", "Not morning"],
+    ["not_evening", "preference_not_evening", "Not evening"],
+    ["not_night", "preference_not_night", "Not night"],
+    ["no_morning_evening_combo", "preference_no_morning_evening_combo", "No morning + evening combo"],
+];
 
 function employeeText(key, fallback = "") {
     if (typeof translate === "function") {
@@ -40,15 +64,146 @@ document.addEventListener("DOMContentLoaded", () => {
         tableBody.addEventListener("click", handleEmployeesTableClick);
     }
     bindEmployeeModal();
+    renderRecurringPreferenceControls();
 
     loadEmployees();
 });
 
 document.addEventListener("app-language-changed", () => {
+    currentRecurringPreferences = collectRecurringPreferenceState();
     renderEmployeesTable(currentEmployees);
+    renderRecurringPreferenceControls();
     updateEmployeeModalTitle();
     updateSubmitButtonText();
 });
+
+function createEmptyRecurringPreferenceState() {
+    return {
+        strict: Array(7).fill("no_preference"),
+        soft: Array(7).fill("no_preference"),
+    };
+}
+
+function canManagePermanentPreferences() {
+    const membership = window.scheduleAuth?.getActiveMembership?.();
+    if (!membership) return true;
+    return ["owner", "admin"].includes(membership.role);
+}
+
+function collectRecurringPreferenceState() {
+    const state = createEmptyRecurringPreferenceState();
+    RECURRING_PREFERENCE_KINDS.forEach(kind => {
+        for (let day = 0; day < 7; day += 1) {
+            const select = document.querySelector(`[data-recurring-kind="${kind}"][data-recurring-day="${day}"]`);
+            if (select) {
+                state[kind][day] = select.value || "no_preference";
+            } else if (currentRecurringPreferences?.[kind]?.[day]) {
+                state[kind][day] = currentRecurringPreferences[kind][day];
+            }
+        }
+    });
+    return state;
+}
+
+function recurringPreferenceOptionsHtml(selectedValue) {
+    return RECURRING_PREFERENCE_OPTIONS.map(([value, key, fallback]) => `
+        <option value="${value}" ${selectedValue === value ? "selected" : ""}>
+            ${employeeText(key, fallback)}
+        </option>
+    `).join("");
+}
+
+function renderRecurringPreferenceControls() {
+    const canManage = canManagePermanentPreferences();
+    const disabledNote = document.getElementById("permanent-preferences-disabled-note");
+    if (disabledNote) {
+        disabledNote.hidden = canManage;
+    }
+    RECURRING_PREFERENCE_KINDS.forEach(kind => {
+        const container = document.getElementById(`recurring-${kind}-preferences`);
+        if (!container) return;
+        container.innerHTML = RECURRING_PREFERENCE_DAYS.map(([dayKey, dayFallback], dayIndex) => {
+            const selectedValue = currentRecurringPreferences?.[kind]?.[dayIndex] || "no_preference";
+            return `
+                <label class="recurring-preference-row">
+                    <span class="recurring-preference-day">${employeeText(dayKey, dayFallback)}</span>
+                    <select
+                        class="select"
+                        data-recurring-kind="${kind}"
+                        data-recurring-day="${dayIndex}"
+                        ${canManage ? "" : "disabled"}
+                    >
+                        ${recurringPreferenceOptionsHtml(selectedValue)}
+                    </select>
+                </label>
+            `;
+        }).join("");
+    });
+}
+
+async function loadEmployeeRecurringPreferences(employeeId) {
+    currentRecurringPreferences = createEmptyRecurringPreferenceState();
+    renderRecurringPreferenceControls();
+    if (!employeeId || !canManagePermanentPreferences()) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/employee-recurring-preferences?employee_id=${encodeURIComponent(employeeId)}`);
+        if (!response.ok) {
+            showMessage(employeeText("msg_failed_load_permanent_preferences", "Failed to load permanent wishes."), "warning");
+            return;
+        }
+        const rules = await response.json();
+        const nextState = createEmptyRecurringPreferenceState();
+        rules.forEach(rule => {
+            if (
+                RECURRING_PREFERENCE_KINDS.includes(rule.preference_kind)
+                && Number.isInteger(Number(rule.day_of_week))
+                && Number(rule.day_of_week) >= 0
+                && Number(rule.day_of_week) <= 6
+            ) {
+                nextState[rule.preference_kind][Number(rule.day_of_week)] = rule.preference_type || "no_preference";
+            }
+        });
+        currentRecurringPreferences = nextState;
+        renderRecurringPreferenceControls();
+    } catch (error) {
+        console.error("Load permanent preferences error:", error);
+        showMessage(employeeText("msg_server_error_load_permanent_preferences", "Server error while loading permanent wishes."), "warning");
+    }
+}
+
+async function saveEmployeeRecurringPreferences(employeeId) {
+    if (!employeeId || !canManagePermanentPreferences()) {
+        return;
+    }
+    const state = collectRecurringPreferenceState();
+    const rules = [];
+    RECURRING_PREFERENCE_KINDS.forEach(kind => {
+        state[kind].forEach((preferenceType, dayOfWeek) => {
+            rules.push({
+                preference_kind: kind,
+                day_of_week: dayOfWeek,
+                preference_type: preferenceType || "no_preference",
+            });
+        });
+    });
+    const response = await fetch("/api/employee-recurring-preferences", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            employee_id: employeeId,
+            rules,
+        }),
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Save permanent preferences error:", errorText);
+        throw new Error(employeeText("msg_failed_save_permanent_preferences", "Failed to save permanent wishes."));
+    }
+}
 
 function bindEmployeeModal() {
     const addButton = document.getElementById("open-employee-modal-btn");
@@ -229,6 +384,8 @@ async function handleEmployeeSubmit(event) {
         }
 
         const result = await response.json();
+        const savedEmployeeId = editingEmployeeId !== null ? editingEmployeeId : result.employee?.id;
+        await saveEmployeeRecurringPreferences(savedEmployeeId);
         const backupSuffix = result.backup_name
             ? ` ${employeeText("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
             : "";
@@ -239,13 +396,15 @@ async function handleEmployeeSubmit(event) {
         await loadEmployees();
     } catch (error) {
         console.error("Submit employee error:", error);
-        showMessage(employeeText("msg_server_error_save_employee", "Server error while saving employee."), "danger");
+        showMessage(error?.message || employeeText("msg_server_error_save_employee", "Server error while saving employee."), "danger");
     }
 }
 
 
 // Fill form for editing / Заполняем форму для редактирования
 function editEmployee(employee) {
+    currentRecurringPreferences = createEmptyRecurringPreferenceState();
+    renderRecurringPreferenceControls();
     document.getElementById("id_card").value = employee.id_card || "";
     document.getElementById("full_name").value = employee.full_name;
     document.getElementById("sex").value = employee.sex;
@@ -267,6 +426,7 @@ function editEmployee(employee) {
     }
 
     openEmployeeModal("edit");
+    loadEmployeeRecurringPreferences(employee.id);
 }
 
 
@@ -284,6 +444,7 @@ async function deleteEmployee(employeeId) {
                 { label: employeeText("confirm_impact_schedule_entries", "Schedule entries"), value: impact.schedule_entries },
                 { label: employeeText("confirm_impact_general_preferences", "General preferences"), value: impact.general_preferences },
                 { label: employeeText("confirm_impact_weekly_preferences", "Weekly preferences"), value: impact.weekly_preferences },
+                { label: employeeText("confirm_impact_recurring_preferences", "Permanent wishes"), value: impact.recurring_preferences },
                 { label: employeeText("confirm_impact_day_statuses", "Day statuses"), value: impact.day_statuses }
             ]);
         } else {
@@ -342,6 +503,8 @@ function resetForm() {
     }
 
     editingEmployeeId = null;
+    currentRecurringPreferences = createEmptyRecurringPreferenceState();
+    renderRecurringPreferenceControls();
 
     const submitButton = document.getElementById("submit-button");
     if (submitButton) {
