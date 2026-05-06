@@ -2,6 +2,24 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.14_beta - 2026-05-06
+
+## Fixed
+
+- Fixed the desktop background sync worker so pending local weekly preferences are pushed before any cloud pull can replace local preference tables.
+- Prevented local preferences from being deleted by a destructive cloud preference pull while the desktop outbox still has pending changes.
+- Added regression coverage for preserving weekly preferences during background sync.
+
+## Changed
+
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.14_beta`.
+
+## Verified
+
+- Full Python unittest suite passed: 102 tests OK, 1 PostgreSQL integration test skipped because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not set.
+- Python compile check passed for `main.py`.
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.15.14-beta.exe`
+
 # 0.15.13_beta - 2026-05-06
 
 ## Fixed

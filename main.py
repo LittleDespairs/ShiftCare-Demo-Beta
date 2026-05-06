@@ -35,7 +35,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.13_beta"
+APP_VERSION = "0.15.14_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
@@ -3731,8 +3731,6 @@ def run_desktop_sync_once() -> bool:
         cloud_token = settings.get("desktop_cloud_access_token")
         if not cloud_organization_id or not cloud_token:
             return False
-
-        sync_cloud_preferences_to_desktop(connection, settings)
 
         cursor.execute(
             """

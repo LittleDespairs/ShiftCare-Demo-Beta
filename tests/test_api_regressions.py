@@ -2203,6 +2203,61 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(cursor.fetchone()["preference_type"], "off_day")
 
+    def test_desktop_sync_pushes_pending_preferences_without_pre_pull_delete(self):
+        employee_id = self._create_employee()
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM desktop_sync_outbox")
+        for key, value in {
+            "cloud_api_base_url": "https://schedule-app-beta.web.app",
+            "cloud_organization_id": "42",
+            "desktop_cloud_access_token": "cloud-token",
+        }.items():
+            cursor.execute(
+                """
+                INSERT INTO app_settings (organization_id, key, value)
+                VALUES (1, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+        self.connection.commit()
+
+        response = self.client.post(
+            "/api/employee-week-preferences",
+            json={
+                "employee_id": employee_id,
+                "week_start_date": "2026-05-03",
+                "preference_date": "2026-05-04",
+                "preference_type": "off_day",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        cloud_import_payloads = []
+
+        def fake_cloud_request(base_url, path, **kwargs):
+            if path == "/api/organizations/42/cloud-export":
+                raise AssertionError("pending local preferences must not be replaced by a cloud pull before push")
+            if path == "/api/organizations/42/cloud-import":
+                cloud_import_payloads.append(kwargs["payload"])
+                return {"message": "imported"}
+            raise AssertionError(path)
+
+        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+            self.assertTrue(main.run_desktop_sync_once())
+
+        cursor.execute(
+            """
+            SELECT preference_type
+            FROM employee_week_preferences
+            WHERE employee_id = ? AND preference_date = '2026-05-04'
+            """,
+            (employee_id,),
+        )
+        self.assertEqual(cursor.fetchone()["preference_type"], "off_day")
+        synced_preferences = cloud_import_payloads[0]["bundle"]["records"]["employee_week_preferences"]
+        self.assertEqual(synced_preferences[0]["preference_type"], "off_day")
+
     def test_weekly_preference_permissions_after_auth_bootstrap(self):
         employee_a = self._create_employee(full_name="Employee A")
         employee_b = self._create_employee(full_name="Employee B")

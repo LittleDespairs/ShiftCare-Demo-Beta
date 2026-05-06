@@ -1,20 +1,20 @@
-const CACHE_NAME = "shiftcare-0.15.13-beta-shell-20260506-bundled-license";
+const CACHE_NAME = "shiftcare-0.15.14-beta-shell-20260506-sync-preferences";
 
 const SHELL_ASSETS = [
   "/",
   "/schedule",
   "/weekly-preferences",
   "/organization",
-  "/static/css/style.css?v=0.15.13_beta",
-  "/static/css/schedule.css?v=0.15.13_beta",
-  "/static/js/i18n.js?v=0.15.13_beta",
-  "/static/js/auth_client.js?v=0.15.13_beta",
-  "/static/js/access_control.js?v=0.15.13_beta",
-  "/static/js/auth_i18n.js?v=0.15.13_beta",
-  "/static/js/online_status.js?v=0.15.13_beta",
-  "/static/js/pwa.js?v=0.15.13_beta",
-  "/static/js/schedule.js?v=0.15.13_beta",
-  "/static/js/employees.js?v=0.15.13_beta",
+  "/static/css/style.css?v=0.15.14_beta",
+  "/static/css/schedule.css?v=0.15.14_beta",
+  "/static/js/i18n.js?v=0.15.14_beta",
+  "/static/js/auth_client.js?v=0.15.14_beta",
+  "/static/js/access_control.js?v=0.15.14_beta",
+  "/static/js/auth_i18n.js?v=0.15.14_beta",
+  "/static/js/online_status.js?v=0.15.14_beta",
+  "/static/js/pwa.js?v=0.15.14_beta",
+  "/static/js/schedule.js?v=0.15.14_beta",
+  "/static/js/employees.js?v=0.15.14_beta",
   "/static/manifest.webmanifest",
   "/static/icons/app-icon.svg"
 ];
