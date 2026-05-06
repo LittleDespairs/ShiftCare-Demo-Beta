@@ -59,6 +59,14 @@ def get_database_path() -> Path:
     return BASE_DIR / "schedule_app.db"
 
 
+def get_bundled_database_path() -> Path | None:
+    if not getattr(sys, "frozen", False):
+        return None
+    bundled_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    bundled_path = bundled_dir / "schedule_app.db"
+    return bundled_path if bundled_path.exists() else None
+
+
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
@@ -227,6 +235,87 @@ def _ensure_desktop_sync_triggers(cursor: sqlite3.Cursor) -> None:
             END
             """
         )
+
+
+def _seed_licenses_from_bundled_database(cursor: sqlite3.Cursor) -> None:
+    bundled_path = get_bundled_database_path()
+    if not bundled_path or bundled_path.resolve() == DATABASE_PATH.resolve():
+        return
+
+    cursor.execute("SELECT COUNT(*) AS count FROM licenses WHERE organization_id = 1 AND revoked_at IS NULL")
+    if int(cursor.fetchone()["count"] or 0) > 0:
+        return
+
+    cursor.execute("SELECT public_id FROM organizations WHERE id = 1")
+    organization_row = cursor.fetchone()
+    if not organization_row:
+        return
+    organization_public_id = organization_row["public_id"]
+
+    bundled_connection = sqlite3.connect(bundled_path)
+    bundled_connection.row_factory = sqlite3.Row
+    try:
+        bundled_cursor = bundled_connection.cursor()
+        bundled_cursor.execute(
+            """
+            SELECT license_id, status, plan_code, employee_limit, support_cloud_expires_at,
+                   grace_ends_at, certificate_json, signature, key_id, source,
+                   imported_at, last_verified_at, revoked_at
+            FROM licenses
+            WHERE organization_id = 1
+              AND revoked_at IS NULL
+            ORDER BY imported_at DESC, id DESC
+            """
+        )
+        for row in bundled_cursor.fetchall():
+            try:
+                certificate = json.loads(row["certificate_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if certificate.get("organization_public_id") != organization_public_id:
+                continue
+            cursor.execute(
+                """
+                INSERT INTO licenses (
+                    organization_id, license_id, status, plan_code, employee_limit,
+                    support_cloud_expires_at, grace_ends_at, certificate_json, signature,
+                    key_id, source, imported_at, last_verified_at, revoked_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(license_id)
+                DO UPDATE SET status = excluded.status,
+                              plan_code = excluded.plan_code,
+                              employee_limit = excluded.employee_limit,
+                              support_cloud_expires_at = excluded.support_cloud_expires_at,
+                              grace_ends_at = excluded.grace_ends_at,
+                              certificate_json = excluded.certificate_json,
+                              signature = excluded.signature,
+                              key_id = excluded.key_id,
+                              source = excluded.source,
+                              imported_at = excluded.imported_at,
+                              last_verified_at = excluded.last_verified_at,
+                              revoked_at = excluded.revoked_at
+                """,
+                (
+                    1,
+                    row["license_id"],
+                    row["status"],
+                    row["plan_code"],
+                    int(row["employee_limit"] or 0),
+                    row["support_cloud_expires_at"],
+                    row["grace_ends_at"],
+                    row["certificate_json"],
+                    row["signature"],
+                    row["key_id"],
+                    row["source"],
+                    row["imported_at"],
+                    row["last_verified_at"],
+                    row["revoked_at"],
+                ),
+            )
+            break
+    finally:
+        bundled_connection.close()
 
 
 def get_backup_dir() -> Path:
@@ -1108,6 +1197,8 @@ def init_db():
             "Add permanent employee recurring preferences",
         )
         _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
+
+    _seed_licenses_from_bundled_database(cursor)
 
     connection.commit()
     connection.close()

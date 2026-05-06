@@ -1,4 +1,5 @@
 import os
+import json
 import sqlite3
 import sys
 import tempfile
@@ -311,6 +312,79 @@ class ApiRegressionTests(unittest.TestCase):
         cursor = self.connection.cursor()
         cursor.execute("SELECT status FROM license_activation_attempts ORDER BY id DESC LIMIT 1")
         self.assertEqual(cursor.fetchone()["status"], "success")
+
+    def test_runtime_database_seeds_matching_license_from_bundled_database(self):
+        certificate = {
+            "license_id": "lic_bundled_seed",
+            "organization_public_id": "local-default",
+            "plan_code": "full_access",
+            "employee_limit": 9999,
+            "issued_at": "2026-05-06T00:00:00Z",
+            "support_cloud_expires_at": "2036-05-06",
+            "grace_ends_at": "2036-05-20",
+            "status": "active",
+            "signature": "bundled-support-signature",
+            "signature_scheme": "support-v1",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bundled_path = Path(temp_dir) / "schedule_app.db"
+            bundled_connection = sqlite3.connect(bundled_path)
+            try:
+                bundled_cursor = bundled_connection.cursor()
+                bundled_cursor.execute(
+                    """
+                    CREATE TABLE licenses (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        organization_id INTEGER NOT NULL DEFAULT 1,
+                        license_id TEXT NOT NULL UNIQUE,
+                        status TEXT NOT NULL,
+                        plan_code TEXT NOT NULL,
+                        employee_limit INTEGER NOT NULL,
+                        support_cloud_expires_at TEXT,
+                        grace_ends_at TEXT,
+                        certificate_json TEXT NOT NULL,
+                        signature TEXT NOT NULL,
+                        key_id TEXT,
+                        source TEXT NOT NULL,
+                        imported_at TEXT NOT NULL,
+                        last_verified_at TEXT,
+                        revoked_at TEXT
+                    )
+                    """
+                )
+                bundled_cursor.execute(
+                    """
+                    INSERT INTO licenses (
+                        organization_id, license_id, status, plan_code, employee_limit,
+                        support_cloud_expires_at, grace_ends_at, certificate_json, signature,
+                        key_id, source, imported_at, last_verified_at, revoked_at
+                    )
+                    VALUES (1, ?, 'active', 'full_access', 9999, '2036-05-06', '2036-05-20', ?, ?, 'support', 'support', '2026-05-06T00:00:00', '2026-05-06T00:00:00', NULL)
+                    """,
+                    (
+                        certificate["license_id"],
+                        json.dumps(certificate, sort_keys=True),
+                        certificate["signature"],
+                    ),
+                )
+                bundled_connection.commit()
+            finally:
+                bundled_connection.close()
+
+            cursor = self.connection.cursor()
+            cursor.execute("DELETE FROM licenses")
+            self.connection.commit()
+
+            with patch.object(database, "get_bundled_database_path", return_value=bundled_path):
+                database._seed_licenses_from_bundled_database(cursor)
+            self.connection.commit()
+
+            cursor.execute("SELECT license_id, plan_code, employee_limit FROM licenses")
+            license_row = cursor.fetchone()
+            self.assertIsNotNone(license_row)
+            self.assertEqual(license_row["license_id"], "lic_bundled_seed")
+            self.assertEqual(license_row["plan_code"], "full_access")
+            self.assertEqual(license_row["employee_limit"], 9999)
 
     def test_expired_trial_blocks_employee_creation_manual_schedule_and_generation(self):
         employee_id = self._create_employee(full_name="Licensed Employee")
