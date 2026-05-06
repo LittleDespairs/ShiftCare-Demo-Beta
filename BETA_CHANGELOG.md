@@ -2,6 +2,19 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.15_beta - 2026-05-06
+
+## Release
+
+- Rebuilt the Windows installer from the latest `main` after the weekly-preference sync fix.
+- Kept the bundled database in the desktop package so first installs include the packaged full-access license.
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.15_beta`.
+
+## Verified
+
+- Full Python unittest suite passed: 102 tests OK, 1 PostgreSQL integration test skipped because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not set.
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.15.15-beta.exe`
+
 # 0.15.14_beta - 2026-05-06
 
 ## Fixed

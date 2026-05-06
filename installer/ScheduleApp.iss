@@ -1,8 +1,8 @@
 #define MyAppName "ShiftCare"
 #define MyAppPublisher "ShiftCare"
-#define MyAppVersion "0.15.14-beta"
-#define MyAppExeName "ShiftCare_0.15.14_beta.exe"
-#define MyAppDistDir "..\dist\ShiftCare_0.15.14_beta"
+#define MyAppVersion "0.15.15-beta"
+#define MyAppExeName "ShiftCare_0.15.15_beta.exe"
+#define MyAppDistDir "..\dist\ShiftCare_0.15.15_beta"
 #define MyAppIcon "..\static\icons\app-icon.ico"
 
 [Setup]
@@ -14,8 +14,8 @@ AppPublisher={#MyAppPublisher}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Installer
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion=0.15.14.0
-VersionInfoVersion=0.15.14.0
+VersionInfoProductVersion=0.15.15.0
+VersionInfoVersion=0.15.15.0
 DefaultDirName={autopf}\ShiftCare
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
