@@ -2203,6 +2203,65 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(cursor.fetchone()["preference_type"], "off_day")
 
+    def test_weekly_preferences_list_pulls_cloud_preferences_when_no_local_pending_changes(self):
+        employee_id = self._create_employee()
+        cursor = self.connection.cursor()
+        cursor.execute("UPDATE employees SET public_id = 'emp_cloud' WHERE id = ?", (employee_id,))
+        for key, value in {
+            "cloud_api_base_url": "https://schedule-app-beta.web.app",
+            "cloud_organization_id": "42",
+            "desktop_cloud_access_token": "cloud-token",
+        }.items():
+            cursor.execute(
+                """
+                INSERT INTO app_settings (organization_id, key, value)
+                VALUES (1, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+        cursor.execute("DELETE FROM desktop_sync_outbox")
+        self.connection.commit()
+
+        cloud_bundle = {
+            "format": "shiftcare.organization.v1",
+            "app_version": "0.15.15_beta",
+            "records": {
+                "employees": [{"id": 7, "public_id": "emp_cloud"}],
+                "employee_preferences": [],
+                "employee_week_preferences": [
+                    {
+                        "id": 11,
+                        "public_id": "wpr_cloud",
+                        "employee_id": 7,
+                        "week_start_date": "2026-05-03",
+                        "preference_date": "2026-05-04",
+                        "preference_type": "off_day",
+                        "created_at": "2026-05-06T01:00:00",
+                        "updated_at": "2026-05-06T01:00:00",
+                    }
+                ],
+                "employee_recurring_preferences": [],
+            },
+        }
+
+        def fake_cloud_request(base_url, path, **kwargs):
+            self.assertEqual(path, "/api/organizations/42/cloud-export")
+            self.assertEqual(kwargs["token"], "cloud-token")
+            return cloud_bundle
+
+        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+            response = self.client.get(
+                "/api/employee-week-preferences",
+                params={"week_start_date": "2026-05-03"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        preferences = response.json()
+        self.assertEqual(len(preferences), 1)
+        self.assertEqual(preferences[0]["employee_id"], employee_id)
+        self.assertEqual(preferences[0]["preference_type"], "off_day")
+
     def test_desktop_sync_pushes_pending_preferences_without_pre_pull_delete(self):
         employee_id = self._create_employee()
         cursor = self.connection.cursor()

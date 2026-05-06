@@ -35,7 +35,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.15_beta"
+APP_VERSION = "0.15.16_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
@@ -6582,6 +6582,8 @@ def get_employee_week_preferences(
 ):
     connection = get_connection()
     try:
+        pull_cloud_preferences_for_desktop_generation(connection)
+        connection.commit()
         cursor = connection.cursor()
         filters = ["ewp.week_start_date = ?"]
         params: list = [week_start_date]
