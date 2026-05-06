@@ -36,11 +36,11 @@ steps:
       - managed
       - --allow-unauthenticated
       - --min-instances
-      - '3'
+      - '10'
       - --max-instances
       - '100'
       - --concurrency
-      - '20'
+      - '1000'
       - --cpu
       - '2'
       - --memory

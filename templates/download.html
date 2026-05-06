@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Cache-Control" content="no-store">
+    <title>Download ShiftCare</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f7fafc;
+            --text: #17202a;
+            --muted: #5f6f7f;
+            --line: #d7e0ea;
+            --primary: #0f766e;
+            --primary-dark: #115e59;
+            --surface: #ffffff;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Arial, Helvetica, sans-serif;
+            color: var(--text);
+            background: var(--bg);
+        }
+
+        .page {
+            width: min(920px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 56px 0;
+        }
+
+        header {
+            margin-bottom: 32px;
+        }
+
+        .brand {
+            margin: 0 0 10px;
+            font-size: 40px;
+            line-height: 1.1;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            margin: 0;
+            max-width: 640px;
+            color: var(--muted);
+            font-size: 18px;
+            line-height: 1.5;
+        }
+
+        .download-panel {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 28px;
+        }
+
+        .version {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .label {
+            color: var(--muted);
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+
+        .value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .meta {
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 28px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 44px;
+            padding: 0 18px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-secondary {
+            border-color: var(--line);
+            color: var(--text);
+            background: var(--surface);
+        }
+
+        .note {
+            margin-top: 24px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
+        @media (max-width: 640px) {
+            .page {
+                padding: 32px 0;
+            }
+
+            .brand {
+                font-size: 32px;
+            }
+
+            .download-panel {
+                padding: 20px;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="page">
+        <header>
+            <h1 class="brand">Download ShiftCare</h1>
+            <p class="subtitle">Get the latest Windows installer published in the official ShiftCare release channel.</p>
+        </header>
+
+        <section class="download-panel" aria-labelledby="latest-version-title">
+            <div class="version">
+                <span class="label" id="latest-version-title">Latest version</span>
+                <span class="value">{{ latest.version }}</span>
+            </div>
+
+            <div class="meta">
+                <div>Installer: {{ latest.asset_name }}</div>
+                {% if latest.size_bytes %}
+                <div>Size: {{ "%.1f"|format(latest.size_bytes / 1048576) }} MB</div>
+                {% endif %}
+                {% if latest.published_at %}
+                <div>Published: {{ latest.published_at }}</div>
+                {% endif %}
+            </div>
+
+            <div class="actions">
+                <a class="btn btn-primary" href="/download/latest">Download latest installer</a>
+                <a class="btn btn-secondary" href="{{ latest.html_url }}" rel="noopener" target="_blank">Release notes</a>
+            </div>
+
+            <p class="note">This page is generated from GitHub Releases on every request and is not cached by the application.</p>
+        </section>
+    </main>
+</body>
+</html>

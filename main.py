@@ -22,7 +22,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr, Field, model_validator
@@ -2611,6 +2611,24 @@ def get_update_status() -> dict:
         "current_version": APP_VERSION,
         "update_available": is_newer_version(latest_release["version"]),
         "latest": latest_release,
+    }
+
+
+def get_latest_download_payload() -> dict:
+    latest_release = find_latest_installable_release(request_github_releases())
+    if latest_release is None:
+        raise HTTPException(status_code=404, detail="No installable Windows release asset was found.")
+    return {
+        "product": "ShiftCare",
+        "latest": latest_release,
+    }
+
+
+def no_store_headers() -> dict[str, str]:
+    return {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
     }
 
 
@@ -5498,6 +5516,34 @@ def home_page(request: Request):
 @app.get("/login", tags=["Pages"])
 def login_page(request: Request):
     return templates.TemplateResponse(request=request, name="login.html", context={})
+
+
+@app.get("/api/download/latest", tags=["Download"])
+def latest_download_metadata():
+    return get_latest_download_payload()
+
+
+@app.get("/download/latest", tags=["Download"])
+def redirect_latest_download():
+    payload = get_latest_download_payload()
+    return RedirectResponse(
+        payload["latest"]["download_url"],
+        status_code=302,
+        headers=no_store_headers(),
+    )
+
+
+@app.get("/download", tags=["Pages"])
+@app.get("/download-shiftcare", tags=["Pages"], include_in_schema=False)
+@app.get("/download/shiftcare", tags=["Pages"], include_in_schema=False)
+def download_page(request: Request):
+    payload = get_latest_download_payload()
+    return templates.TemplateResponse(
+        request=request,
+        name="download.html",
+        context=payload,
+        headers=no_store_headers(),
+    )
 
 
 @app.get("/organization", tags=["Pages"])
