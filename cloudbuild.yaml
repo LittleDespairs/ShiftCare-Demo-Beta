@@ -40,7 +40,7 @@ steps:
       - --max-instances
       - '100'
       - --concurrency
-      - '1'
+      - '20'
       - --cpu
       - '2'
       - --memory
