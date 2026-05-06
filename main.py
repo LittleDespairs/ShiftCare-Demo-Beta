@@ -35,7 +35,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.11_beta"
+APP_VERSION = "0.15.12_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
@@ -701,6 +701,13 @@ class EmployeeWeekPreferenceCreate(BaseModel):
         "not_night",
         "no_morning_evening_combo",
     ]
+
+    @model_validator(mode="after")
+    def validate_preference_date_belongs_to_week(self):
+        week_dates = build_week_dates(self.week_start_date)
+        if self.preference_date not in week_dates:
+            raise ValueError("preference_date must belong to the selected week")
+        return self
 
 
 class EmployeeRecurringPreferenceRule(BaseModel):
@@ -1993,10 +2000,12 @@ ORGANIZATION_EXPORT_TABLES = (
     "employee_recurring_preferences",
     "employee_day_statuses",
     "schedule_entries",
+    "licenses",
     "app_settings",
 )
 
 ORGANIZATION_IMPORT_DELETE_ORDER = (
+    "licenses",
     "schedule_entries",
     "employee_day_statuses",
     "employee_recurring_preferences",
@@ -2142,6 +2151,56 @@ def _insert_position_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organ
     return id_map
 
 
+def _insert_license_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organization_id: int, now: str) -> int:
+    imported_count = 0
+    for row in rows:
+        certificate_json = row.get("certificate_json")
+        if not certificate_json:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO licenses (
+                organization_id, license_id, status, plan_code, employee_limit,
+                support_cloud_expires_at, grace_ends_at, certificate_json, signature,
+                key_id, source, imported_at, last_verified_at, revoked_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(license_id)
+            DO UPDATE SET organization_id = excluded.organization_id,
+                          status = excluded.status,
+                          plan_code = excluded.plan_code,
+                          employee_limit = excluded.employee_limit,
+                          support_cloud_expires_at = excluded.support_cloud_expires_at,
+                          grace_ends_at = excluded.grace_ends_at,
+                          certificate_json = excluded.certificate_json,
+                          signature = excluded.signature,
+                          key_id = excluded.key_id,
+                          source = excluded.source,
+                          imported_at = excluded.imported_at,
+                          last_verified_at = excluded.last_verified_at,
+                          revoked_at = excluded.revoked_at
+            """,
+            (
+                organization_id,
+                row.get("license_id"),
+                row.get("status") or "active",
+                row.get("plan_code"),
+                int(row.get("employee_limit") or license_runtime.TRIAL_EMPLOYEE_LIMIT),
+                row.get("support_cloud_expires_at"),
+                row.get("grace_ends_at"),
+                certificate_json,
+                row.get("signature") or "",
+                row.get("key_id"),
+                row.get("source") or "imported",
+                row.get("imported_at") or now,
+                row.get("last_verified_at") or now,
+                row.get("revoked_at"),
+            ),
+        )
+        imported_count += 1
+    return imported_count
+
+
 def import_organization_bundle(connection, organization_id: int, bundle: dict, replace_existing: bool, imported_by_user_id: int) -> dict:
     if bundle.get("format") != "shiftcare.organization.v1":
         raise HTTPException(status_code=400, detail="Unsupported organization bundle format")
@@ -2184,6 +2243,7 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
 
     employee_id_map = _insert_employee_bundle_rows(cursor, records.get("employees") or [], organization_id, now)
     position_id_map = _insert_position_bundle_rows(cursor, records.get("positions") or [], organization_id, now)
+    license_count = _insert_license_bundle_rows(cursor, records.get("licenses") or [], organization_id, now)
     employees_by_public_id = _source_rows_by_public_id(records.get("employees") or [])
     positions_by_public_id = _source_rows_by_public_id(records.get("positions") or [])
 
@@ -2454,6 +2514,7 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
             "positions": len(position_id_map),
             "shift_templates": len(shift_template_id_map),
             "schedule_entries": len(records.get("schedule_entries") or []),
+            "licenses": license_count,
         },
     }
 
@@ -3936,6 +3997,22 @@ def pull_cloud_preferences_for_desktop_generation(connection) -> None:
     if not is_desktop_sqlite_runtime():
         return
     cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS count
+        FROM desktop_sync_outbox
+        WHERE organization_id = 1
+          AND entity_type IN (
+              'employee_preferences',
+              'employee_week_preferences',
+              'employee_recurring_preferences',
+              'employee_day_statuses'
+          )
+          AND status IN ('pending', 'failed', 'syncing')
+        """
+    )
+    if int(cursor.fetchone()["count"] or 0) > 0:
+        return
     cursor.execute(
         """
         SELECT key, value

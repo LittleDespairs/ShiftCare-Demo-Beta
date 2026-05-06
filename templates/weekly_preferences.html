@@ -608,6 +608,8 @@
 
             document.getElementById("load-btn").addEventListener("click", loadWeekPreferences);
             document.getElementById("save-btn").addEventListener("click", savePreferences);
+            document.getElementById("employee_select").addEventListener("change", handleEmployeeSelectionChanged);
+            document.getElementById("week_start").addEventListener("change", handleEmployeeSelectionChanged);
             document.getElementById("tbody").addEventListener("click", handlePreferencesTableClick);
         });
 
@@ -719,6 +721,17 @@
             }
         }
 
+        function handleEmployeeSelectionChanged() {
+            weekDates = [];
+            preferencesMap = {};
+            renderPreferencesEmptyState(
+                "preferences_empty_initial_title",
+                "No week loaded",
+                "preferences_empty_initial_text",
+                "Select a week and an employee to review or update weekly preferences."
+            );
+        }
+
         /* =========================================================
            TABLE RENDER / ОТРИСОВКА ТАБЛИЦЫ
            ========================================================= */
@@ -813,10 +826,17 @@
             try {
                 const responses = await Promise.all(
                     Array.from(selects).map(select => {
+                        const rowEmployeeId = Number(select.dataset.employeeId);
+                        if (select.value === "no_preference") {
+                            return window.scheduleAuth.request(
+                                `/api/employee-week-preferences?employee_id=${rowEmployeeId}&preference_date=${encodeURIComponent(select.dataset.date)}`,
+                                { method: "DELETE" }
+                            );
+                        }
                         return window.scheduleAuth.request("/api/employee-week-preferences", {
                             method: "POST",
                             body: JSON.stringify({
-                                employee_id: employeeId,
+                                employee_id: rowEmployeeId,
                                 week_start_date: weekStart,
                                 preference_date: select.dataset.date,
                                 preference_type: select.value

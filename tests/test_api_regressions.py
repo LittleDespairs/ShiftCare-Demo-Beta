@@ -696,6 +696,25 @@ class ApiRegressionTests(unittest.TestCase):
                 "employee_week_preferences": [],
                 "employee_day_statuses": [],
                 "schedule_entries": [],
+                "licenses": [
+                    {
+                        "id": 3,
+                        "organization_id": 42,
+                        "license_id": "lic_cloud_full_access",
+                        "status": "active",
+                        "plan_code": "full_access",
+                        "employee_limit": 9999,
+                        "support_cloud_expires_at": "2036-05-06",
+                        "grace_ends_at": "2036-05-20",
+                        "certificate_json": '{"license_id":"lic_cloud_full_access","organization_public_id":"org_cloud","plan_code":"full_access","employee_limit":9999,"issued_at":"2026-05-06T00:00:00Z","status":"active","signature":"cloud-admin-grant","signature_scheme":"cloud-admin-v1"}',
+                        "signature": "cloud-admin-grant",
+                        "key_id": "cloud-admin-grant",
+                        "source": "support",
+                        "imported_at": "2026-05-06T00:00:00Z",
+                        "last_verified_at": "2026-05-06T00:00:00Z",
+                        "revoked_at": None,
+                    }
+                ],
                 "app_settings": [],
                 "employee_positions": [],
             },
@@ -758,6 +777,11 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(cursor.fetchone()["full_name"], "Imported Employee")
         cursor.execute("SELECT value FROM app_settings WHERE key = 'cloud_organization_id'")
         self.assertEqual(cursor.fetchone()["value"], "42")
+        cursor.execute("SELECT plan_code, employee_limit FROM licenses WHERE license_id = 'lic_cloud_full_access'")
+        license_row = cursor.fetchone()
+        self.assertIsNotNone(license_row)
+        self.assertEqual(license_row["plan_code"], "full_access")
+        self.assertEqual(license_row["employee_limit"], 9999)
 
     def test_desktop_linked_organization_reads_cloud_members_and_invitations(self):
         owner_response = self.client.post(
@@ -906,6 +930,31 @@ class ApiRegressionTests(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(schedule_response.status_code, 200)
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO licenses (
+                organization_id, license_id, status, plan_code, employee_limit,
+                support_cloud_expires_at, grace_ends_at, certificate_json, signature,
+                key_id, source, imported_at, last_verified_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (
+                organization_id,
+                "lic_round_trip_full_access",
+                "active",
+                "full_access",
+                9999,
+                "2036-05-06",
+                "2036-05-20",
+                '{"license_id":"lic_round_trip_full_access","organization_public_id":"local-default","plan_code":"full_access","employee_limit":9999,"issued_at":"2026-05-06T00:00:00Z","status":"active","signature":"local-admin-grant","signature_scheme":"local-admin-v1"}',
+                "local-admin-grant",
+                "local-admin-grant",
+                "support",
+            ),
+        )
+        self.connection.commit()
 
         export_response = self.client.get(f"/api/organizations/{organization_id}/cloud-export", headers=headers)
         self.assertEqual(export_response.status_code, 200)
@@ -913,6 +962,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(bundle["format"], "shiftcare.organization.v1")
         self.assertEqual(len(bundle["records"]["employees"]), 1)
         self.assertEqual(len(bundle["records"]["employee_positions"]), 1)
+        self.assertEqual(len(bundle["records"]["licenses"]), 1)
 
         import_response = self.client.post(
             f"/api/organizations/{organization_id}/cloud-import",
@@ -925,6 +975,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(imported["positions"], 1)
         self.assertEqual(imported["shift_templates"], 1)
         self.assertEqual(imported["schedule_entries"], 1)
+        self.assertEqual(imported["licenses"], 1)
 
         employees_response = self.client.get("/api/employees", headers=headers)
         self.assertEqual(employees_response.status_code, 200)
@@ -933,6 +984,11 @@ class ApiRegressionTests(unittest.TestCase):
         assignments_response = self.client.get("/api/employee-positions", headers=headers)
         self.assertEqual(assignments_response.status_code, 200)
         self.assertEqual(len(assignments_response.json()), 1)
+        cursor.execute("SELECT plan_code, employee_limit FROM licenses WHERE license_id = 'lic_round_trip_full_access'")
+        license_row = cursor.fetchone()
+        self.assertIsNotNone(license_row)
+        self.assertEqual(license_row["plan_code"], "full_access")
+        self.assertEqual(license_row["employee_limit"], 9999)
 
         empty_link_response = self.client.get(f"/api/organizations/{organization_id}/cloud-link", headers=headers)
         self.assertEqual(empty_link_response.status_code, 200)
@@ -2014,6 +2070,64 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(delete_response.json()["deleted_count"], 1)
+
+    def test_weekly_preference_date_must_belong_to_selected_week(self):
+        employee_id = self._create_employee()
+
+        response = self.client.post(
+            "/api/employee-week-preferences",
+            json={
+                "employee_id": employee_id,
+                "week_start_date": "2026-05-03",
+                "preference_date": "2026-05-10",
+                "preference_type": "off_day",
+            },
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("preference_date must belong to the selected week", response.text)
+
+    def test_pending_local_preferences_prevent_cloud_pull_before_generation(self):
+        employee_id = self._create_employee()
+        response = self.client.post(
+            "/api/employee-week-preferences",
+            json={
+                "employee_id": employee_id,
+                "week_start_date": "2026-05-03",
+                "preference_date": "2026-05-04",
+                "preference_type": "off_day",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        cursor = self.connection.cursor()
+        for key, value in {
+            "cloud_api_base_url": "https://schedule-app-beta.web.app",
+            "cloud_organization_id": "42",
+            "desktop_cloud_access_token": "cloud-token",
+        }.items():
+            cursor.execute(
+                """
+                INSERT INTO app_settings (organization_id, key, value)
+                VALUES (1, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+        self.connection.commit()
+
+        with patch.object(main, "request_cloud_json", side_effect=AssertionError("cloud pull should be skipped")):
+            main.pull_cloud_preferences_for_desktop_generation(self.connection)
+
+        cursor.execute(
+            """
+            SELECT preference_type
+            FROM employee_week_preferences
+            WHERE employee_id = ? AND preference_date = '2026-05-04'
+            """,
+            (employee_id,),
+        )
+        self.assertEqual(cursor.fetchone()["preference_type"], "off_day")
 
     def test_weekly_preference_permissions_after_auth_bootstrap(self):
         employee_a = self._create_employee(full_name="Employee A")

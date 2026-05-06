@@ -2,6 +2,30 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.12_beta - 2026-05-06
+
+## Release Focus
+
+Fix weekly employee preferences so local changes are reliably preserved and respected during schedule generation.
+
+## Changes
+
+- Fixed desktop generation so pending local weekly preference changes are not overwritten by a cloud pull before the generator reads them.
+- Added API validation that rejects weekly preference dates outside the selected week.
+- Updated the weekly preferences page so changing the week or employee clears stale loaded rows before saving.
+- Saving `no_preference` now clears the stored weekly preference instead of leaving redundant records.
+- Preserved the current cloud organization license import/export updates in this release line.
+- Updated runtime version, service worker cache keys, Windows packaging metadata, and installer spec to `0.15.12_beta`.
+
+## Verification
+
+- Full Python unittest suite passed: 100 tests OK, 1 PostgreSQL integration test skipped because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not set.
+- Python compile check passed for `main.py`.
+
+## Release Artifact
+
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.15.12-beta.exe`
+
 # 0.15.11_beta - 2026-05-06
 
 ## Added

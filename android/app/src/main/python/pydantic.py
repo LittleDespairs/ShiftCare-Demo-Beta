@@ -2,6 +2,9 @@ import types
 from typing import Any, Literal, Union, get_args, get_origin
 
 
+EmailStr = str
+
+
 class FieldInfo:
     def __init__(self, default: Any = ..., **constraints: Any):
         self.default = default

@@ -30,6 +30,7 @@ chaquopy {
             install("Jinja2==3.1.6")
             install("openpyxl==3.1.5")
             install("python-multipart==0.0.26")
+            install("python-dotenv==1.2.1")
         }
         extractPackages("schedule_app_backend")
     }
@@ -38,8 +39,14 @@ chaquopy {
 tasks.register("syncScheduleBackend", Copy) {
     from("../..") {
         include "main.py"
+        include "app_config.py"
+        include "auth_repository.py"
+        include "cloud_sql.py"
         include "database.py"
+        include "db_adapter.py"
         include "excel_export.py"
+        include "license_runtime.py"
+        include "word_export.py"
         include "schedule_app.db"
         include "templates/**"
         include "static/**"
@@ -50,8 +57,14 @@ tasks.register("syncScheduleBackend", Copy) {
 tasks.register("syncScheduleBackendAssets", Copy) {
     from("../..") {
         include "main.py"
+        include "app_config.py"
+        include "auth_repository.py"
+        include "cloud_sql.py"
         include "database.py"
+        include "db_adapter.py"
         include "excel_export.py"
+        include "license_runtime.py"
+        include "word_export.py"
         include "schedule_app.db"
         include "templates/**"
         include "static/**"

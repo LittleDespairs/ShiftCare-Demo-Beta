@@ -9,6 +9,21 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 
+class _ParamMarker:
+    def __init__(self, kind: str, default: Any = None, **kwargs: Any):
+        self.kind = kind
+        self.default = default
+        self.kwargs = kwargs
+
+
+def Depends(dependency: Any = None):
+    return _ParamMarker("depends", default=dependency)
+
+
+def Header(default: Any = None, **kwargs: Any):
+    return _ParamMarker("header", default=default, **kwargs)
+
+
 class HTTPException(Exception):
     def __init__(self, status_code: int, detail: Any = None):
         self.status_code = status_code
@@ -26,6 +41,17 @@ class FastAPI:
 
     def mount(self, path: str, app, name: str | None = None):
         self._app.mount(path, app, name=name)
+
+    def add_middleware(self, middleware_class, **options):
+        self._app.add_middleware(middleware_class, **options)
+
+    def on_event(self, event_type: str):
+        def decorator(func):
+            # The Android wrapper does not need FastAPI startup hooks; the
+            # backend is launched explicitly from app_bridge.py.
+            return func
+
+        return decorator
 
     def get(self, path: str, **options):
         return self._route(path, ["GET"])
@@ -78,6 +104,15 @@ class FastAPI:
                         raw_value = request.path_params[name]
                     elif name in request.query_params:
                         raw_value = request.query_params[name]
+                    elif isinstance(param.default, _ParamMarker):
+                        if param.default.kind == "depends":
+                            kwargs[name] = await _resolve_dependency(param.default.default, request)
+                            continue
+                        if param.default.kind == "header":
+                            header_name = param.default.kwargs.get("alias") or name.replace("_", "-")
+                            raw_value = request.headers.get(header_name, param.default.default)
+                        else:
+                            raw_value = param.default.default
                     elif param.default is not inspect._empty:
                         raw_value = param.default
                     else:
@@ -112,6 +147,39 @@ def _convert_param(value: Any, annotation: Any) -> Any:
     if annotation is float:
         return float(value)
     return value
+
+
+async def _resolve_dependency(dependency: Any, request: Request) -> Any:
+    if dependency is None:
+        return None
+
+    signature = inspect.signature(dependency)
+    type_hints = get_type_hints(dependency)
+    kwargs = {}
+
+    for name, param in signature.parameters.items():
+        annotation = type_hints.get(name, param.annotation)
+        if annotation is Request:
+            kwargs[name] = request
+            continue
+
+        if isinstance(param.default, _ParamMarker) and param.default.kind == "header":
+            header_name = param.default.kwargs.get("alias") or name.replace("_", "-")
+            raw_value = request.headers.get(header_name, param.default.default)
+        elif isinstance(param.default, _ParamMarker) and param.default.kind == "depends":
+            kwargs[name] = await _resolve_dependency(param.default.default, request)
+            continue
+        elif param.default is not inspect._empty:
+            raw_value = param.default
+        else:
+            raise HTTPException(status_code=422, detail=f"Missing dependency parameter: {name}")
+
+        kwargs[name] = _convert_param(raw_value, annotation)
+
+    result = dependency(**kwargs)
+    if inspect.isawaitable(result):
+        result = await result
+    return result
 
 
 def _to_response(result: Any):
