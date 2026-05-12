@@ -35,7 +35,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.18_beta"
+APP_VERSION = "0.15.19_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
@@ -587,6 +587,7 @@ class PositionCreate(BaseModel):
     color: str = Field(default="#eff6ff", pattern=r"^#[0-9A-Fa-f]{6}$")
     requires_continuous_coverage: bool = False
     minimum_staff_presence: int = Field(ge=0, le=50, default=0)
+    allow_same_day_other_positions: bool = False
     max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
     emergency_max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
     max_consecutive_split_days: int | None = Field(default=None, ge=1, le=7)
@@ -1099,6 +1100,7 @@ def row_to_position_dict(row: sqlite3.Row) -> dict:
         "color": row["color"] if "color" in row.keys() and row["color"] else "#eff6ff",
         "requires_continuous_coverage": bool(row["requires_continuous_coverage"]),
         "minimum_staff_presence": row["minimum_staff_presence"],
+        "allow_same_day_other_positions": bool(row["allow_same_day_other_positions"]) if "allow_same_day_other_positions" in row.keys() else False,
         "max_consecutive_nights": row["max_consecutive_nights"] if "max_consecutive_nights" in row.keys() else None,
         "emergency_max_consecutive_nights": row["emergency_max_consecutive_nights"] if "emergency_max_consecutive_nights" in row.keys() else None,
         "max_consecutive_split_days": row["max_consecutive_split_days"] if "max_consecutive_split_days" in row.keys() else None,
@@ -2133,10 +2135,11 @@ def _insert_position_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organ
             """
             INSERT INTO positions (
                 organization_id, public_id, name, color, requires_continuous_coverage, minimum_staff_presence,
+                allow_same_day_other_positions,
                 max_consecutive_nights, emergency_max_consecutive_nights,
                 max_consecutive_split_days, emergency_max_consecutive_split_days, created_at, updated_at, updated_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 organization_id,
@@ -2145,6 +2148,7 @@ def _insert_position_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organ
                 row.get("color") or DEFAULT_POSITION_COLOR,
                 int(row.get("requires_continuous_coverage") or 0),
                 int(row.get("minimum_staff_presence") or 0),
+                int(row.get("allow_same_day_other_positions") or 0),
                 row.get("max_consecutive_nights"),
                 row.get("emergency_max_consecutive_nights"),
                 row.get("max_consecutive_split_days"),
@@ -2857,6 +2861,41 @@ def get_projected_day_work_minutes(existing_entries: list[dict], template: dict)
     return sum(get_template_work_minutes(entry) for entry in existing_entries) + get_template_work_minutes(template)
 
 
+def get_position_same_day_other_positions_flags(connection, position_ids: set[int]) -> dict[int, bool]:
+    if not position_ids:
+        return {}
+
+    cursor = connection.cursor()
+    placeholders = ",".join(["?"] * len(position_ids))
+    cursor.execute(
+        f"""
+        SELECT id, allow_same_day_other_positions
+        FROM positions
+        WHERE id IN ({placeholders})
+        """,
+        sorted(position_ids),
+    )
+    return {int(row["id"]): bool(row["allow_same_day_other_positions"]) for row in cursor.fetchall()}
+
+
+def cross_position_same_day_rejection(
+    connection,
+    position_id: int,
+    existing_entries: list[dict],
+) -> str | None:
+    existing_position_ids = {int(entry["position_id"]) for entry in existing_entries}
+    other_position_ids = {existing_position_id for existing_position_id in existing_position_ids if existing_position_id != position_id}
+    if not other_position_ids:
+        return None
+
+    involved_position_ids = set(other_position_ids)
+    involved_position_ids.add(position_id)
+    flags = get_position_same_day_other_positions_flags(connection, involved_position_ids)
+    if not all(flags.get(involved_position_id, False) for involved_position_id in involved_position_ids):
+        return "same-day work with other positions is not allowed for one of the positions"
+    return None
+
+
 def employee_has_split_day(connection, employee_id: int, date_string: str) -> bool:
     entries = get_employee_entries_for_date(connection, employee_id, date_string)
     categories = {entry["category"] for entry in entries}
@@ -3153,10 +3192,7 @@ def can_employee_take_template(
         ],
     ]
 
-    if not app_settings["allow_multiple_positions_per_day"] and any(
-        entry["position_id"] != position_id
-        for entry in existing_entries
-    ):
+    if cross_position_same_day_rejection(connection, position_id, existing_entries):
         return False
 
     for entry in existing_entries:
@@ -3277,11 +3313,9 @@ def explain_employee_template_rejection(
             if entry["employee_id"] == employee["id"] and entry["date"] == date_string
         ],
     ]
-    if not app_settings["allow_multiple_positions_per_day"] and any(
-        entry["position_id"] != position_id
-        for entry in existing_entries
-    ):
-        return "employee already has a shift on another position this day"
+    cross_position_rejection = cross_position_same_day_rejection(connection, position_id, existing_entries)
+    if cross_position_rejection:
+        return cross_position_rejection
     for entry in existing_entries:
         existing_interval = build_interval(entry["start_time"], entry["end_time"], bool(entry["is_overnight"]))
         if new_interval.overlaps(existing_interval):
@@ -3384,19 +3418,6 @@ def validate_manual_schedule_entry_basics(connection, entry: ScheduleEntryCreate
         (entry.shift_template_id, entry.position_id),
         "Shift template not found for this position",
     )
-    app_settings = get_app_settings(connection)
-    if not app_settings["allow_multiple_positions_per_day"]:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM schedule_entries
-            WHERE employee_id = ? AND date = ? AND position_id != ? AND no_show = 0
-            LIMIT 1
-            """,
-            (entry.employee_id, entry.date, entry.position_id),
-        )
-        if cursor.fetchone():
-            raise HTTPException(status_code=400, detail="Employee already has a shift on another position this day")
     return row_to_shift_template_dict(template_row)
 
 
@@ -5882,16 +5903,18 @@ def add_position(position: PositionCreate, _access: dict | None = Depends(requir
                 """
                 INSERT INTO positions (
                     name, color, requires_continuous_coverage, minimum_staff_presence,
+                    allow_same_day_other_positions,
                     max_consecutive_nights, emergency_max_consecutive_nights,
                     max_consecutive_split_days, emergency_max_consecutive_split_days
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     position.name,
                     position.color,
                     int(position.requires_continuous_coverage),
                     position.minimum_staff_presence,
+                    int(position.allow_same_day_other_positions),
                     position.max_consecutive_nights,
                     position.emergency_max_consecutive_nights,
                     position.max_consecutive_split_days,
@@ -5921,6 +5944,7 @@ def update_position(
                 """
                 UPDATE positions
                 SET name = ?, color = ?, requires_continuous_coverage = ?, minimum_staff_presence = ?,
+                    allow_same_day_other_positions = ?,
                     max_consecutive_nights = ?, emergency_max_consecutive_nights = ?,
                     max_consecutive_split_days = ?, emergency_max_consecutive_split_days = ?
                 WHERE id = ?
@@ -5930,6 +5954,7 @@ def update_position(
                     position.color,
                     int(position.requires_continuous_coverage),
                     position.minimum_staff_presence,
+                    int(position.allow_same_day_other_positions),
                     position.max_consecutive_nights,
                     position.emergency_max_consecutive_nights,
                     position.max_consecutive_split_days,

@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS positions (
     color TEXT NOT NULL DEFAULT '#eff6ff',
     requires_continuous_coverage INTEGER NOT NULL DEFAULT 0,
     minimum_staff_presence INTEGER NOT NULL DEFAULT 0,
+    allow_same_day_other_positions INTEGER NOT NULL DEFAULT 0,
     max_consecutive_nights INTEGER,
     emergency_max_consecutive_nights INTEGER,
     max_consecutive_split_days INTEGER,

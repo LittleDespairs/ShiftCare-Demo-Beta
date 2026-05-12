@@ -787,6 +787,143 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
 
+    def test_cross_position_same_day_generation_requires_both_positions_to_allow_it(self):
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM schedule_entries")
+        cursor.execute("DELETE FROM employee_day_statuses")
+        cursor.execute("DELETE FROM shift_templates")
+        cursor.execute("DELETE FROM employee_positions")
+        cursor.execute("DELETE FROM positions")
+        cursor.execute("DELETE FROM employees")
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (1, 'Employee A', 'female', 0, 4, 6, 1, 1, 1, 1)
+            """
+        )
+        cursor.executemany(
+            """
+            INSERT INTO positions (id, name, allow_same_day_other_positions)
+            VALUES (?, ?, ?)
+            """,
+            [(1, "Ward A", 0), (2, "Ward B", 0)],
+        )
+        cursor.executemany(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (1, ?, 1, 100, 0)
+            """,
+            [(1,), (2,)],
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
+            VALUES
+                (1, 1, 'Ward A Morning', 'morning', '06:00', '12:00', 0, 1, 0),
+                (2, 2, 'Ward B Evening', 'evening', '13:00', '18:00', 0, 1, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
+            VALUES (1, 1, ?, 1)
+            """,
+            (WEEK_DATES[0],),
+        )
+        self.connection.commit()
+
+        employee = {
+            "id": 1,
+            "full_name": "Employee A",
+            "sex": "female",
+            "min_shifts_per_week": 0,
+            "target_shifts_per_week": 4,
+            "max_shifts_per_week": 6,
+            "can_work_night": True,
+            "can_work_weekends": True,
+            "can_work_evenings_after_night": True,
+            "can_work_mornings_and_evenings": True,
+        }
+        evening_template = {
+            "id": 2,
+            "name": "Ward B Evening",
+            "category": "evening",
+            "start_time": "13:00",
+            "end_time": "18:00",
+            "is_overnight": False,
+            "is_active": True,
+            "is_split_only": False,
+        }
+
+        self.assertFalse(
+            main.can_employee_take_template(
+                self.connection,
+                employee,
+                2,
+                WEEK_DATES[0],
+                evening_template,
+                WEEK_START_DATE,
+            )
+        )
+        self.assertEqual(
+            main.explain_employee_template_rejection(
+                self.connection,
+                employee,
+                2,
+                WEEK_DATES[0],
+                evening_template,
+                WEEK_START_DATE,
+            ),
+            "same-day work with other positions is not allowed for one of the positions",
+        )
+
+        cursor.execute("UPDATE positions SET allow_same_day_other_positions = 1 WHERE id = 2")
+        self.connection.commit()
+        self.assertFalse(
+            main.can_employee_take_template(
+                self.connection,
+                employee,
+                2,
+                WEEK_DATES[0],
+                evening_template,
+                WEEK_START_DATE,
+            )
+        )
+
+        cursor.execute("UPDATE positions SET allow_same_day_other_positions = 1 WHERE id = 1")
+        self.connection.commit()
+        self.assertTrue(
+            main.can_employee_take_template(
+                self.connection,
+                employee,
+                2,
+                WEEK_DATES[0],
+                evening_template,
+                WEEK_START_DATE,
+            )
+        )
+        self.assertIsNone(
+            main.explain_employee_template_rejection(
+                self.connection,
+                employee,
+                2,
+                WEEK_DATES[0],
+                evening_template,
+                WEEK_START_DATE,
+            )
+        )
+
     def test_staged_previous_night_blocks_next_morning(self):
         cursor = self.connection.cursor()
         cursor.execute("DELETE FROM schedule_entries")

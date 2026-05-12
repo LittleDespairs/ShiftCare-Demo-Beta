@@ -519,6 +519,13 @@
                                         <input type="number" id="position_emergency_max_consecutive_split_days" class="input" min="1" max="7">
                                     </div>
                                 </div>
+
+                                <label class="check-row" style="margin-top:14px;">
+                                    <input type="checkbox" id="allow_same_day_other_positions">
+                                    <span data-i18n="positions_allow_same_day_other_positions">
+                                        Allow same-day work with other positions
+                                    </span>
+                                </label>
                             </div>
 
                             <button id="position-submit-button" type="submit" class="btn btn-primary"
@@ -565,13 +572,14 @@
                                             <th data-i18n="positions_table_name">Name</th>
                                             <th data-i18n="positions_table_continuous">Continuous coverage</th>
                                             <th data-i18n="positions_table_min_presence">Minimum presence</th>
+                                            <th data-i18n="positions_table_same_day_other_positions">Same-day other positions</th>
                                             <th data-i18n="positions_table_generation_limits">Generation limits</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="positions-table-body">
                                         <tr>
-                                            <td colspan="6" class="muted-cell" data-i18n="positions_empty_list">
+                                            <td colspan="7" class="muted-cell" data-i18n="positions_empty_list">
                                                 No positions yet
                                             </td>
                                         </tr>
@@ -755,6 +763,7 @@
                     color: document.getElementById("position_color").value || "#eff6ff",
                     requires_continuous_coverage: requiresContinuousCoverage,
                     minimum_staff_presence: minimumStaffPresence,
+                    allow_same_day_other_positions: document.getElementById("allow_same_day_other_positions").checked,
                     max_consecutive_nights: readOptionalLimit("position_max_consecutive_nights"),
                     emergency_max_consecutive_nights: readOptionalLimit("position_emergency_max_consecutive_nights"),
                     max_consecutive_split_days: readOptionalLimit("position_max_consecutive_split_days"),
@@ -823,6 +832,7 @@
             document.getElementById("position_color").value = position.color || "#eff6ff";
             document.getElementById("requires_continuous_coverage").checked = position.requires_continuous_coverage;
             document.getElementById("minimum_staff_presence").value = position.minimum_staff_presence;
+            document.getElementById("allow_same_day_other_positions").checked = Boolean(position.allow_same_day_other_positions);
             setOptionalLimit("position_max_consecutive_nights", position.max_consecutive_nights);
             setOptionalLimit("position_emergency_max_consecutive_nights", position.emergency_max_consecutive_nights);
             setOptionalLimit("position_max_consecutive_split_days", position.max_consecutive_split_days);
@@ -893,6 +903,7 @@
             document.getElementById("position-form").reset();
             document.getElementById("position_color").value = "#eff6ff";
             document.getElementById("minimum_staff_presence").value = 0;
+            document.getElementById("allow_same_day_other_positions").checked = false;
             setOptionalLimit("position_max_consecutive_nights", null);
             setOptionalLimit("position_emergency_max_consecutive_nights", null);
             setOptionalLimit("position_max_consecutive_split_days", null);
@@ -907,7 +918,7 @@
             if (positions.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="6" class="muted-cell">
+                        <td colspan="7" class="muted-cell">
                             ${typeof renderEmptyState === "function"
                                 ? renderEmptyState({
                                     title: t("positions_empty_state_title", "No positions yet"),
@@ -929,6 +940,7 @@
                     </td>
                     <td>${boolBadge(position.requires_continuous_coverage)}</td>
                     <td>${Number(position.minimum_staff_presence)}</td>
+                    <td>${boolBadge(position.allow_same_day_other_positions)}</td>
                     <td>${renderPositionLimits(position)}</td>
                     <td>
                         <div class="table-actions">

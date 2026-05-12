@@ -762,6 +762,7 @@ def init_db():
         color TEXT NOT NULL DEFAULT '#eff6ff',
         requires_continuous_coverage INTEGER NOT NULL DEFAULT 0,
         minimum_staff_presence INTEGER NOT NULL DEFAULT 0,
+        allow_same_day_other_positions INTEGER NOT NULL DEFAULT 0,
         max_consecutive_nights INTEGER,
         emergency_max_consecutive_nights INTEGER,
         max_consecutive_split_days INTEGER,
@@ -773,6 +774,8 @@ def init_db():
     position_columns = {row["name"] for row in cursor.fetchall()}
     if "color" not in position_columns:
         cursor.execute("ALTER TABLE positions ADD COLUMN color TEXT NOT NULL DEFAULT '#eff6ff'")
+    if "allow_same_day_other_positions" not in position_columns:
+        cursor.execute("ALTER TABLE positions ADD COLUMN allow_same_day_other_positions INTEGER NOT NULL DEFAULT 0")
     for column_name in (
         "max_consecutive_nights",
         "emergency_max_consecutive_nights",

@@ -1191,12 +1191,6 @@
                                         <input id="emergency_max_consecutive_split_days" class="input" type="number" min="1" max="7" required>
                                     </div>
 
-                                    <div style="display:flex; align-items:flex-end;">
-                                        <label class="check-row" for="allow_multiple_positions_per_day" style="margin:0;">
-                                            <input id="allow_multiple_positions_per_day" type="checkbox">
-                                            <span data-i18n="settings_allow_multiple_positions_per_day">Allow multiple positions in one day</span>
-                                        </label>
-                                    </div>
                                 </div>
 
                                 <div class="settings-actions">
@@ -1692,8 +1686,7 @@
             { id: "max_consecutive_nights", type: "number" },
             { id: "emergency_max_consecutive_nights", type: "number" },
             { id: "max_consecutive_split_days", type: "number" },
-            { id: "emergency_max_consecutive_split_days", type: "number" },
-            { id: "allow_multiple_positions_per_day", type: "checkbox" }
+            { id: "emergency_max_consecutive_split_days", type: "number" }
         ];
         const defaultAppearanceSettings = {
             schedule_morning_color: "#ecfeff",

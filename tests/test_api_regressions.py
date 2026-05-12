@@ -2020,6 +2020,7 @@ class ApiRegressionTests(unittest.TestCase):
                 color="#dbeafe",
                 requires_continuous_coverage=True,
                 minimum_staff_presence=2,
+                allow_same_day_other_positions=True,
                 max_consecutive_nights=1,
                 emergency_max_consecutive_nights=2,
                 max_consecutive_split_days=3,
@@ -2033,6 +2034,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(positions[0]["color"], "#dbeafe")
         self.assertTrue(positions[0]["requires_continuous_coverage"])
         self.assertEqual(positions[0]["minimum_staff_presence"], 2)
+        self.assertTrue(positions[0]["allow_same_day_other_positions"])
         self.assertEqual(positions[0]["max_consecutive_nights"], 1)
         self.assertEqual(positions[0]["emergency_max_consecutive_nights"], 2)
         self.assertEqual(positions[0]["max_consecutive_split_days"], 3)
@@ -2850,7 +2852,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(create_response.status_code, 404)
         self.assertEqual(create_response.json()["detail"], "Shift template not found for this position")
 
-    def test_multi_position_same_day_setting_controls_cross_position_shifts(self):
+    def test_manual_schedule_allows_cross_position_same_day_shifts(self):
         reset_response = self.client.put(
             "/api/app-settings",
             json={"allow_multiple_positions_per_day": False},
@@ -2892,23 +2894,6 @@ class ApiRegressionTests(unittest.TestCase):
             },
         )
         self.assertEqual(first_shift.status_code, 200)
-
-        blocked_second_shift = self.client.post(
-            "/api/schedule",
-            json={
-                "employee_id": employee_id,
-                "position_id": ward_b_id,
-                "date": "2026-04-20",
-                "shift_template_id": evening_id,
-            },
-        )
-        self.assertEqual(blocked_second_shift.status_code, 400)
-
-        update_response = self.client.put(
-            "/api/app-settings",
-            json={"allow_multiple_positions_per_day": True},
-        )
-        self.assertEqual(update_response.status_code, 200)
 
         allowed_second_shift = self.client.post(
             "/api/schedule",

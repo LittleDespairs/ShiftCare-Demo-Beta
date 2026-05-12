@@ -310,6 +310,7 @@
                 [/employee already has an overlapping shift/g, t("generation_reason_overlapping_shift", "employee already has an overlapping shift")],
                 [/employee cannot work morning and evening on the same day/g, t("generation_reason_cannot_split_day", "employee cannot work morning and evening on the same day")],
                 [/employee already has another shift type that cannot be paired/g, t("generation_reason_unpairable_shift_type", "employee already has another shift type that cannot be paired")],
+                [/same-day work with other positions is not allowed for one of the positions/g, t("generation_reason_cross_position_day", "same-day work with other positions is not allowed for one of the positions")],
                 [/weekly preference blocks morning-evening combo/g, t("generation_reason_weekly_preference_split", "weekly preference blocks morning-evening combo")],
                 [/employee already has two shifts that day/g, t("generation_reason_two_shifts_day", "employee already has two shifts that day")],
                 [/employee requested off or vacation/g, t("generation_reason_off_or_vacation", "employee requested off or vacation")],
