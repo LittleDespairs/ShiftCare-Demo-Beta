@@ -6,7 +6,7 @@ This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_be
 
 ## Added
 
-- Added a configurable maximum daily work duration for same-day morning and evening pairs.
+- Added a configurable maximum daily work duration, in minutes, for same-day morning and evening pairs.
 - The generator now rejects morning-evening pair candidates whose combined working time exceeds the configured daily limit.
 - Morning-night pair generation remains exempt from the daily work limit.
 
