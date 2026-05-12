@@ -1,7 +1,5 @@
 # ShiftCare 0.15.7_beta
 
-Release date: 2026-05-01
-
 ## Fixed
 
 - Hosted employee portal login now uses a single clean stacked entry block, so the login button no longer overlaps the copy on large screens.

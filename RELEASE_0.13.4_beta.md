@@ -1,7 +1,5 @@
 # Schedule App 0.13.4_beta
 
-Release date: 2026-04-25
-
 ## Description
 
 This beta release focuses on stable Excel export formatting and a cleaner Settings experience. The export no longer uses rich text fragments, which removes the Excel repair warning while preserving useful visual highlighting for shifts assigned in other positions.

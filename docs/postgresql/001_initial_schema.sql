@@ -344,6 +344,7 @@ INSERT INTO app_settings (organization_id, key, value)
 VALUES
     (1, 'min_rest_minutes_between_morning_and_evening', '0'),
     (1, 'min_rest_minutes_after_night_before_evening', '480'),
+    (1, 'max_daily_work_minutes', '720'),
     (1, 'schedule_coverage_display_mode', 'interval'),
     (1, 'schedule_morning_color', '#ecfeff'),
     (1, 'schedule_evening_color', '#fff7ed'),

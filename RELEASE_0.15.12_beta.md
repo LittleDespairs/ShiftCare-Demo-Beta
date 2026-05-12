@@ -1,7 +1,5 @@
 # ShiftCare 0.15.12 beta
 
-Release date: 2026-05-06
-
 ## Weekly preferences
 
 - Fixed desktop generation so pending local weekly preference changes are not overwritten by a cloud pull before the generator reads them.

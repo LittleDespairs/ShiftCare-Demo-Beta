@@ -1,7 +1,5 @@
 # ShiftCare 0.15.8_beta
 
-Release date: 2026-05-02
-
 ## Fixed
 
 - Sidebar navigation now keeps stable item height, icon alignment, and active-state positioning.

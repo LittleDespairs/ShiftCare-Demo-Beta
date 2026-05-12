@@ -1,7 +1,5 @@
 # ShiftCare 0.15.15 beta
 
-Release date: 2026-05-06
-
 ## Release
 
 - Rebuilt the Windows installer from the latest `main` after the weekly-preference sync fix.

@@ -1,7 +1,5 @@
 # ShiftCare 0.15.14 beta
 
-Release date: 2026-05-06
-
 ## Weekly preferences
 
 - Fixed the desktop background sync worker so pending local weekly preferences are pushed before any cloud pull can replace local preference tables.

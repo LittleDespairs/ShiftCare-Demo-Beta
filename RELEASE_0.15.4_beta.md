@@ -1,7 +1,5 @@
 # ShiftCare 0.15.4_beta
 
-Release date: 2026-05-01
-
 ## Changed
 
 - Restyled the hosted employee portal login page to match the current ShiftCare interface.

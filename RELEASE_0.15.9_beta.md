@@ -1,7 +1,5 @@
 # ShiftCare 0.15.9_beta
 
-Release date: 2026-05-02
-
 ## Fixed
 
 - Sidebar navigation is clickable again after the 0.15.8 UI polish.

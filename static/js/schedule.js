@@ -317,6 +317,7 @@
                 [/morning after night is forbidden/g, t("generation_reason_morning_after_night", "morning after night is forbidden")],
                 [/not enough rest after night before evening/g, t("generation_reason_night_evening_rest", "not enough rest after night before evening")],
                 [/not enough rest between morning and evening/g, t("generation_reason_morning_evening_rest", "not enough rest between morning and evening")],
+                [/daily work limit exceeded/g, t("generation_reason_daily_work_limit", "daily work limit exceeded")],
                 [/weekly day off would be violated/g, t("generation_reason_weekly_day_off", "weekly day off would be violated")],
                 [/consecutive night limit reached/g, t("generation_reason_consecutive_nights", "consecutive night limit reached")],
                 [/consecutive split limit reached/g, t("generation_reason_consecutive_splits", "consecutive split limit reached")],
@@ -2763,4 +2764,3 @@
                 showMessage(t("msg_server_error_refresh_schedule_data", "Server error while refreshing schedule data."), "warning");
             }
         }
-

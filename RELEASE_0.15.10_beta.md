@@ -1,7 +1,5 @@
 # ShiftCare 0.15.10 beta
 
-Release date: 2026-05-03
-
 ## Demo polish
 - Fixed the organization invite employee selector placeholder translation in Russian and Hebrew.
 - Renamed the employee ID-card column in Russian so it no longer looks like a duplicate internal ID column.

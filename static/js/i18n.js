@@ -317,6 +317,7 @@ const I18N_TRANSLATIONS = {
         generation_reason_morning_after_night: "morning after night is forbidden",
         generation_reason_night_evening_rest: "not enough rest after night before evening",
         generation_reason_morning_evening_rest: "not enough rest between morning and evening",
+        generation_reason_daily_work_limit: "daily work limit exceeded",
         generation_reason_weekly_day_off: "weekly day off would be violated",
         generation_reason_consecutive_nights: "consecutive night limit reached",
         generation_reason_consecutive_splits: "consecutive split limit reached",
@@ -925,6 +926,8 @@ const I18N_TRANSLATIONS = {
         coverage_rest_subtitle: "Configure minimum rest gaps used by manual validation and auto-generation.",
         coverage_rest_morning_evening: "Morning to evening rest, minutes",
         coverage_rest_night_evening: "Night to evening rest, minutes",
+        coverage_max_daily_work: "Maximum daily work, hours",
+        coverage_max_daily_work_hint: "Applies to same-day morning and evening pairs. Night pairs are not limited by this rule.",
         coverage_save_rest_settings: "Save rest settings",
         coverage_display_mode: "Schedule coverage display",
         coverage_display_interval: "By time intervals",
@@ -1314,6 +1317,7 @@ const I18N_TRANSLATIONS = {
         generation_reason_morning_after_night: "утро после ночи запрещено",
         generation_reason_night_evening_rest: "недостаточно отдыха после ночи перед вечерней сменой",
         generation_reason_morning_evening_rest: "недостаточно отдыха между утренней и вечерней сменой",
+        generation_reason_daily_work_limit: "превышен лимит рабочего дня",
         generation_reason_weekly_day_off: "будет нарушен обязательный недельный выходной",
         generation_reason_consecutive_nights: "достигнут лимит ночных смен подряд",
         generation_reason_consecutive_splits: "достигнут лимит сплит-смен подряд",
@@ -1866,6 +1870,8 @@ const I18N_TRANSLATIONS = {
         coverage_rest_subtitle: "Минимальные перерывы используются при ручной проверке и автогенерации.",
         coverage_rest_morning_evening: "Перерыв утро → вечер, минут",
         coverage_rest_night_evening: "Перерыв ночь → вечер, минут",
+        coverage_max_daily_work: "Максимальная длительность рабочего дня, часов",
+        coverage_max_daily_work_hint: "Применяется к паре утро-вечер в один день. Пары с ночной сменой этим правилом не ограничиваются.",
         coverage_save_rest_settings: "Сохранить настройки отдыха",
         coverage_display_mode: "Отображение покрытия в расписании",
         coverage_display_interval: "По временным интервалам",
@@ -2207,6 +2213,7 @@ const I18N_TRANSLATIONS = {
         generation_reason_morning_after_night: "בוקר אחרי לילה אסור",
         generation_reason_night_evening_rest: "אין מספיק מנוחה אחרי לילה לפני ערב",
         generation_reason_morning_evening_rest: "אין מספיק מנוחה בין בוקר לערב",
+        generation_reason_daily_work_limit: "חריגה ממגבלת שעות העבודה ביום",
         generation_reason_weekly_day_off: "יום המנוחה השבועי החובה יופר",
         generation_reason_consecutive_nights: "הגיע למגבלת לילות רצופים",
         generation_reason_consecutive_splits: "הגיע למגבלת משמרות מפוצלות רצופות",
@@ -2807,6 +2814,8 @@ const I18N_TRANSLATIONS = {
         coverage_rest_subtitle: "הגדרת זמני מנוחה מינימליים לבדיקה ידנית וליצירה אוטומטית.",
         coverage_rest_morning_evening: "מנוחה מבוקר לערב, דקות",
         coverage_rest_night_evening: "מנוחה מלילה לערב, דקות",
+        coverage_max_daily_work: "משך עבודה יומי מרבי, שעות",
+        coverage_max_daily_work_hint: "חל על צמדי בוקר-ערב באותו יום. צמדים עם משמרת לילה אינם מוגבלים על ידי כלל זה.",
         coverage_save_rest_settings: "שמור הגדרות מנוחה",
         coverage_display_mode: "תצוגת כיסוי בסידור העבודה",
         coverage_display_interval: "לפי טווחי זמן",
@@ -3316,4 +3325,3 @@ function bindSidebarToggle() {
 window.addEventListener("resize", () => {
     applySidebarState(getSavedSidebarState());
 });
-

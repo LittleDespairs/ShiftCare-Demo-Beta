@@ -1,7 +1,5 @@
 # ShiftCare 0.15.13 beta
 
-Release date: 2026-05-06
-
 ## Licensing
 
 - Fixed the Windows desktop package so `schedule_app.db` is bundled with the PyInstaller build.

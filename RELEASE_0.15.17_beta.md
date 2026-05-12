@@ -1,7 +1,5 @@
 # ShiftCare 0.15.17 Beta
 
-Release date: 2026-05-12
-
 ## Fixed
 
 - Desktop weekly preferences now pull the latest employee portal wishes from cloud before rendering the weekly preferences list, while still skipping the pull when local pending preference changes must be pushed first.

@@ -1,7 +1,5 @@
 # ShiftCare 0.15.3_beta
 
-Release date: 2026-04-30
-
 ## Fixed
 
 - Added Russian and Hebrew authorization-page translations with the language selector available on login.

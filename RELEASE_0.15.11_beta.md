@@ -1,7 +1,5 @@
 # ShiftCare 0.15.11 beta
 
-Release date: 2026-05-06
-
 ## Permanent preferences
 
 - Added permanent employee preferences for every weekday, split into strict rules and soft preferences.

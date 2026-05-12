@@ -114,13 +114,13 @@ See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
 Current spec:
 
 ```text
-ShiftCare_0.15.17_beta.spec
+ShiftCare_0.15.18_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ShiftCare_0.15.17_beta.spec
+.\.venv\Scripts\pyinstaller.exe ShiftCare_0.15.18_beta.spec
 ```
 
 ## Windows Installer
@@ -143,7 +143,7 @@ If Inno Setup is not installed locally:
 Expected installer output:
 
 ```text
-dist\installer\ShiftCare_Setup_0.15.17-beta.exe
+dist\installer\ShiftCare_Setup_0.15.18-beta.exe
 ```
 
 ## Before Committing
@@ -152,4 +152,3 @@ dist\installer\ShiftCare_Setup_0.15.17-beta.exe
 - Check the schedule page route loads.
 - Check there are no accidental leftover alpha version strings in runtime files.
 - Keep `BETA_CHANGELOG.md` updated when a beta iteration materially changes the app.
-

@@ -35,7 +35,7 @@ from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.17_beta"
+APP_VERSION = "0.15.18_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
@@ -380,6 +380,7 @@ MAX_CONSECUTIVE_SPLIT_DAYS = 2
 EMERGENCY_MAX_CONSECUTIVE_SPLIT_DAYS = 3
 MIN_REST_MINUTES_AFTER_NIGHT_BEFORE_EVENING = 8 * 60
 MIN_REST_MINUTES_BETWEEN_MORNING_AND_EVENING = 0
+MAX_DAILY_WORK_MINUTES = 12 * 60
 AFTER_NIGHT_EVENING_PENALTY = 1200
 DEFAULT_POSITION_COLOR = "#eff6ff"
 DEFAULT_SCHEDULE_COLORS = {
@@ -829,6 +830,11 @@ class AppSettingsUpdate(BaseModel):
         ge=0,
         le=24 * 60,
     )
+    max_daily_work_minutes: int | None = Field(
+        default=None,
+        ge=60,
+        le=24 * 60,
+    )
     schedule_coverage_display_mode: Literal["category", "interval"] | None = None
     schedule_morning_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     schedule_evening_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -954,6 +960,7 @@ def get_app_settings(connection, organization_id: int = 1) -> dict:
             "min_rest_minutes_after_night_before_evening",
             MIN_REST_MINUTES_AFTER_NIGHT_BEFORE_EVENING,
         ),
+        "max_daily_work_minutes": read_int("max_daily_work_minutes", MAX_DAILY_WORK_MINUTES),
         "schedule_coverage_display_mode": (
             raw_settings.get("schedule_coverage_display_mode")
             if raw_settings.get("schedule_coverage_display_mode") in {"category", "interval"}
@@ -2841,6 +2848,15 @@ def get_break_minutes_between_same_day_categories(
     return min(breaks)
 
 
+def get_template_work_minutes(template: dict) -> int:
+    interval = build_interval(template["start_time"], template["end_time"], bool(template["is_overnight"]))
+    return interval.end - interval.start
+
+
+def get_projected_day_work_minutes(existing_entries: list[dict], template: dict) -> int:
+    return sum(get_template_work_minutes(entry) for entry in existing_entries) + get_template_work_minutes(template)
+
+
 def employee_has_split_day(connection, employee_id: int, date_string: str) -> bool:
     entries = get_employee_entries_for_date(connection, employee_id, date_string)
     categories = {entry["category"] for entry in entries}
@@ -2898,6 +2914,8 @@ def explain_same_day_pairing_rejection(
             and morning_evening_break < app_settings["min_rest_minutes_between_morning_and_evening"]
         ):
             return "morning-evening rest gap is too short"
+        if get_projected_day_work_minutes(existing_entries, template) > app_settings["max_daily_work_minutes"]:
+            return "daily work limit exceeded"
 
         return None
 
@@ -9370,4 +9388,3 @@ def export_all_schedules_word(
         )
     finally:
         connection.close()
-

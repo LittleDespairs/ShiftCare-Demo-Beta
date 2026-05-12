@@ -1,7 +1,5 @@
 # ShiftCare 0.15.6_beta
 
-Release date: 2026-05-01
-
 ## Fixed
 
 - Organization page now has a top language switcher and complete RU/EN/HE translations for headings, tables, statuses, roles, messages, and empty states.

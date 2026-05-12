@@ -1,7 +1,5 @@
 # ShiftCare 0.15.5_beta
 
-Release date: 2026-05-01
-
 ## Added
 
 - Local license runtime for trial, paid license, grace, expiry, and employee-limit enforcement.

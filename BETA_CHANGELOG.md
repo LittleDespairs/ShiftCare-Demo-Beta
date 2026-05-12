@@ -2,6 +2,19 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.15.18_beta - 2026-05-12
+
+## Added
+
+- Added a configurable maximum daily work duration for same-day morning and evening pairs.
+- The generator now rejects morning-evening pair candidates whose combined working time exceeds the configured daily limit.
+- Morning-night pair generation remains exempt from the daily work limit.
+
+## Verified
+
+- Full Python unittest suite passed: 107 tests OK, 1 PostgreSQL integration test skipped because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not set.
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.15.18-beta.exe`
+
 # 0.15.17_beta - 2026-05-12
 
 ## Fixed
