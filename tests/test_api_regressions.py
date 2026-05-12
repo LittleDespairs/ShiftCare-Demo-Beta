@@ -3841,15 +3841,15 @@ class ApiRegressionTests(unittest.TestCase):
                 ],
             },
             {
-                "tag_name": "v0.15.16-beta",
-                "name": "ShiftCare 0.15.16 Beta",
+                "tag_name": "v0.15.17-beta",
+                "name": "ShiftCare 0.15.17 Beta",
                 "draft": False,
                 "published_at": "2026-05-06T12:28:38Z",
-                "html_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/tag/v0.15.16-beta",
+                "html_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/tag/v0.15.17-beta",
                 "assets": [
                     {
-                        "name": "ShiftCare_Setup_0.15.16-beta.exe",
-                        "browser_download_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.16-beta/ShiftCare_Setup_0.15.16-beta.exe",
+                        "name": "ShiftCare_Setup_0.15.17-beta.exe",
+                        "browser_download_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.17-beta/ShiftCare_Setup_0.15.17-beta.exe",
                         "size": 24878593,
                     }
                 ],
@@ -3861,8 +3861,8 @@ class ApiRegressionTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["cache-control"], "no-store, no-cache, must-revalidate, max-age=0")
-        self.assertIn("0.15.16-beta", response.text)
-        self.assertIn("ShiftCare_Setup_0.15.16-beta.exe", response.text)
+        self.assertIn("0.15.17-beta", response.text)
+        self.assertIn("ShiftCare_Setup_0.15.17-beta.exe", response.text)
         self.assertNotIn("0.15.11-beta", response.text)
 
     def test_download_latest_redirects_to_latest_installer_asset(self):
@@ -3878,12 +3878,12 @@ class ApiRegressionTests(unittest.TestCase):
                 ],
             },
             {
-                "tag_name": "v0.15.16-beta",
+                "tag_name": "v0.15.17-beta",
                 "draft": False,
                 "assets": [
                     {
-                        "name": "ShiftCare_Setup_0.15.16-beta.exe",
-                        "browser_download_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.16-beta/ShiftCare_Setup_0.15.16-beta.exe",
+                        "name": "ShiftCare_Setup_0.15.17-beta.exe",
+                        "browser_download_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.17-beta/ShiftCare_Setup_0.15.17-beta.exe",
                     }
                 ],
             },
@@ -3895,19 +3895,19 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response.headers["location"],
-            "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.16-beta/ShiftCare_Setup_0.15.16-beta.exe",
+            "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.17-beta/ShiftCare_Setup_0.15.17-beta.exe",
         )
         self.assertEqual(response.headers["cache-control"], "no-store, no-cache, must-revalidate, max-age=0")
 
     def test_download_latest_api_reports_latest_release(self):
         releases = [
             {
-                "tag_name": "v0.15.16-beta",
+                "tag_name": "v0.15.17-beta",
                 "draft": False,
                 "assets": [
                     {
-                        "name": "ShiftCare_Setup_0.15.16-beta.exe",
-                        "browser_download_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.16-beta/ShiftCare_Setup_0.15.16-beta.exe",
+                        "name": "ShiftCare_Setup_0.15.17-beta.exe",
+                        "browser_download_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.17-beta/ShiftCare_Setup_0.15.17-beta.exe",
                         "size": 24878593,
                     }
                 ],
@@ -3920,8 +3920,8 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["product"], "ShiftCare")
-        self.assertEqual(payload["latest"]["version"], "0.15.16-beta")
-        self.assertEqual(payload["latest"]["asset_name"], "ShiftCare_Setup_0.15.16-beta.exe")
+        self.assertEqual(payload["latest"]["version"], "0.15.17-beta")
+        self.assertEqual(payload["latest"]["asset_name"], "ShiftCare_Setup_0.15.17-beta.exe")
 
     def test_database_backup_create_list_restore_round_trip(self):
         employee_id = self._create_employee(full_name="Employee A")
