@@ -87,6 +87,14 @@ PUBLIC_ID_TABLE_PREFIXES = {
 DESKTOP_SYNC_TABLES = tuple(PUBLIC_ID_TABLE_PREFIXES.keys())
 
 
+class ClosingSQLiteConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def _table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
     cursor.execute(f"PRAGMA table_info({table_name})")
     return {row["name"] for row in cursor.fetchall()}
@@ -469,7 +477,7 @@ def get_connection():
         return connect_postgres(config)
 
     # Create SQLite connection / Создаём подключение к SQLite
-    connection = sqlite3.connect(DATABASE_PATH)
+    connection = sqlite3.connect(DATABASE_PATH, factory=ClosingSQLiteConnection)
     connection.execute("PRAGMA foreign_keys = ON")
 
     # Return rows as dictionary-like objects / Возвращаем строки как объекты с доступом по имени колонки

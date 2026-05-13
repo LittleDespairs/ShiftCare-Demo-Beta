@@ -8,42 +8,118 @@ import secrets
 import sqlite3
 import subprocess
 import sys
-import tempfile
 import threading
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
-from datetime import UTC, date as Date, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from time import monotonic, sleep
 from urllib.parse import quote, urlparse
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, EmailStr, Field, model_validator
 
 import auth_repository
 import license_runtime
+from app_settings_service import (
+    AFTER_NIGHT_EVENING_PENALTY,
+    DEFAULT_POSITION_COLOR,
+    DEFAULT_SCHEDULE_COLORS,
+    EMERGENCY_MAX_CONSECUTIVE_NIGHTS,
+    EMERGENCY_MAX_CONSECUTIVE_SPLIT_DAYS,
+    MAX_CONSECUTIVE_NIGHTS,
+    MAX_CONSECUTIVE_SPLIT_DAYS,
+    MAX_DAILY_WORK_MINUTES,
+    MAX_WORK_DAYS_PER_WEEK,
+    MIN_REST_MINUTES_AFTER_NIGHT_BEFORE_EVENING,
+    MIN_REST_MINUTES_BETWEEN_MORNING_AND_EVENING,
+    apply_position_generation_limits,
+    get_app_settings,
+    get_position_app_settings,
+    reset_visual_color_settings,
+    save_app_settings,
+)
 from app_config import get_app_config, validate_runtime_config
 from cloud_sql import check_postgres_connection
 from database import get_connection, init_db
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
+from row_serializers import (
+    row_to_coverage_requirement_dict,
+    row_to_employee_dict,
+    row_to_position_dict,
+    row_to_shift_template_dict,
+)
+from schedule_time import (
+    build_interval,
+    build_week_dates,
+    get_week_end_date,
+    get_week_start_for_date,
+    parse_date_string,
+    parse_time_string,
+    recurring_day_of_week,
+    time_to_minutes,
+)
+from schemas import (
+    AppSettingsUpdate,
+    AuthBootstrapRequest,
+    AuthEmailVerificationRequest,
+    AuthInvitationAcceptRequest,
+    AuthLoginRequest,
+    AuthOrganizationCreateRequest,
+    AuthPasswordChangeRequest,
+    AuthPasswordResetConfirmRequest,
+    AuthPasswordResetRequest,
+    AuthProfileUpdateRequest,
+    AutoGenerateAllScheduleRequest,
+    AutoGenerateScheduleRequest,
+    ClearAllWeekScheduleRequest,
+    ClearWeekScheduleRequest,
+    CloudOrganizationImportRequest,
+    CloudOrganizationLinkRequest,
+    CoverageRequirementCreate,
+    DatabaseBackupCreateRequest,
+    DatabaseRestoreRequest,
+    DesktopCloudLoginRequest,
+    EmployeeCreate,
+    EmployeeDayStatusCreate,
+    EmployeePositionCreate,
+    EmployeePreferenceCreate,
+    EmployeeRecurringPreferencesUpdate,
+    EmployeeWeekPreferenceCreate,
+    LicenseActivationCodeRequest,
+    LicenseImportRequest,
+    OrganizationInvitationCreate,
+    OrganizationMemberEmployeeLinkUpdate,
+    PositionCreate,
+    ScheduleEntryCreate,
+    ScheduleEntryStatusUpdate,
+    ShiftRequirementCreate,
+    ShiftTemplateCreate,
+    UpdateInstallRequest,
+)
+from update_service import (
+    download_update_installer as download_update_installer_for_version,
+    find_latest_installable_release,
+    is_newer_version as update_is_newer_version,
+    no_store_headers,
+    normalize_version,
+    release_asset_version,
+    schedule_desktop_shutdown,
+    version_sort_key,
+)
+import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.15.19_beta"
+APP_VERSION = "0.16.1_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-GITHUB_REPO_OWNER = "LittleDespairs"
-GITHUB_REPO_NAME = "Schedule_app_releases"
-GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases"
-GITHUB_RELEASE_ASSET_PATTERN = re.compile(r"^(?:ScheduleApp|ShiftCare)_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$")
 AUTH_LOGIN_RATE_LIMIT_ATTEMPTS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
 AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
 AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS", "900"))
@@ -373,22 +449,6 @@ def upsert_desktop_cloud_user(cursor: sqlite3.Cursor, cloud_user: dict, cloud_me
     return user_id
 
 
-MAX_WORK_DAYS_PER_WEEK = 6
-MAX_CONSECUTIVE_NIGHTS = 2
-EMERGENCY_MAX_CONSECUTIVE_NIGHTS = 3
-MAX_CONSECUTIVE_SPLIT_DAYS = 2
-EMERGENCY_MAX_CONSECUTIVE_SPLIT_DAYS = 3
-MIN_REST_MINUTES_AFTER_NIGHT_BEFORE_EVENING = 8 * 60
-MIN_REST_MINUTES_BETWEEN_MORNING_AND_EVENING = 0
-MAX_DAILY_WORK_MINUTES = 12 * 60
-AFTER_NIGHT_EVENING_PENALTY = 1200
-DEFAULT_POSITION_COLOR = "#eff6ff"
-DEFAULT_SCHEDULE_COLORS = {
-    "schedule_morning_color": "#ecfeff",
-    "schedule_evening_color": "#fff7ed",
-    "schedule_night_color": "#eef2ff",
-    "schedule_status_color": "#f5f3ff",
-}
 DESKTOP_CLOUD_SYNC_ROLES = {"owner", "admin", "scheduler", "manager"}
 DESKTOP_CLOUD_LOGIN_BASE_URL = "https://schedule-app-beta.web.app"
 
@@ -468,680 +528,14 @@ def client_config():
 
 
 # =========================
-# Models
-# =========================
-
-
-class AuthBootstrapRequest(BaseModel):
-    organization_name: str = Field(min_length=2, max_length=120)
-    full_name: str = Field(min_length=2, max_length=100)
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-
-
-class AuthLoginRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=254)
-    password: str = Field(min_length=1, max_length=128)
-
-
-class DesktopCloudLoginRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=254)
-    password: str = Field(min_length=1, max_length=128)
-
-
-class AuthOrganizationCreateRequest(BaseModel):
-    organization_name: str = Field(min_length=2, max_length=120)
-    full_name: str = Field(min_length=2, max_length=100)
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-
-
-class AuthProfileUpdateRequest(BaseModel):
-    full_name: str = Field(min_length=2, max_length=100)
-
-
-class AuthPasswordChangeRequest(BaseModel):
-    current_password: str = Field(min_length=1, max_length=128)
-    new_password: str = Field(min_length=8, max_length=128)
-
-
-class AuthPasswordResetRequest(BaseModel):
-    email: EmailStr
-
-
-class AuthPasswordResetConfirmRequest(BaseModel):
-    token: str = Field(min_length=32, max_length=512)
-    new_password: str = Field(min_length=8, max_length=128)
-
-
-class AuthEmailVerificationRequest(BaseModel):
-    token: str = Field(min_length=32, max_length=512)
-
-
-class AuthInvitationAcceptRequest(BaseModel):
-    token: str = Field(min_length=32, max_length=512)
-    full_name: str | None = Field(default=None, min_length=2, max_length=100)
-    password: str = Field(min_length=8, max_length=128)
-    confirm_password: str | None = Field(default=None, min_length=8, max_length=128)
-
-    @model_validator(mode="after")
-    def validate_password_confirmation(self):
-        if self.confirm_password is not None and self.password != self.confirm_password:
-            raise ValueError("password confirmation does not match")
-        return self
-
-
-class OrganizationInvitationCreate(BaseModel):
-    email: EmailStr
-    employee_id: int | None = Field(default=None, ge=1)
-    employee_public_id: str | None = Field(default=None, min_length=2, max_length=120)
-    role: Literal["admin", "scheduler", "employee", "manager", "read_only"] = "employee"
-    expires_in_days: int = Field(default=7, ge=1, le=30)
-
-
-class OrganizationMemberEmployeeLinkUpdate(BaseModel):
-    employee_id: int | None = Field(default=None, ge=1)
-    employee_public_id: str | None = Field(default=None, min_length=2, max_length=120)
-
-
-class CloudOrganizationImportRequest(BaseModel):
-    bundle: dict[str, Any]
-    replace_existing: bool = True
-
-
-class CloudOrganizationLinkRequest(BaseModel):
-    cloud_api_base_url: str = Field(min_length=8, max_length=255)
-    cloud_organization_id: int = Field(ge=1)
-    cloud_organization_public_id: str = Field(min_length=2, max_length=120)
-    linked_at: str | None = Field(default=None, max_length=40)
-
-
-class EmployeeCreate(BaseModel):
-    id_card: str | None = Field(default=None, max_length=32)
-    full_name: str = Field(min_length=2, max_length=100)
-    sex: Literal["male", "female"]
-    min_shifts_per_week: int = Field(ge=0, le=14)
-    target_shifts_per_week: int = Field(ge=0, le=14)
-    max_shifts_per_week: int = Field(ge=0, le=14)
-    can_work_night: bool
-    can_work_weekends: bool
-    can_work_evenings_after_night: bool
-    can_work_mornings_and_evenings: bool
-
-    @model_validator(mode="after")
-    def validate_shift_range(self):
-        if self.id_card is not None:
-            normalized_id_card = normalize_id_card(self.id_card)
-            self.id_card = normalized_id_card or None
-        if self.min_shifts_per_week > self.max_shifts_per_week:
-            raise ValueError("min_shifts_per_week cannot be greater than max_shifts_per_week")
-        if self.target_shifts_per_week < self.min_shifts_per_week:
-            raise ValueError("target_shifts_per_week cannot be less than min_shifts_per_week")
-        if self.target_shifts_per_week > self.max_shifts_per_week:
-            raise ValueError("target_shifts_per_week cannot be greater than max_shifts_per_week")
-        return self
-
-
-class PositionCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=100)
-    color: str = Field(default="#eff6ff", pattern=r"^#[0-9A-Fa-f]{6}$")
-    requires_continuous_coverage: bool = False
-    minimum_staff_presence: int = Field(ge=0, le=50, default=0)
-    allow_same_day_other_positions: bool = False
-    max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
-    emergency_max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
-    max_consecutive_split_days: int | None = Field(default=None, ge=1, le=7)
-    emergency_max_consecutive_split_days: int | None = Field(default=None, ge=1, le=7)
-
-    @model_validator(mode="after")
-    def validate_presence(self):
-        if not self.requires_continuous_coverage and self.minimum_staff_presence != 0:
-            raise ValueError("minimum_staff_presence must be 0 if continuous coverage is disabled")
-        return self
-
-
-class EmployeePositionCreate(BaseModel):
-    employee_id: int
-    position_id: int
-    is_primary: bool = False
-    priority_score: int = Field(ge=0, le=100, default=50)
-    is_fallback_only: bool = False
-
-    @model_validator(mode="after")
-    def validate_assignment_flags(self):
-        if self.is_primary and self.is_fallback_only:
-            raise ValueError("assignment cannot be both primary and fallback-only")
-        return self
-
-
-class ShiftTemplateCreate(BaseModel):
-    position_id: int
-    name: str = Field(min_length=2, max_length=100)
-    category: Literal["morning", "evening", "night"]
-    start_time: str
-    end_time: str
-    is_overnight: bool = False
-    is_active: bool = True
-    is_split_only: bool = False
-
-    @model_validator(mode="after")
-    def validate_time_window(self):
-        start = parse_time_string(self.start_time)
-        end = parse_time_string(self.end_time)
-        if start == end:
-            raise ValueError("shift start_time and end_time cannot be the same")
-        if not self.is_overnight and end <= start:
-            raise ValueError("non-overnight shift must end after start_time")
-        return self
-
-
-class ShiftRequirementCreate(BaseModel):
-    position_id: int
-    shift_category: Literal["morning", "evening", "night"]
-    required_total: int = Field(ge=1, le=50)
-    required_female_min: int = Field(ge=0, le=50)
-    required_male_min: int = Field(ge=0, le=50, default=0)
-
-    @model_validator(mode="after")
-    def validate_gender_minimums(self):
-        if self.required_female_min > self.required_total:
-            raise ValueError("required_female_min cannot be greater than required_total")
-        if self.required_male_min > self.required_total:
-            raise ValueError("required_male_min cannot be greater than required_total")
-        if self.required_female_min + self.required_male_min > self.required_total:
-            raise ValueError("gender minimums cannot be greater than required_total")
-        return self
-
-
-class CoverageRequirementCreate(BaseModel):
-    position_id: int
-    start_time: str
-    end_time: str
-    required_total: int = Field(ge=0, le=50)
-    required_female_min: int = Field(ge=0, le=50, default=0)
-    required_male_min: int = Field(ge=0, le=50, default=0)
-    is_overnight: bool = False
-
-    @model_validator(mode="after")
-    def validate_requirement(self):
-        start = parse_time_string(self.start_time)
-        end = parse_time_string(self.end_time)
-        if self.required_female_min > self.required_total:
-            raise ValueError("required_female_min cannot be greater than required_total")
-        if self.required_male_min > self.required_total:
-            raise ValueError("required_male_min cannot be greater than required_total")
-        if self.required_female_min + self.required_male_min > self.required_total:
-            raise ValueError("gender minimums cannot be greater than required_total")
-        if not self.is_overnight and end <= start:
-            raise ValueError("non-overnight coverage interval must end after start_time")
-        if start == end:
-            raise ValueError("coverage interval start_time and end_time cannot be the same")
-        return self
-
-
-class EmployeePreferenceCreate(BaseModel):
-    employee_id: int
-    allow_morning: bool
-    allow_evening: bool
-    allow_night: bool
-    allow_morning_evening_combo: bool
-
-
-class EmployeeWeekPreferenceCreate(BaseModel):
-    employee_id: int
-    week_start_date: str
-    preference_date: str
-    preference_type: Literal[
-        "no_preference",
-        "off_day",
-        "vacation",
-        "only_morning",
-        "only_evening",
-        "only_night",
-        "not_morning",
-        "not_evening",
-        "not_night",
-        "no_morning_evening_combo",
-    ]
-
-    @model_validator(mode="after")
-    def validate_preference_date_belongs_to_week(self):
-        week_dates = build_week_dates(self.week_start_date)
-        if self.preference_date not in week_dates:
-            raise ValueError("preference_date must belong to the selected week")
-        return self
-
-
-class EmployeeRecurringPreferenceRule(BaseModel):
-    preference_kind: Literal["strict", "soft"]
-    day_of_week: int = Field(ge=0, le=6)
-    preference_type: Literal[
-        "no_preference",
-        "off_day",
-        "vacation",
-        "only_morning",
-        "only_evening",
-        "only_night",
-        "not_morning",
-        "not_evening",
-        "not_night",
-        "no_morning_evening_combo",
-    ]
-
-
-class EmployeeRecurringPreferencesUpdate(BaseModel):
-    employee_id: int
-    rules: list[EmployeeRecurringPreferenceRule] = Field(default_factory=list, max_length=14)
-
-    @model_validator(mode="after")
-    def validate_unique_rules(self):
-        seen = set()
-        for rule in self.rules:
-            key = (rule.preference_kind, rule.day_of_week)
-            if key in seen:
-                raise ValueError("Each permanent preference kind/day pair can appear only once")
-            seen.add(key)
-        return self
-
-
-class EmployeeDayStatusCreate(BaseModel):
-    employee_id: int
-    date: str
-    status_type: Literal["sick", "day_off"]
-
-
-class ScheduleEntryCreate(BaseModel):
-    employee_id: int
-    position_id: int
-    date: str
-    shift_template_id: int
-
-
-class ScheduleEntryStatusUpdate(BaseModel):
-    no_show: bool
-
-
-class AutoGenerateScheduleRequest(BaseModel):
-    position_id: int
-    week_start_date: str
-
-    @model_validator(mode="after")
-    def validate_week_start_date(self):
-        parse_date_string(self.week_start_date)
-        return self
-
-
-class AutoGenerateAllScheduleRequest(BaseModel):
-    week_start_date: str
-
-    @model_validator(mode="after")
-    def validate_week_start_date(self):
-        parse_date_string(self.week_start_date)
-        return self
-
-
-class ClearWeekScheduleRequest(BaseModel):
-    position_id: int
-    week_start_date: str
-
-    @model_validator(mode="after")
-    def validate_week_start_date(self):
-        parse_date_string(self.week_start_date)
-        return self
-
-
-class ClearAllWeekScheduleRequest(BaseModel):
-    week_start_date: str
-
-    @model_validator(mode="after")
-    def validate_week_start_date(self):
-        parse_date_string(self.week_start_date)
-        return self
-
-
-class DatabaseBackupCreateRequest(BaseModel):
-    label: str = Field(default="manual", min_length=1, max_length=50)
-
-
-class DatabaseRestoreRequest(BaseModel):
-    backup_name: str = Field(min_length=1, max_length=255)
-
-
-class UpdateInstallRequest(BaseModel):
-    download_url: str = Field(min_length=1, max_length=2048)
-    asset_name: str = Field(min_length=1, max_length=255)
-
-
-class LicenseImportRequest(BaseModel):
-    certificate: dict[str, Any]
-
-
-class LicenseActivationCodeRequest(BaseModel):
-    activation_code: str = Field(min_length=8, max_length=512)
-
-
-class AppSettingsUpdate(BaseModel):
-    min_rest_minutes_between_morning_and_evening: int | None = Field(
-        default=None,
-        ge=0,
-        le=24 * 60,
-    )
-    min_rest_minutes_after_night_before_evening: int | None = Field(
-        default=None,
-        ge=0,
-        le=24 * 60,
-    )
-    max_daily_work_minutes: int | None = Field(
-        default=None,
-        ge=60,
-        le=24 * 60,
-    )
-    schedule_coverage_display_mode: Literal["category", "interval"] | None = None
-    schedule_morning_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
-    schedule_evening_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
-    schedule_night_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
-    schedule_status_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
-    allow_multiple_positions_per_day: bool | None = None
-    max_work_days_per_week: int | None = Field(default=None, ge=1, le=7)
-    max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
-    emergency_max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)
-    max_consecutive_split_days: int | None = Field(default=None, ge=1, le=7)
-    emergency_max_consecutive_split_days: int | None = Field(default=None, ge=1, le=7)
-    after_night_evening_penalty: int | None = Field(default=None, ge=0, le=10000)
-    consecutive_night_penalty: int | None = Field(default=None, ge=0, le=10000)
-    consecutive_split_penalty: int | None = Field(default=None, ge=0, le=10000)
-    coverage_shortage_gain_weight: int | None = Field(default=None, ge=1, le=1000)
-    coverage_overage_penalty_weight: int | None = Field(default=None, ge=0, le=1000)
-    target_gender_bonus_weight: int | None = Field(default=None, ge=0, le=2000)
-    wrong_gender_penalty_weight: int | None = Field(default=None, ge=0, le=2000)
-    balance_missing_min_weight: int | None = Field(default=None, ge=0, le=10000)
-    balance_target_distance_weight: int | None = Field(default=None, ge=0, le=10000)
-    balance_over_target_weight: int | None = Field(default=None, ge=0, le=10000)
-    balance_over_max_weight: int | None = Field(default=None, ge=0, le=50000)
-    balance_worked_day_weight: int | None = Field(default=None, ge=0, le=10000)
-    balance_night_weight: int | None = Field(default=None, ge=0, le=10000)
-    balance_split_weight: int | None = Field(default=None, ge=0, le=10000)
-    balance_consecutive_night_weight: int | None = Field(default=None, ge=0, le=10000)
-    balance_consecutive_split_weight: int | None = Field(default=None, ge=0, le=10000)
-    balance_excess_night_weight: int | None = Field(default=None, ge=0, le=50000)
-    balance_excess_split_weight: int | None = Field(default=None, ge=0, le=50000)
-
-
-@dataclass(frozen=True)
-class Interval:
-    start: int
-    end: int
-
-    def contains(self, start: int, end: int) -> bool:
-        return self.start <= start and end <= self.end
-
-    def overlaps(self, other: "Interval") -> bool:
-        return self.start < other.end and other.start < self.end
-
-
-# =========================
 # Helpers
 # =========================
-
-
-def parse_time_string(value: str) -> time:
-    return datetime.strptime(value, "%H:%M").time()
-
-
-def parse_date_string(value: str) -> Date:
-    return datetime.strptime(value, "%Y-%m-%d").date()
-
-
-def time_to_minutes(value: str) -> int:
-    parsed = parse_time_string(value)
-    return parsed.hour * 60 + parsed.minute
-
-
-def build_interval(start_time: str, end_time: str, is_overnight: bool = False) -> Interval:
-    start = time_to_minutes(start_time)
-    end = time_to_minutes(end_time)
-    if is_overnight or end <= start:
-        end += 24 * 60
-    return Interval(start=start, end=end)
-
-
-def build_week_dates(week_start_date: str) -> list[str]:
-    start = parse_date_string(week_start_date)
-    return [(start + timedelta(days=offset)).isoformat() for offset in range(7)]
-
-
-def get_week_start_for_date(date_string: str) -> str:
-    current = parse_date_string(date_string)
-    days_since_sunday = (current.weekday() + 1) % 7
-    return (current - timedelta(days=days_since_sunday)).isoformat()
-
-
-def recurring_day_of_week(date_string: str) -> int:
-    # App weeks start on Sunday: Sunday=0, Monday=1, ..., Saturday=6.
-    return (parse_date_string(date_string).weekday() + 1) % 7
-
-
-def get_week_end_date(week_start_date: str) -> str:
-    return build_week_dates(week_start_date)[-1]
-
-
-def get_app_settings(connection, organization_id: int = 1) -> dict:
-    cursor = connection.cursor()
-    cursor.execute("SELECT key, value FROM app_settings WHERE organization_id = ?", (organization_id,))
-    raw_settings = {row["key"]: row["value"] for row in cursor.fetchall()}
-
-    def read_int(key: str, default: int) -> int:
-        try:
-            return int(raw_settings.get(key, default))
-        except (TypeError, ValueError):
-            return default
-
-    def read_bool(key: str, default: bool) -> bool:
-        raw_value = raw_settings.get(key)
-        if raw_value is None:
-            return default
-        if isinstance(raw_value, bool):
-            return raw_value
-        return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
-
-    def read_color(key: str, default: str) -> str:
-        raw_value = str(raw_settings.get(key, default)).strip()
-        if len(raw_value) == 7 and raw_value.startswith("#"):
-            hex_part = raw_value[1:]
-            if all(character in "0123456789abcdefABCDEF" for character in hex_part):
-                return raw_value
-        return default
-
-    return {
-        "min_rest_minutes_between_morning_and_evening": read_int(
-            "min_rest_minutes_between_morning_and_evening",
-            MIN_REST_MINUTES_BETWEEN_MORNING_AND_EVENING,
-        ),
-        "min_rest_minutes_after_night_before_evening": read_int(
-            "min_rest_minutes_after_night_before_evening",
-            MIN_REST_MINUTES_AFTER_NIGHT_BEFORE_EVENING,
-        ),
-        "max_daily_work_minutes": read_int("max_daily_work_minutes", MAX_DAILY_WORK_MINUTES),
-        "schedule_coverage_display_mode": (
-            raw_settings.get("schedule_coverage_display_mode")
-            if raw_settings.get("schedule_coverage_display_mode") in {"category", "interval"}
-            else "interval"
-        ),
-        "schedule_morning_color": read_color("schedule_morning_color", DEFAULT_SCHEDULE_COLORS["schedule_morning_color"]),
-        "schedule_evening_color": read_color("schedule_evening_color", DEFAULT_SCHEDULE_COLORS["schedule_evening_color"]),
-        "schedule_night_color": read_color("schedule_night_color", DEFAULT_SCHEDULE_COLORS["schedule_night_color"]),
-        "schedule_status_color": read_color("schedule_status_color", DEFAULT_SCHEDULE_COLORS["schedule_status_color"]),
-        "allow_multiple_positions_per_day": read_bool("allow_multiple_positions_per_day", False),
-        "max_work_days_per_week": read_int("max_work_days_per_week", MAX_WORK_DAYS_PER_WEEK),
-        "max_consecutive_nights": read_int("max_consecutive_nights", MAX_CONSECUTIVE_NIGHTS),
-        "emergency_max_consecutive_nights": read_int("emergency_max_consecutive_nights", EMERGENCY_MAX_CONSECUTIVE_NIGHTS),
-        "max_consecutive_split_days": read_int("max_consecutive_split_days", MAX_CONSECUTIVE_SPLIT_DAYS),
-        "emergency_max_consecutive_split_days": read_int("emergency_max_consecutive_split_days", EMERGENCY_MAX_CONSECUTIVE_SPLIT_DAYS),
-        "after_night_evening_penalty": read_int("after_night_evening_penalty", AFTER_NIGHT_EVENING_PENALTY),
-        "consecutive_night_penalty": read_int("consecutive_night_penalty", 500),
-        "consecutive_split_penalty": read_int("consecutive_split_penalty", 450),
-        "coverage_shortage_gain_weight": read_int("coverage_shortage_gain_weight", 100),
-        "coverage_overage_penalty_weight": read_int("coverage_overage_penalty_weight", 25),
-        "target_gender_bonus_weight": read_int("target_gender_bonus_weight", 250),
-        "wrong_gender_penalty_weight": read_int("wrong_gender_penalty_weight", 120),
-        "balance_missing_min_weight": read_int("balance_missing_min_weight", 300),
-        "balance_target_distance_weight": read_int("balance_target_distance_weight", 70),
-        "balance_over_target_weight": read_int("balance_over_target_weight", 80),
-        "balance_over_max_weight": read_int("balance_over_max_weight", 10000),
-        "balance_worked_day_weight": read_int("balance_worked_day_weight", 15),
-        "balance_night_weight": read_int("balance_night_weight", 60),
-        "balance_split_weight": read_int("balance_split_weight", 55),
-        "balance_consecutive_night_weight": read_int("balance_consecutive_night_weight", 120),
-        "balance_consecutive_split_weight": read_int("balance_consecutive_split_weight", 100),
-        "balance_excess_night_weight": read_int("balance_excess_night_weight", 2000),
-        "balance_excess_split_weight": read_int("balance_excess_split_weight", 1800),
-    }
-
-
-POSITION_GENERATION_LIMIT_FIELDS = (
-    "max_consecutive_nights",
-    "emergency_max_consecutive_nights",
-    "max_consecutive_split_days",
-    "emergency_max_consecutive_split_days",
-)
-
-
-def apply_position_generation_limits(settings: dict, position: dict | sqlite3.Row | None) -> dict:
-    effective_settings = dict(settings)
-    if position is None:
-        return effective_settings
-
-    for field in POSITION_GENERATION_LIMIT_FIELDS:
-        value = position[field] if isinstance(position, sqlite3.Row) else position.get(field)
-        if value is not None:
-            effective_settings[field] = int(value)
-    return effective_settings
-
-
-def get_position_app_settings(
-    connection,
-    position_id: int,
-    base_settings: dict | None = None,
-    organization_id: int = 1,
-) -> dict:
-    settings = base_settings or get_app_settings(connection, organization_id=organization_id)
-    cursor = connection.cursor()
-    cursor.execute(
-        """
-        SELECT max_consecutive_nights, emergency_max_consecutive_nights,
-               max_consecutive_split_days, emergency_max_consecutive_split_days
-        FROM positions
-        WHERE id = ?
-        """,
-        (position_id,),
-    )
-    return apply_position_generation_limits(settings, cursor.fetchone())
-
-
-def save_app_settings(connection, settings: AppSettingsUpdate, organization_id: int = 1) -> None:
-    cursor = connection.cursor()
-    for key, value in settings.model_dump(exclude_none=True).items():
-        cursor.execute(
-            """
-            INSERT INTO app_settings (organization_id, key, value)
-            VALUES (?, ?, ?)
-            ON CONFLICT(key)
-            DO UPDATE SET organization_id = excluded.organization_id,
-                          value = excluded.value
-            """,
-            (organization_id, key, str(value)),
-        )
-
-
-def reset_visual_color_settings(connection, organization_id: int = 1) -> int:
-    cursor = connection.cursor()
-    for key, value in DEFAULT_SCHEDULE_COLORS.items():
-        cursor.execute(
-            """
-            INSERT INTO app_settings (organization_id, key, value)
-            VALUES (?, ?, ?)
-            ON CONFLICT(key)
-            DO UPDATE SET organization_id = excluded.organization_id,
-                          value = excluded.value
-            """,
-            (organization_id, key, value),
-        )
-    cursor.execute("UPDATE positions SET color = ?", (DEFAULT_POSITION_COLOR,))
-    return cursor.rowcount
 
 
 def is_weekend(date_string: str) -> bool:
     # Python: Monday=0. The app week starts on Sunday, but this still catches Friday/Saturday.
     weekday = parse_date_string(date_string).weekday()
     return weekday in (4, 5)
-
-
-def row_to_employee_dict(row: sqlite3.Row) -> dict:
-    return {
-        "id": row["id"],
-        "public_id": row["public_id"] if "public_id" in row.keys() else None,
-        "id_card": row["id_card"] if "id_card" in row.keys() else None,
-        "full_name": row["full_name"],
-        "sex": row["sex"],
-        "min_shifts_per_week": row["min_shifts_per_week"],
-        "target_shifts_per_week": row["target_shifts_per_week"],
-        "max_shifts_per_week": row["max_shifts_per_week"],
-        "can_work_night": bool(row["can_work_night"]),
-        "can_work_weekends": bool(row["can_work_weekends"]),
-        "can_work_evenings_after_night": bool(row["can_work_evenings_after_night"]),
-        "can_work_mornings_and_evenings": bool(row["can_work_mornings_and_evenings"]),
-    }
-
-
-def row_to_position_dict(row: sqlite3.Row) -> dict:
-    item = {
-        "id": row["id"],
-        "name": row["name"],
-        "color": row["color"] if "color" in row.keys() and row["color"] else "#eff6ff",
-        "requires_continuous_coverage": bool(row["requires_continuous_coverage"]),
-        "minimum_staff_presence": row["minimum_staff_presence"],
-        "allow_same_day_other_positions": bool(row["allow_same_day_other_positions"]) if "allow_same_day_other_positions" in row.keys() else False,
-        "max_consecutive_nights": row["max_consecutive_nights"] if "max_consecutive_nights" in row.keys() else None,
-        "emergency_max_consecutive_nights": row["emergency_max_consecutive_nights"] if "emergency_max_consecutive_nights" in row.keys() else None,
-        "max_consecutive_split_days": row["max_consecutive_split_days"] if "max_consecutive_split_days" in row.keys() else None,
-        "emergency_max_consecutive_split_days": row["emergency_max_consecutive_split_days"] if "emergency_max_consecutive_split_days" in row.keys() else None,
-    }
-    if "is_primary" in row.keys():
-        item["is_primary"] = bool(row["is_primary"])
-    if "priority_score" in row.keys():
-        item["priority_score"] = row["priority_score"]
-    if "is_fallback_only" in row.keys():
-        item["is_fallback_only"] = bool(row["is_fallback_only"])
-    return item
-
-
-def row_to_shift_template_dict(row: sqlite3.Row) -> dict:
-    return {
-        "id": row["id"],
-        "position_id": row["position_id"] if "position_id" in row.keys() else None,
-        "position_name": row["position_name"] if "position_name" in row.keys() else None,
-        "name": row["name"],
-        "category": row["category"],
-        "start_time": row["start_time"],
-        "end_time": row["end_time"],
-        "is_overnight": bool(row["is_overnight"]),
-        "is_active": bool(row["is_active"]),
-        "is_split_only": bool(row["is_split_only"]),
-    }
-
-
-def row_to_coverage_requirement_dict(row: sqlite3.Row) -> dict:
-    return {
-        "id": row["id"],
-        "position_id": row["position_id"],
-        "position_name": row["position_name"] if "position_name" in row.keys() else None,
-        "start_time": row["start_time"],
-        "end_time": row["end_time"],
-        "required_total": row["required_total"],
-        "required_female_min": row["required_female_min"],
-        "required_male_min": row["required_male_min"],
-        "is_overnight": bool(row["is_overnight"]),
-    }
 
 
 def fetch_one_or_404(cursor, query: str, params: tuple, message: str):
@@ -2530,83 +1924,12 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
     }
 
 
-def normalize_version(value: str) -> str:
-    normalized = str(value or "").strip().lower()
-    if normalized.startswith("v"):
-        normalized = normalized[1:]
-    return normalized.replace("_", "-")
-
-
-def version_sort_key(value: str) -> tuple[int, int, int, int]:
-    normalized = normalize_version(value)
-    match = re.search(r"(\d+)\.(\d+)\.(\d+)", normalized)
-    if not match:
-        return 0, 0, 0, 0
-
-    major, minor, patch = (int(part) for part in match.groups())
-    stability = 0 if any(label in normalized for label in ("alpha", "beta", "rc")) else 1
-    return major, minor, patch, stability
-
-
 def is_newer_version(candidate: str, current: str | None = None) -> bool:
-    return version_sort_key(candidate) > version_sort_key(current or APP_VERSION)
+    return update_is_newer_version(candidate, current or APP_VERSION)
 
 
 def request_github_releases() -> list[dict]:
-    request = urllib.request.Request(
-        GITHUB_RELEASES_API_URL,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": f"ShiftCare/{APP_VERSION}",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
-        raise HTTPException(status_code=502, detail=f"Could not contact GitHub Releases: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=502, detail="GitHub Releases returned invalid JSON") from exc
-
-
-def release_asset_version(asset_name: str) -> str | None:
-    match = GITHUB_RELEASE_ASSET_PATTERN.match(asset_name or "")
-    if not match:
-        return None
-    return normalize_version(match.group("version"))
-
-
-def find_latest_installable_release(releases: list[dict]) -> dict | None:
-    candidates: list[dict] = []
-    for release in releases:
-        if release.get("draft"):
-            continue
-
-        release_version = normalize_version(release.get("tag_name") or release.get("name") or "")
-        for asset in release.get("assets") or []:
-            asset_version = release_asset_version(asset.get("name", ""))
-            if not asset_version:
-                continue
-
-            candidates.append(
-                {
-                    "version": asset_version or release_version,
-                    "release_name": release.get("name") or release.get("tag_name") or asset_version,
-                    "tag_name": release.get("tag_name") or "",
-                    "body": release.get("body") or "",
-                    "published_at": release.get("published_at") or "",
-                    "asset_name": asset.get("name") or "",
-                    "download_url": asset.get("browser_download_url") or "",
-                    "size_bytes": asset.get("size") or 0,
-                    "html_url": release.get("html_url") or "",
-                    "prerelease": bool(release.get("prerelease")),
-                }
-            )
-
-    if not candidates:
-        return None
-
-    return max(candidates, key=lambda candidate: version_sort_key(candidate["version"]))
+    return update_service.request_github_releases(APP_VERSION)
 
 
 def get_update_status() -> dict:
@@ -2635,62 +1958,8 @@ def get_latest_download_payload() -> dict:
     }
 
 
-def no_store_headers() -> dict[str, str]:
-    return {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        "Pragma": "no-cache",
-        "Expires": "0",
-    }
-
-
-def validate_release_download_url(download_url: str) -> None:
-    parsed = urlparse(download_url)
-    if parsed.scheme != "https":
-        raise HTTPException(status_code=400, detail="Update download URL must use HTTPS")
-
-    if parsed.netloc.lower() not in {"github.com", "objects.githubusercontent.com"}:
-        raise HTTPException(status_code=400, detail="Update download URL is not a GitHub release asset")
-
-
 def download_update_installer(download_url: str, asset_name: str) -> Path:
-    validate_release_download_url(download_url)
-    safe_asset_name = Path(asset_name).name
-    if not release_asset_version(safe_asset_name):
-        raise HTTPException(status_code=400, detail="Release asset is not a ShiftCare installer")
-
-    target_dir = Path(tempfile.gettempdir()) / "ShiftCare" / "updates"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target_path = target_dir / safe_asset_name
-
-    request = urllib.request.Request(
-        download_url,
-        headers={"User-Agent": f"ShiftCare/{APP_VERSION}"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response, target_path.open("wb") as output_file:
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                output_file.write(chunk)
-    except urllib.error.URLError as exc:
-        raise HTTPException(status_code=502, detail=f"Could not download update: {exc}") from exc
-
-    return target_path
-
-
-def schedule_desktop_shutdown(delay_seconds: float = 2.0) -> None:
-    if not getattr(sys, "frozen", False):
-        return
-
-    def delayed_exit() -> None:
-        import time as time_module
-
-        time_module.sleep(delay_seconds)
-        os._exit(0)
-
-    threading.Thread(target=delayed_exit, daemon=True).start()
-
+    return download_update_installer_for_version(download_url, asset_name, APP_VERSION)
 
 def get_employee_week_shift_count(connection, employee_id: int, week_start_date: str) -> int:
     cursor = connection.cursor()

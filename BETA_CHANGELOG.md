@@ -2,6 +2,24 @@
 
 This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
 
+# 0.16.1_beta - 2026-05-14
+
+## Changed
+
+- Split request schemas, date/time helpers, update logic, app settings, and row serializers out of `main.py`.
+- Preserved public helper names used by tests and local scripts while reducing `main.py` coupling.
+- Fixed SQLite context-manager cleanup for `database.get_connection()`.
+
+## Verified
+
+- Full Python unittest suite passed: 108 tests OK, 1 PostgreSQL integration test skipped because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not set.
+- Python root module compile check passed.
+- Cloud dependency smoke passed with `requirements-cloud.txt`.
+- Cloud Run-like local health smoke passed for `/api/health/live` and `/api/health/ready`.
+- Deployed Cloud Run health smoke passed for the existing `schedule-app-beta-api` service.
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.16.1-beta.exe`
+- Installer SHA256: `66D87A789CE65F7AA5F59454907D509DE88D69EFED8C0B6611C2662F059DD30E`
+
 # 0.15.19_beta
 
 ## Changed

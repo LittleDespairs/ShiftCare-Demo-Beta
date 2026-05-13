@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(0, 15, 19, 0),
-    prodvers=(0, 15, 19, 0),
+    filevers=(0, 16, 1, 0),
+    prodvers=(0, 16, 1, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'ShiftCare'),
           StringStruct('FileDescription', 'ShiftCare Desktop'),
-          StringStruct('FileVersion', '0.15.19.0'),
+          StringStruct('FileVersion', '0.16.1.0'),
           StringStruct('InternalName', 'ShiftCare'),
           StringStruct('LegalCopyright', 'Copyright (C) 2026 ShiftCare'),
-          StringStruct('OriginalFilename', 'ShiftCare_0.15.19_beta.exe'),
+          StringStruct('OriginalFilename', 'ShiftCare_0.16.1_beta.exe'),
           StringStruct('ProductName', 'ShiftCare'),
-          StringStruct('ProductVersion', '0.15.19-beta')
+          StringStruct('ProductVersion', '0.16.1-beta')
         ]
       )
     ]),
