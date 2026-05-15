@@ -173,12 +173,143 @@
 
         .request-modal-grid {
             display: grid;
-            gap: 14px;
+            gap: 18px;
         }
 
-        .request-modal-options {
+        .request-modal-intro {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.45;
+        }
+
+        .request-choice-group {
             display: grid;
+            gap: 10px;
+        }
+
+        .request-choice-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .request-choice-card {
+            min-height: 96px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+            padding: 12px;
+            text-align: start;
+            display: grid;
+            gap: 7px;
+            align-content: start;
+            transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+        }
+
+        .request-choice-card:hover {
+            border-color: #bfdbfe;
+            background: #f8fafc;
+        }
+
+        .request-choice-card.is-selected {
+            border-color: #2563eb;
+            background: #eff6ff;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        }
+
+        .request-choice-title {
+            font-weight: 850;
+            font-size: 0.94rem;
+        }
+
+        .request-choice-hint {
+            color: var(--muted);
+            font-size: 0.82rem;
+            line-height: 1.35;
+        }
+
+        .request-category-panel {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            background: #f8fafc;
+        }
+
+        .request-category-panel[hidden] {
+            display: none;
+        }
+
+        .request-category-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .request-category-hint {
+            color: var(--muted);
+            font-size: 0.82rem;
+            line-height: 1.35;
+        }
+
+        .request-category-options {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 8px;
+        }
+
+        .request-category-option {
+            min-height: 68px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+            padding: 10px;
+            text-align: center;
+            display: grid;
+            gap: 4px;
+            place-items: center;
+            transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+        }
+
+        .request-category-option:hover {
+            border-color: #bfdbfe;
+        }
+
+        .request-category-option.is-selected {
+            border-color: #0f766e;
+            background: #ecfeff;
+            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
+        }
+
+        .request-category-name {
+            font-weight: 850;
+            font-size: 0.9rem;
+        }
+
+        .request-category-time {
+            color: var(--muted);
+            font-size: 0.78rem;
+        }
+
+        .request-modal-hidden-selects {
+            display: none;
+        }
+
+        @media (max-width: 640px) {
+            .request-choice-grid,
+            .request-category-options {
+                grid-template-columns: 1fr;
+            }
+
+            .request-category-header {
+                display: grid;
+            }
         }
 
         /* Notes / Заметки */
@@ -477,25 +608,70 @@
                         <button id="request-modal-close" class="app-modal-close" type="button" aria-label="Close">×</button>
                     </div>
                     <div class="app-modal-body request-modal-grid">
-                        <div>
-                            <label class="form-label" for="request_type_select" data-i18n="preferences_request_type">Request type</label>
-                            <select id="request_type_select" class="select">
-                                <option value="request_shift" data-i18n="preferences_request_shift">Request shift</option>
-                                <option value="exclude_shift" data-i18n="preferences_exclude_shift">Exclude shift</option>
-                                <option value="day_off" data-i18n="preference_off_day">Day off</option>
-                                <option value="vacation" data-i18n="preference_vacation">Vacation</option>
-                            </select>
+                        <p class="request-modal-intro" data-i18n="preferences_request_modal_intro">
+                            Choose what this employee is asking for on the selected day.
+                        </p>
+
+                        <div class="request-choice-group" role="radiogroup" aria-labelledby="request-type-label">
+                            <div id="request-type-label" class="form-label" data-i18n="preferences_request_type">Request type</div>
+                            <div class="request-choice-grid">
+                                <button class="request-choice-card" type="button" data-request-type="request_shift" role="radio" aria-checked="false">
+                                    <span class="request-choice-title" data-i18n="preferences_request_shift">Request shift</span>
+                                    <span class="request-choice-hint" data-i18n="preferences_request_shift_hint">Prefer one specific shift.</span>
+                                </button>
+                                <button class="request-choice-card" type="button" data-request-type="exclude_shift" role="radio" aria-checked="false">
+                                    <span class="request-choice-title" data-i18n="preferences_exclude_shift">Exclude shift</span>
+                                    <span class="request-choice-hint" data-i18n="preferences_exclude_shift_hint">Do not assign one specific shift.</span>
+                                </button>
+                                <button class="request-choice-card" type="button" data-request-type="day_off" role="radio" aria-checked="false">
+                                    <span class="request-choice-title" data-i18n="preference_off_day">Day off</span>
+                                    <span class="request-choice-hint" data-i18n="preferences_day_off_hint">Block work for this day.</span>
+                                </button>
+                                <button class="request-choice-card" type="button" data-request-type="vacation" role="radio" aria-checked="false">
+                                    <span class="request-choice-title" data-i18n="preference_vacation">Vacation</span>
+                                    <span class="request-choice-hint" data-i18n="preferences_vacation_hint">Mark as unavailable because of vacation.</span>
+                                </button>
+                            </div>
                         </div>
-                        <div id="request-category-field">
-                            <label class="form-label" for="request_category_select" data-i18n="preferences_request_shift_category">Shift</label>
-                            <select id="request_category_select" class="select">
-                                <option value="morning" data-i18n="shift_morning">Morning</option>
-                                <option value="evening" data-i18n="shift_evening">Evening</option>
-                                <option value="night" data-i18n="shift_night">Night</option>
+
+                        <div id="request-category-field" class="request-category-panel">
+                            <div class="request-category-header">
+                                <div class="form-label" data-i18n="preferences_request_shift_category">Shift</div>
+                                <div class="request-category-hint" data-i18n="preferences_request_category_hint">
+                                    Pick the exact shift this request applies to.
+                                </div>
+                            </div>
+                            <div class="request-category-options" role="radiogroup" aria-label="Shift">
+                                <button class="request-category-option" type="button" data-request-category="morning" role="radio" aria-checked="false">
+                                    <span class="request-category-name" data-i18n="shift_morning">Morning</span>
+                                    <span class="request-category-time" data-i18n="preferences_morning_hint">Day start</span>
+                                </button>
+                                <button class="request-category-option" type="button" data-request-category="evening" role="radio" aria-checked="false">
+                                    <span class="request-category-name" data-i18n="shift_evening">Evening</span>
+                                    <span class="request-category-time" data-i18n="preferences_evening_hint">Late day</span>
+                                </button>
+                                <button class="request-category-option" type="button" data-request-category="night" role="radio" aria-checked="false">
+                                    <span class="request-category-name" data-i18n="shift_night">Night</span>
+                                    <span class="request-category-time" data-i18n="preferences_night_hint">Overnight</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="request-modal-hidden-selects" aria-hidden="true">
+                            <select id="request_type_select" tabindex="-1">
+                                <option value="request_shift">Request shift</option>
+                                <option value="exclude_shift">Exclude shift</option>
+                                <option value="day_off">Day off</option>
+                                <option value="vacation">Vacation</option>
+                            </select>
+                            <select id="request_category_select" tabindex="-1">
+                                <option value="morning">Morning</option>
+                                <option value="evening">Evening</option>
+                                <option value="night">Night</option>
                             </select>
                         </div>
                         <div class="form-actions">
-                            <button id="request-modal-save" class="btn btn-primary" type="button" data-i18n="preferences_add_request">Add request</button>
+                            <button id="request-modal-save" class="btn btn-primary" type="button" data-i18n="preferences_save_request">Save request</button>
                         </div>
                     </div>
                 </div>
@@ -773,6 +949,12 @@
             document.getElementById("week_start").addEventListener("change", handleEmployeeSelectionChanged);
             document.getElementById("tbody").addEventListener("click", handlePreferencesTableClick);
             document.getElementById("request_type_select").addEventListener("change", updateRequestModalFields);
+            document.querySelectorAll("[data-request-type]").forEach(button => {
+                button.addEventListener("click", () => setRequestType(button.dataset.requestType));
+            });
+            document.querySelectorAll("[data-request-category]").forEach(button => {
+                button.addEventListener("click", () => setRequestCategory(button.dataset.requestCategory));
+            });
             document.getElementById("request-modal-save").addEventListener("click", savePendingRequest);
             document.getElementById("request-modal-close").addEventListener("click", closeRequestModal);
             document.getElementById("request-modal-overlay").addEventListener("click", event => {
@@ -962,9 +1144,8 @@
 
         function openRequestModal(employeeId, date) {
             pendingRequestTarget = { employeeId, date };
-            document.getElementById("request_type_select").value = "request_shift";
-            document.getElementById("request_category_select").value = "morning";
-            updateRequestModalFields();
+            setRequestType("request_shift");
+            setRequestCategory("morning");
             const overlay = document.getElementById("request-modal-overlay");
             overlay.classList.add("is-open");
             overlay.setAttribute("aria-hidden", "false");
@@ -980,6 +1161,25 @@
         function updateRequestModalFields() {
             const requestType = document.getElementById("request_type_select").value;
             document.getElementById("request-category-field").hidden = ["day_off", "vacation"].includes(requestType);
+            document.querySelectorAll("[data-request-type]").forEach(button => {
+                const isSelected = button.dataset.requestType === requestType;
+                button.classList.toggle("is-selected", isSelected);
+                button.setAttribute("aria-checked", String(isSelected));
+            });
+        }
+
+        function setRequestType(requestType) {
+            document.getElementById("request_type_select").value = requestType;
+            updateRequestModalFields();
+        }
+
+        function setRequestCategory(category) {
+            document.getElementById("request_category_select").value = category;
+            document.querySelectorAll("[data-request-category]").forEach(button => {
+                const isSelected = button.dataset.requestCategory === category;
+                button.classList.toggle("is-selected", isSelected);
+                button.setAttribute("aria-checked", String(isSelected));
+            });
         }
 
         async function savePendingRequest() {
