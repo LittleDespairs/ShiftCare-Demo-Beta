@@ -36,15 +36,15 @@ steps:
       - managed
       - --allow-unauthenticated
       - --min-instances
-      - '10'
+      - '1'
       - --max-instances
-      - '100'
+      - '20'
       - --concurrency
-      - '1000'
+      - '200'
       - --cpu
-      - '2'
+      - '1'
       - --memory
-      - 1Gi
+      - 512Mi
       - --set-env-vars
       - APP_ENV=staging,DATABASE_ENGINE=postgresql,DATABASE_NAME=${_DATABASE_NAME},DATABASE_USER=${_DATABASE_USER},CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},DATABASE_SSL_MODE=require,PUBLIC_APP_BASE_URL=${_PUBLIC_APP_BASE_URL},SCHEDULE_APP_DEFAULT_API_BASE_URL=${_PUBLIC_APP_BASE_URL}
       - --set-secrets

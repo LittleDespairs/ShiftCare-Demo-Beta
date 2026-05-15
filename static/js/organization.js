@@ -552,18 +552,59 @@
         }
     }
 
+    function isRetryableCloudStatus(status) {
+        return [429, 502, 503, 504].includes(Number(status));
+    }
+
+    function cloudRetryDelay(attempt, response) {
+        const retryAfter = Number(response?.headers?.get("Retry-After"));
+        if (Number.isFinite(retryAfter) && retryAfter >= 0) {
+            return Math.min(30000, retryAfter * 1000);
+        }
+        return Math.min(8000, 1000 * (2 ** attempt));
+    }
+
+    async function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     async function cloudRequest(baseUrl, path, options = {}, token = "") {
         const headers = new Headers(options.headers || {});
         if (token) headers.set("Authorization", `Bearer ${token}`);
         if (options.body && !headers.has("Content-Type")) {
             headers.set("Content-Type", "application/json");
         }
-        const response = await window.scheduleAuth.nativeFetch(`${baseUrl}${path}`, { ...options, headers });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            throw new Error(data.detail || `Cloud request failed with ${response.status}`);
+
+        let lastError = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            const controller = new AbortController();
+            const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+            try {
+                const response = await window.scheduleAuth.nativeFetch(`${baseUrl}${path}`, {
+                    ...options,
+                    headers,
+                    signal: controller.signal
+                });
+                const data = await response.json().catch(() => ({}));
+                if (response.ok) {
+                    return data;
+                }
+                if (isRetryableCloudStatus(response.status) && attempt < 2) {
+                    await sleep(cloudRetryDelay(attempt, response));
+                    continue;
+                }
+                const error = new Error(data.detail || `Cloud request failed with ${response.status}`);
+                error.nonRetryable = true;
+                throw error;
+            } catch (error) {
+                lastError = error;
+                if (error?.nonRetryable || attempt >= 2) break;
+                await sleep(cloudRetryDelay(attempt));
+            } finally {
+                window.clearTimeout(timeoutId);
+            }
         }
-        return data;
+        throw lastError || new Error("Cloud request failed");
     }
 
     function getCloudMembership(cloudUser) {

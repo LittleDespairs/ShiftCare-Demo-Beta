@@ -280,12 +280,13 @@ CREATE TABLE IF NOT EXISTS employee_week_preferences (
     week_start_date TEXT NOT NULL,
     preference_date TEXT NOT NULL,
     preference_type TEXT NOT NULL,
+    request_type TEXT NOT NULL DEFAULT 'request_shift',
+    target_category TEXT,
     organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
     public_id TEXT NOT NULL DEFAULT ('wpr_' || lower(encode(gen_random_bytes(16), 'hex'))),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE (employee_id, preference_date),
     UNIQUE (public_id)
 );
 
@@ -308,7 +309,7 @@ CREATE TABLE IF NOT EXISTS employee_day_statuses (
     id BIGSERIAL PRIMARY KEY,
     employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
     date TEXT NOT NULL,
-    status_type TEXT NOT NULL CHECK (status_type IN ('sick', 'day_off')),
+    status_type TEXT NOT NULL CHECK (status_type IN ('sick', 'day_off', 'vacation')),
     organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
     public_id TEXT NOT NULL DEFAULT ('dst_' || lower(encode(gen_random_bytes(16), 'hex'))),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -2147,6 +2147,61 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(delete_response.json()["deleted_count"], 1)
 
+    def test_weekly_preferences_allow_multiple_shift_requests_same_day(self):
+        employee_id = self._create_employee()
+        for request_type, target_category in (
+            ("request_shift", "morning"),
+            ("request_shift", "night"),
+            ("exclude_shift", "evening"),
+        ):
+            response = self.client.post(
+                "/api/employee-week-preferences",
+                json={
+                    "employee_id": employee_id,
+                    "week_start_date": "2026-04-20",
+                    "preference_date": "2026-04-21",
+                    "request_type": request_type,
+                    "target_category": target_category,
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+
+        preferences = self.client.get(
+            "/api/employee-week-preferences",
+            params={"week_start_date": "2026-04-20"},
+        ).json()
+        self.assertEqual(len(preferences), 3)
+        self.assertEqual(
+            {(item["request_type"], item["target_category"]) for item in preferences},
+            {("request_shift", "morning"), ("request_shift", "night"), ("exclude_shift", "evening")},
+        )
+
+        delete_response = self.client.delete(
+            "/api/employee-week-preferences",
+            params={
+                "employee_id": employee_id,
+                "preference_date": "2026-04-21",
+                "preference_id": preferences[0]["id"],
+            },
+        )
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(delete_response.json()["deleted_count"], 1)
+        remaining = self.client.get(
+            "/api/employee-week-preferences",
+            params={"week_start_date": "2026-04-20"},
+        ).json()
+        self.assertEqual(len(remaining), 2)
+
+    def test_vacation_day_status_blocks_schedule_cell(self):
+        employee_id = self._create_employee()
+        response = self.client.post(
+            "/api/employee-day-statuses",
+            json={"employee_id": employee_id, "date": "2026-04-21", "status_type": "vacation"},
+        )
+        self.assertEqual(response.status_code, 200)
+        statuses = self.client.get("/api/employee-day-statuses").json()
+        self.assertEqual(statuses[0]["status_type"], "vacation")
+
     def test_weekly_preference_date_must_belong_to_selected_week(self):
         employee_id = self._create_employee()
 
@@ -2263,6 +2318,61 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(len(preferences), 1)
         self.assertEqual(preferences[0]["employee_id"], employee_id)
         self.assertEqual(preferences[0]["preference_type"], "off_day")
+
+    def test_request_cloud_json_retries_transient_network_error(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self):
+                return b'{"ok": true}'
+
+        with (
+            patch.object(
+                main.urllib.request,
+                "urlopen",
+                side_effect=[main.urllib.error.URLError("temporary dns failure"), FakeResponse()],
+            ) as urlopen_mock,
+            patch.object(main, "sleep") as sleep_mock,
+        ):
+            response = main.request_cloud_json("https://cloud.example.com", "/api/ping")
+
+        self.assertEqual(response, {"ok": True})
+        self.assertEqual(urlopen_mock.call_count, 2)
+        self.assertEqual(urlopen_mock.call_args.kwargs["timeout"], 45.0)
+        sleep_mock.assert_called_once_with(1.0)
+
+    def test_request_cloud_json_retries_retryable_cloud_status(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self):
+                return b'{"ok": true}'
+
+        http_error = main.urllib.error.HTTPError(
+            "https://cloud.example.com/api/ping",
+            503,
+            "Service Unavailable",
+            {"Retry-After": "2"},
+            main.BytesIO(b'{"detail": "temporary outage"}'),
+        )
+
+        with (
+            patch.object(main.urllib.request, "urlopen", side_effect=[http_error, FakeResponse()]) as urlopen_mock,
+            patch.object(main, "sleep") as sleep_mock,
+        ):
+            response = main.request_cloud_json("https://cloud.example.com", "/api/ping")
+
+        self.assertEqual(response, {"ok": True})
+        self.assertEqual(urlopen_mock.call_count, 2)
+        sleep_mock.assert_called_once_with(2.0)
 
     def test_desktop_sync_pushes_pending_preferences_without_pre_pull_delete(self):
         employee_id = self._create_employee()

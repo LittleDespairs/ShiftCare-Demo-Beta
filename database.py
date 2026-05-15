@@ -105,6 +105,118 @@ def _add_column_if_missing(cursor: sqlite3.Cursor, table_name: str, column_name:
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
 
+def _ensure_postgres_runtime_schema(connection) -> None:
+    cursor = connection.cursor(track_lastrowid=False)
+    try:
+        cursor.execute("""
+            ALTER TABLE employee_week_preferences
+            ADD COLUMN IF NOT EXISTS request_type TEXT NOT NULL DEFAULT 'request_shift'
+        """)
+        cursor.execute("""
+            ALTER TABLE employee_week_preferences
+            ADD COLUMN IF NOT EXISTS target_category TEXT
+        """)
+        cursor.execute("""
+            UPDATE employee_week_preferences
+            SET request_type = CASE
+                    WHEN preference_type = 'off_day' THEN 'day_off'
+                    WHEN preference_type = 'vacation' THEN 'vacation'
+                    WHEN preference_type LIKE 'not_%' THEN 'exclude_shift'
+                    ELSE request_type
+                END,
+                target_category = CASE
+                    WHEN preference_type LIKE '%morning' THEN 'morning'
+                    WHEN preference_type LIKE '%evening' THEN 'evening'
+                    WHEN preference_type LIKE '%night' THEN 'night'
+                    ELSE target_category
+                END
+        """)
+        cursor.execute("""
+            ALTER TABLE employee_week_preferences
+            DROP CONSTRAINT IF EXISTS employee_week_preferences_employee_id_preference_date_key
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_request
+            ON employee_week_preferences (employee_id, preference_date, request_type, target_category)
+        """)
+        cursor.execute("""
+            ALTER TABLE employee_day_statuses
+            DROP CONSTRAINT IF EXISTS employee_day_statuses_status_type_check
+        """)
+        cursor.execute("""
+            ALTER TABLE employee_day_statuses
+            ADD CONSTRAINT employee_day_statuses_status_type_check
+            CHECK (status_type IN ('sick', 'day_off', 'vacation'))
+        """)
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def _rebuild_employee_week_preferences_for_multiple_requests(cursor: sqlite3.Cursor) -> None:
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'employee_week_preferences'")
+    row = cursor.fetchone()
+    table_sql = row["sql"] if row else ""
+    compact_sql = table_sql.replace(" ", "")
+    if "UNIQUE(employee_id,preference_date)" not in compact_sql:
+        return
+
+    cursor.execute("ALTER TABLE employee_week_preferences RENAME TO employee_week_preferences_old")
+    cursor.execute("""
+        CREATE TABLE employee_week_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            week_start_date TEXT NOT NULL,
+            preference_date TEXT NOT NULL,
+            preference_type TEXT NOT NULL,
+            request_type TEXT NOT NULL DEFAULT 'request_shift',
+            target_category TEXT,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            updated_by INTEGER,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        )
+    """)
+    old_columns = _table_columns(cursor, "employee_week_preferences_old")
+    cursor.execute(
+        f"""
+        INSERT INTO employee_week_preferences (
+            id, employee_id, week_start_date, preference_date, preference_type,
+            request_type, target_category, organization_id, public_id, created_at, updated_at, updated_by
+        )
+        SELECT
+            id,
+            employee_id,
+            week_start_date,
+            preference_date,
+            preference_type,
+            CASE
+                WHEN preference_type = 'off_day' THEN 'day_off'
+                WHEN preference_type = 'vacation' THEN 'vacation'
+                WHEN preference_type LIKE 'not_%' THEN 'exclude_shift'
+                ELSE 'request_shift'
+            END,
+            CASE
+                WHEN preference_type LIKE '%morning' THEN 'morning'
+                WHEN preference_type LIKE '%evening' THEN 'evening'
+                WHEN preference_type LIKE '%night' THEN 'night'
+                ELSE NULL
+            END,
+            {"organization_id" if "organization_id" in old_columns else "1"},
+            {"public_id" if "public_id" in old_columns else "NULL"},
+            {"created_at" if "created_at" in old_columns else "NULL"},
+            {"updated_at" if "updated_at" in old_columns else "NULL"},
+            {"updated_by" if "updated_by" in old_columns else "NULL"}
+        FROM employee_week_preferences_old
+        WHERE preference_type <> 'no_preference'
+        """
+    )
+    cursor.execute("DROP TABLE employee_week_preferences_old")
+
+
 def _ensure_schema_migration_tables(cursor: sqlite3.Cursor) -> None:
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS schema_metadata (
@@ -502,6 +614,7 @@ def init_db():
         try:
             if not _postgres_schema_is_current(connection):
                 apply_postgres_schema(connection, POSTGRES_SCHEMA_PATH)
+            _ensure_postgres_runtime_schema(connection)
         finally:
             connection.close()
         return
@@ -993,6 +1106,24 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_employee_week
         ON employee_week_preferences (employee_id, week_start_date, preference_date)
     """)
+    _rebuild_employee_week_preferences_for_multiple_requests(cursor)
+    _add_column_if_missing(cursor, "employee_week_preferences", "request_type", "TEXT NOT NULL DEFAULT 'request_shift'")
+    _add_column_if_missing(cursor, "employee_week_preferences", "target_category", "TEXT")
+    cursor.execute("""
+        UPDATE employee_week_preferences
+        SET request_type = CASE
+                WHEN preference_type = 'off_day' THEN 'day_off'
+                WHEN preference_type = 'vacation' THEN 'vacation'
+                WHEN preference_type LIKE 'not_%' THEN 'exclude_shift'
+                ELSE request_type
+            END,
+            target_category = CASE
+                WHEN preference_type LIKE '%morning' THEN 'morning'
+                WHEN preference_type LIKE '%evening' THEN 'evening'
+                WHEN preference_type LIKE '%night' THEN 'night'
+                ELSE target_category
+            END
+    """)
 
     # ==============================================================
     # Permanent employee preferences / Постоянные пожелания
@@ -1041,14 +1172,14 @@ def init_db():
 
     cursor.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'employee_day_statuses'")
     day_status_table_sql = cursor.fetchone()["sql"]
-    if "day_off" not in day_status_table_sql:
+    if "vacation" not in day_status_table_sql:
         cursor.execute("ALTER TABLE employee_day_statuses RENAME TO employee_day_statuses_old")
         cursor.execute("""
             CREATE TABLE employee_day_statuses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 employee_id INTEGER NOT NULL,
                 date TEXT NOT NULL,
-                status_type TEXT NOT NULL CHECK (status_type IN ('sick', 'day_off')),
+                status_type TEXT NOT NULL CHECK (status_type IN ('sick', 'day_off', 'vacation')),
                 UNIQUE(employee_id, date),
                 FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
             )
@@ -1057,7 +1188,7 @@ def init_db():
             INSERT INTO employee_day_statuses (id, employee_id, date, status_type)
             SELECT id, employee_id, date, status_type
             FROM employee_day_statuses_old
-            WHERE status_type IN ('sick', 'day_off')
+            WHERE status_type IN ('sick', 'day_off', 'vacation')
         """)
         cursor.execute("DROP TABLE employee_day_statuses_old")
 

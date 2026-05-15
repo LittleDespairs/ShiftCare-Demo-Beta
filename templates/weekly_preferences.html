@@ -118,6 +118,69 @@
             box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
         }
 
+        .request-stack {
+            display: grid;
+            gap: 8px;
+        }
+
+        .request-chip {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #f8fafc;
+            padding: 8px 10px;
+            font-size: 0.86rem;
+            font-weight: 700;
+        }
+
+        .request-chip.request {
+            background: #ecfeff;
+            color: #134e4a;
+            border-color: #99f6e4;
+        }
+
+        .request-chip.exclude {
+            background: #fff7ed;
+            color: #9a3412;
+            border-color: #fed7aa;
+        }
+
+        .request-chip.block {
+            background: #f5f3ff;
+            color: #5b21b6;
+            border-color: #c4b5fd;
+        }
+
+        .request-remove {
+            border: none;
+            border-radius: 999px;
+            width: 24px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.78);
+            color: inherit;
+            cursor: pointer;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+        .request-empty {
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .request-modal-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .request-modal-options {
+            display: grid;
+            gap: 8px;
+        }
+
         /* Notes / Заметки */
         .notes-box {
             border: 1px solid var(--border);
@@ -407,6 +470,37 @@
                 </div>
             </section>
 
+            <div id="request-modal-overlay" class="app-modal-overlay" aria-hidden="true">
+                <div class="app-modal" role="dialog" aria-modal="true" aria-labelledby="request-modal-title">
+                    <div class="app-modal-header">
+                        <h2 id="request-modal-title" class="app-modal-title" data-i18n="preferences_add_request">Add request</h2>
+                        <button id="request-modal-close" class="app-modal-close" type="button" aria-label="Close">×</button>
+                    </div>
+                    <div class="app-modal-body request-modal-grid">
+                        <div>
+                            <label class="form-label" for="request_type_select" data-i18n="preferences_request_type">Request type</label>
+                            <select id="request_type_select" class="select">
+                                <option value="request_shift" data-i18n="preferences_request_shift">Request shift</option>
+                                <option value="exclude_shift" data-i18n="preferences_exclude_shift">Exclude shift</option>
+                                <option value="day_off" data-i18n="preference_off_day">Day off</option>
+                                <option value="vacation" data-i18n="preference_vacation">Vacation</option>
+                            </select>
+                        </div>
+                        <div id="request-category-field">
+                            <label class="form-label" for="request_category_select" data-i18n="preferences_request_shift_category">Shift</label>
+                            <select id="request_category_select" class="select">
+                                <option value="morning" data-i18n="shift_morning">Morning</option>
+                                <option value="evening" data-i18n="shift_evening">Evening</option>
+                                <option value="night" data-i18n="shift_night">Night</option>
+                            </select>
+                        </div>
+                        <div class="form-actions">
+                            <button id="request-modal-save" class="btn btn-primary" type="button" data-i18n="preferences_add_request">Add request</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Notes / Заметки -->
             <div class="notes-box">
                 <h3 class="notes-title" data-i18n="preferences_notes_title">Notes</h3>
@@ -480,18 +574,18 @@
            PAGE DATA / ДАННЫЕ СТРАНИЦЫ
            ========================================================= */
 
-        const OPTION_KEYS = [
-            ["no_preference", "preference_no_preference"],
-            ["off_day", "preference_off_day"],
-            ["only_morning", "preference_only_morning"],
-            ["vacation", "preference_vacation"],
-            ["only_evening", "preference_only_evening"],
-            ["only_night", "preference_only_night"],
-            ["not_morning", "preference_not_morning"],
-            ["not_evening", "preference_not_evening"],
-            ["not_night", "preference_not_night"],
-            ["no_morning_evening_combo", "preference_no_morning_evening_combo"]
-        ];
+        const REQUEST_TYPE_LABELS = {
+            request_shift: ["preferences_request_shift", "Request shift"],
+            exclude_shift: ["preferences_exclude_shift", "Exclude shift"],
+            day_off: ["preference_off_day", "Day off"],
+            vacation: ["preference_vacation", "Vacation"]
+        };
+
+        const SHIFT_CATEGORY_LABELS = {
+            morning: ["shift_morning", "Morning"],
+            evening: ["shift_evening", "Evening"],
+            night: ["shift_night", "Night"]
+        };
 
         const WEEKDAY_KEYS = [
             "weekday_sunday",
@@ -506,6 +600,7 @@
         let employees = [];
         let weekDates = [];
         let preferencesMap = {};
+        let pendingRequestTarget = null;
 
         /* =========================================================
            HELPERS / ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -559,12 +654,78 @@
             );
         }
 
-        function getPreferenceOptions(selectedValue) {
-            return OPTION_KEYS.map(([value, key]) => `
-                <option value="${value}" ${value === selectedValue ? "selected" : ""}>
-                    ${t(key, value)}
-                </option>
-            `).join("");
+        function getRequestTypeLabel(requestType) {
+            const [key, fallback] = REQUEST_TYPE_LABELS[requestType] || [requestType, requestType];
+            return t(key, fallback);
+        }
+
+        function getShiftCategoryLabel(category) {
+            const [key, fallback] = SHIFT_CATEGORY_LABELS[category] || [category, category];
+            return t(key, fallback);
+        }
+
+        function normalizeRequest(item) {
+            let requestType = item.request_type;
+            let targetCategory = item.target_category;
+            const preferenceType = item.preference_type || "";
+            if (!requestType) {
+                if (preferenceType === "off_day") requestType = "day_off";
+                if (preferenceType === "vacation") requestType = "vacation";
+                if (preferenceType.startsWith("only_")) {
+                    requestType = "request_shift";
+                    targetCategory = preferenceType.replace("only_", "");
+                }
+                if (preferenceType.startsWith("not_")) {
+                    requestType = "exclude_shift";
+                    targetCategory = preferenceType.replace("not_", "");
+                }
+            }
+            return { ...item, request_type: requestType, target_category: targetCategory };
+        }
+
+        function renderRequestChip(request) {
+            const normalized = normalizeRequest(request);
+            const chipClass = normalized.request_type === "request_shift"
+                ? "request"
+                : normalized.request_type === "exclude_shift"
+                    ? "exclude"
+                    : "block";
+            const categoryText = normalized.target_category ? ` · ${getShiftCategoryLabel(normalized.target_category)}` : "";
+            return `
+                <div class="request-chip ${chipClass}">
+                    <span>${escapeHtml(getRequestTypeLabel(normalized.request_type))}${escapeHtml(categoryText)}</span>
+                    <button
+                        class="request-remove"
+                        type="button"
+                        data-action="delete-preference"
+                        data-preference-id="${Number(normalized.id)}"
+                        data-employee-id="${Number(normalized.employee_id)}"
+                        data-date="${escapeHtml(normalized.preference_date)}"
+                        title="${t("preferences_clear_button", "Clear")}"
+                    >×</button>
+                </div>
+            `;
+        }
+
+        function renderDayRequests(employeeId, date) {
+            const requests = preferencesMap[date] || [];
+            const list = requests.length
+                ? requests.map(renderRequestChip).join("")
+                : `<div class="request-empty">${t("preference_no_preference", "No preference")}</div>`;
+            return `
+                <div class="request-stack">
+                    ${list}
+                    <button
+                        class="btn btn-secondary"
+                        type="button"
+                        data-action="add-preference"
+                        data-employee-id="${Number(employeeId)}"
+                        data-date="${escapeHtml(date)}"
+                    >
+                        ${t("preferences_add_request", "Add request")}
+                    </button>
+                </div>
+            `;
         }
 
         function renderPreferencesEmptyState(titleKey, titleFallback, textKey, textFallback, actionHtml = "") {
@@ -607,10 +768,16 @@
             await loadEmployees();
 
             document.getElementById("load-btn").addEventListener("click", loadWeekPreferences);
-            document.getElementById("save-btn").addEventListener("click", savePreferences);
+            document.getElementById("save-btn").hidden = true;
             document.getElementById("employee_select").addEventListener("change", handleEmployeeSelectionChanged);
             document.getElementById("week_start").addEventListener("change", handleEmployeeSelectionChanged);
             document.getElementById("tbody").addEventListener("click", handlePreferencesTableClick);
+            document.getElementById("request_type_select").addEventListener("change", updateRequestModalFields);
+            document.getElementById("request-modal-save").addEventListener("click", savePendingRequest);
+            document.getElementById("request-modal-close").addEventListener("click", closeRequestModal);
+            document.getElementById("request-modal-overlay").addEventListener("click", event => {
+                if (event.target.id === "request-modal-overlay") closeRequestModal();
+            });
         });
 
         document.addEventListener("app-language-changed", () => {
@@ -710,7 +877,11 @@
                 preferences
                     .filter(item => item.employee_id === employeeId)
                     .forEach(item => {
-                        preferencesMap[item.preference_date] = item.preference_type;
+                        const normalized = normalizeRequest(item);
+                        if (!preferencesMap[normalized.preference_date]) {
+                            preferencesMap[normalized.preference_date] = [];
+                        }
+                        preferencesMap[normalized.preference_date].push(normalized);
                     });
 
                 renderTable(employeeId);
@@ -756,37 +927,17 @@
                 <tr>
                     <th data-i18n="preferences_day_column">${t("preferences_day_column", "Day")}</th>
                     <th data-i18n="preferences_date_column">${t("preferences_date_column", "Date")}</th>
-                    <th data-i18n="preferences_value_column">${t("preferences_value_column", "Preference")}</th>
-                    <th>${t("common_actions", "Actions")}</th>
+                    <th data-i18n="preferences_value_column">${t("preferences_value_column", "Requests")}</th>
                 </tr>
             `;
 
             tbody.innerHTML = weekDates.map((date, index) => {
-                const selectedValue = preferencesMap[date] || "no_preference";
-
                 return `
                     <tr>
                         <td class="day-name">${escapeHtml(getWeekdayName(index))}</td>
                         <td class="date-text">${escapeHtml(date)}</td>
                         <td>
-                            <select
-                                class="preference-select preference-select-field"
-                                data-employee-id="${employeeId}"
-                                data-date="${date}"
-                            >
-                                ${getPreferenceOptions(selectedValue)}
-                            </select>
-                        </td>
-                        <td>
-                            <button
-                                class="btn btn-secondary"
-                                type="button"
-                                data-action="delete-preference"
-                                data-employee-id="${Number(employeeId)}"
-                                data-date="${escapeHtml(date)}"
-                            >
-                                ${t("preferences_clear_button", "Clear")}
-                            </button>
+                            ${renderDayRequests(employeeId, date)}
                         </td>
                     </tr>
                 `;
@@ -794,9 +945,66 @@
         }
 
         function handlePreferencesTableClick(event) {
-            const button = event.target.closest('[data-action="delete-preference"]');
-            if (!button) return;
-            deletePreference(Number(button.dataset.employeeId), button.dataset.date);
+            const addButton = event.target.closest('[data-action="add-preference"]');
+            if (addButton) {
+                openRequestModal(Number(addButton.dataset.employeeId), addButton.dataset.date);
+                return;
+            }
+            const deleteButton = event.target.closest('[data-action="delete-preference"]');
+            if (deleteButton) {
+                deletePreference(
+                    Number(deleteButton.dataset.employeeId),
+                    deleteButton.dataset.date,
+                    Number(deleteButton.dataset.preferenceId)
+                );
+            }
+        }
+
+        function openRequestModal(employeeId, date) {
+            pendingRequestTarget = { employeeId, date };
+            document.getElementById("request_type_select").value = "request_shift";
+            document.getElementById("request_category_select").value = "morning";
+            updateRequestModalFields();
+            const overlay = document.getElementById("request-modal-overlay");
+            overlay.classList.add("is-open");
+            overlay.setAttribute("aria-hidden", "false");
+        }
+
+        function closeRequestModal() {
+            pendingRequestTarget = null;
+            const overlay = document.getElementById("request-modal-overlay");
+            overlay.classList.remove("is-open");
+            overlay.setAttribute("aria-hidden", "true");
+        }
+
+        function updateRequestModalFields() {
+            const requestType = document.getElementById("request_type_select").value;
+            document.getElementById("request-category-field").hidden = ["day_off", "vacation"].includes(requestType);
+        }
+
+        async function savePendingRequest() {
+            if (!pendingRequestTarget) return;
+            const requestType = document.getElementById("request_type_select").value;
+            const targetCategory = ["day_off", "vacation"].includes(requestType)
+                ? null
+                : document.getElementById("request_category_select").value;
+            try {
+                await window.scheduleAuth.request("/api/employee-week-preferences", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        employee_id: pendingRequestTarget.employeeId,
+                        week_start_date: document.getElementById("week_start").value,
+                        preference_date: pendingRequestTarget.date,
+                        request_type: requestType,
+                        target_category: targetCategory
+                    })
+                });
+                closeRequestModal();
+                await loadWeekPreferences();
+            } catch (error) {
+                console.error(error);
+                showMessage(error.message || t("msg_server_error_save_preferences", "Server error while saving preferences."), "danger");
+            }
         }
 
         /* =========================================================
@@ -853,14 +1061,19 @@
             }
         }
 
-        async function deletePreference(employeeId, preferenceDate) {
+        async function deletePreference(employeeId, preferenceDate, preferenceId = null) {
             try {
+                const idParam = preferenceId ? `&preference_id=${preferenceId}` : "";
                 await window.scheduleAuth.request(
-                    `/api/employee-week-preferences?employee_id=${employeeId}&preference_date=${encodeURIComponent(preferenceDate)}`,
+                    `/api/employee-week-preferences?employee_id=${employeeId}&preference_date=${encodeURIComponent(preferenceDate)}${idParam}`,
                     { method: "DELETE" }
                 );
 
-                delete preferencesMap[preferenceDate];
+                if (preferenceId && preferencesMap[preferenceDate]) {
+                    preferencesMap[preferenceDate] = preferencesMap[preferenceDate].filter(item => Number(item.id) !== Number(preferenceId));
+                } else {
+                    delete preferencesMap[preferenceDate];
+                }
                 renderTable(employeeId);
                 showMessage(t("msg_preference_deleted", "Preference cleared successfully."), "success");
             } catch (error) {

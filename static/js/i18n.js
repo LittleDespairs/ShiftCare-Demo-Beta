@@ -166,6 +166,7 @@ const I18N_TRANSLATIONS = {
         schedule_shift_status: "Shift status",
         schedule_status_sick_hint: "Blocks the whole day cell",
         schedule_status_day_off_hint: "Marks the whole day as a day off",
+        schedule_status_vacation_hint: "Marks the whole day as vacation",
         schedule_no_shifts_for_no_show: "No shifts available for no-show status",
 
         schedule_employee_header: "Employee",
@@ -180,6 +181,7 @@ const I18N_TRANSLATIONS = {
 
         status_sick: "Sick",
         status_day_off: "Day off",
+        status_vacation: "Vacation",
         status_no_show: "No-show",
 
         coverage_staff: "Staff",
@@ -493,8 +495,13 @@ const I18N_TRANSLATIONS = {
 
         preferences_day_column: "Day",
         preferences_date_column: "Date",
-        preferences_value_column: "Preference",
+        preferences_value_column: "Requests",
         preferences_clear_button: "Clear",
+        preferences_add_request: "Add request",
+        preferences_request_type: "Request type",
+        preferences_request_shift: "Request shift",
+        preferences_exclude_shift: "Exclude shift",
+        preferences_request_shift_category: "Shift",
 
         preferences_employee_not_found: "Employee not found",
 
@@ -1177,11 +1184,13 @@ const I18N_TRANSLATIONS = {
 
         status_sick: "Больничный",
         status_day_off: "Выходной",
+        status_vacation: "Отпуск",
         status_no_show: "Неявка",
         schedule_remove_status: "Удалить статус",
         schedule_shift_status: "Статус смены",
         schedule_status_sick_hint: "Закрывает всю ячейку дня",
         schedule_status_day_off_hint: "Отмечает весь день как выходной",
+        schedule_status_vacation_hint: "Отмечает весь день как отпуск",
         schedule_no_shifts_for_no_show: "Нет смен, доступных для статуса неявки",
 
         coverage_staff: "Сотрудники",
@@ -1442,8 +1451,13 @@ const I18N_TRANSLATIONS = {
 
         preferences_day_column: "День",
         preferences_date_column: "Дата",
-        preferences_value_column: "Пожелание",
+        preferences_value_column: "Просьбы",
         preferences_clear_button: "Очистить",
+        preferences_add_request: "Добавить просьбу",
+        preferences_request_type: "Тип просьбы",
+        preferences_request_shift: "Попросить смену",
+        preferences_exclude_shift: "Исключить смену",
+        preferences_request_shift_category: "Смена",
 
         preferences_employee_not_found: "Сотрудник не найден",
 
@@ -2075,11 +2089,13 @@ const I18N_TRANSLATIONS = {
 
         status_sick: "מחלה",
         status_day_off: "יום חופשי",
+        status_vacation: "חופשה",
         status_no_show: "אי הגעה",
         schedule_remove_status: "הסר סטטוס",
         schedule_shift_status: "סטטוס משמרת",
         schedule_status_sick_hint: "חוסם את כל תא היום",
         schedule_status_day_off_hint: "מסמן את כל היום כיום חופשי",
+        schedule_status_vacation_hint: "מסמן את כל היום כחופשה",
         schedule_no_shifts_for_no_show: "אין משמרות זמינות לסימון אי הגעה",
 
         coverage_staff: "עובדים",
@@ -2388,8 +2404,13 @@ const I18N_TRANSLATIONS = {
 
         preferences_day_column: "יום",
         preferences_date_column: "תאריך",
-        preferences_value_column: "העדפה",
+        preferences_value_column: "בקשות",
         preferences_clear_button: "נקה",
+        preferences_add_request: "הוסף בקשה",
+        preferences_request_type: "סוג בקשה",
+        preferences_request_shift: "בקשת משמרת",
+        preferences_exclude_shift: "חסימת משמרת",
+        preferences_request_shift_category: "משמרת",
 
         preferences_employee_not_found: "העובד לא נמצא",
 

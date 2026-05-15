@@ -536,6 +536,13 @@
             box-shadow: 0 10px 30px rgba(91, 33, 182, 0.12);
         }
 
+        .cell-status-cover.vacation {
+            border-color: #bfdbfe;
+            background: rgba(239, 246, 255, 0.97);
+            color: #1d4ed8;
+            box-shadow: 0 10px 30px rgba(29, 78, 216, 0.12);
+        }
+
         .status-remove-btn {
             position: absolute;
             top: 6px;
@@ -1327,6 +1334,152 @@
 
             .shift-picker-modal {
                 max-height: calc(100vh - 24px);
+            }
+        }
+
+        @media (max-width: 700px) {
+            body.hosted-employee-schedule .schedule-command-panel,
+            body.hosted-employee-schedule .schedule-panel {
+                border-radius: 12px;
+            }
+
+            body.hosted-employee-schedule .schedule-command-panel .panel-body,
+            body.hosted-employee-schedule .schedule-panel .panel-body {
+                padding: 12px;
+            }
+
+            body.hosted-employee-schedule .schedule-stage-top {
+                gap: 10px;
+                margin-bottom: 10px;
+            }
+
+            body.hosted-employee-schedule .schedule-legend {
+                gap: 6px;
+            }
+
+            body.hosted-employee-schedule .legend-chip {
+                min-height: 28px;
+                padding: 5px 8px;
+                font-size: 0.72rem;
+            }
+
+            body.hosted-employee-schedule .schedule-display-control {
+                display: none;
+            }
+
+            body.hosted-employee-schedule .schedule-shell {
+                overflow: visible;
+                border-radius: 12px;
+                border-color: #c7d2e1;
+                background: transparent;
+                box-shadow: none;
+                min-height: 0;
+            }
+
+            body.hosted-employee-schedule .schedule-floating-header {
+                display: none !important;
+            }
+
+            body.hosted-employee-schedule .schedule-table,
+            body.hosted-employee-schedule .schedule-table thead,
+            body.hosted-employee-schedule .schedule-table tbody,
+            body.hosted-employee-schedule .schedule-table tr,
+            body.hosted-employee-schedule .schedule-table th,
+            body.hosted-employee-schedule .schedule-table td {
+                display: block;
+                min-width: 0;
+                width: 100%;
+            }
+
+            body.hosted-employee-schedule .schedule-table {
+                min-width: 0;
+                border-spacing: 0;
+            }
+
+            body.hosted-employee-schedule .schedule-table thead {
+                display: none;
+            }
+
+            body.hosted-employee-schedule .schedule-table tbody {
+                display: grid;
+                gap: 12px;
+            }
+
+            body.hosted-employee-schedule .schedule-table tbody tr {
+                overflow: hidden;
+                border: 1px solid #cbd5e1;
+                border-radius: 12px;
+                background: #f8fafc;
+                box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+            }
+
+            body.hosted-employee-schedule .schedule-table td {
+                border-inline-end: none;
+                border-bottom: 1px solid #d3dce8;
+            }
+
+            body.hosted-employee-schedule .schedule-table td:last-child {
+                border-bottom: none;
+            }
+
+            body.hosted-employee-schedule .employee-column {
+                position: static;
+                z-index: auto;
+                background: #eaf0f7;
+            }
+
+            body.hosted-employee-schedule .employee-cell {
+                min-height: 0;
+                padding: 12px;
+            }
+
+            body.hosted-employee-schedule .employee-name {
+                margin-bottom: 4px;
+                font-size: 1rem;
+            }
+
+            body.hosted-employee-schedule .employee-meta {
+                font-size: 0.78rem;
+            }
+
+            body.hosted-employee-schedule .schedule-day-cell {
+                background: #ffffff;
+            }
+
+            body.hosted-employee-schedule .schedule-day-cell::before {
+                content: attr(data-day-label) " · " attr(data-date-label);
+                display: block;
+                padding: 9px 12px 0;
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 900;
+            }
+
+            body.hosted-employee-schedule .schedule-day-inner,
+            body.hosted-employee-schedule .schedule-day-cell.has-day-status .schedule-day-inner {
+                min-height: 0;
+                padding: 8px 10px 10px;
+            }
+
+            body.hosted-employee-schedule .entry-card {
+                border-radius: 10px;
+                padding: 8px 34px 8px 12px;
+            }
+
+            body.hosted-employee-schedule .entry-title {
+                font-size: 0.86rem;
+            }
+
+            body.hosted-employee-schedule .entry-meta,
+            body.hosted-employee-schedule .empty-text {
+                font-size: 0.76rem;
+            }
+
+            body.hosted-employee-schedule .cell-status-cover {
+                position: relative;
+                inset: auto;
+                margin: 0 10px 10px;
+                min-height: 44px;
             }
         }
 

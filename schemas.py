@@ -242,13 +242,39 @@ class EmployeeWeekPreferenceCreate(BaseModel):
         "not_evening",
         "not_night",
         "no_morning_evening_combo",
-    ]
+    ] | None = None
+    request_type: Literal["request_shift", "exclude_shift", "day_off", "vacation"] | None = None
+    target_category: Literal["morning", "evening", "night"] | None = None
 
     @model_validator(mode="after")
-    def validate_preference_date_belongs_to_week(self):
+    def validate_week_preference(self):
         week_dates = build_week_dates(self.week_start_date)
         if self.preference_date not in week_dates:
             raise ValueError("preference_date must belong to the selected week")
+        if not self.request_type:
+            legacy_map = {
+                "off_day": ("day_off", None),
+                "vacation": ("vacation", None),
+                "only_morning": ("request_shift", "morning"),
+                "only_evening": ("request_shift", "evening"),
+                "only_night": ("request_shift", "night"),
+                "not_morning": ("exclude_shift", "morning"),
+                "not_evening": ("exclude_shift", "evening"),
+                "not_night": ("exclude_shift", "night"),
+            }
+            if self.preference_type in legacy_map:
+                self.request_type, self.target_category = legacy_map[self.preference_type]
+        if not self.request_type:
+            raise ValueError("request_type is required")
+        if self.request_type in {"request_shift", "exclude_shift"} and not self.target_category:
+            raise ValueError("target_category is required for shift requests")
+        if self.request_type in {"day_off", "vacation"}:
+            self.target_category = None
+            self.preference_type = "off_day" if self.request_type == "day_off" else "vacation"
+        elif self.request_type == "request_shift":
+            self.preference_type = f"only_{self.target_category}"
+        elif self.request_type == "exclude_shift":
+            self.preference_type = f"not_{self.target_category}"
         return self
 
 
@@ -287,7 +313,7 @@ class EmployeeRecurringPreferencesUpdate(BaseModel):
 class EmployeeDayStatusCreate(BaseModel):
     employee_id: int
     date: str
-    status_type: Literal["sick", "day_off"]
+    status_type: Literal["sick", "day_off", "vacation"]
 
 
 class ScheduleEntryCreate(BaseModel):

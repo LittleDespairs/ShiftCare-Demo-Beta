@@ -1791,7 +1791,7 @@
             }
 
             const dayStatus = getDayStatus(entry.employee_id, entry.date);
-            if (dayStatus && ["sick", "day_off"].includes(dayStatus.status_type)) {
+            if (dayStatus && ["sick", "day_off", "vacation"].includes(dayStatus.status_type)) {
                 return false;
             }
 
@@ -2099,10 +2099,14 @@
             if (statusType === "day_off") {
                 return t("status_day_off", "Day off");
             }
+            if (statusType === "vacation") {
+                return t("status_vacation", "Vacation");
+            }
             return t("status_sick", "Sick");
         }
 
         function getDayStatusClass(statusType) {
+            if (statusType === "vacation") return "vacation";
             return statusType === "day_off" ? "day-off" : "sick";
         }
 
@@ -2201,7 +2205,7 @@
             `;
         }
 
-        function renderScheduleCell(employeeId, positionId, date) {
+        function renderScheduleCell(employeeId, positionId, date, dayLabel = "") {
             // Render one employee/day cell
             // Отрисовываем одну ячейку: сотрудник + день
             const dayEntries = allScheduleEntries.filter(entry => (
@@ -2211,12 +2215,13 @@
             ));
 
             const dayStatus = getDayStatus(employeeId, date);
-            const hasFullCellStatus = dayStatus && ["sick", "day_off"].includes(dayStatus.status_type);
+            const hasFullCellStatus = dayStatus && ["sick", "day_off", "vacation"].includes(dayStatus.status_type);
             const editable = canEditSchedule();
+            const dayCellAttributes = `data-day-label="${escapeHtml(dayLabel)}" data-date-label="${escapeHtml(date)}"`;
 
             if (hasFullCellStatus) {
                 return `
-                    <td class="schedule-day-cell has-day-status">
+                    <td class="schedule-day-cell has-day-status" ${dayCellAttributes}>
                         <div class="schedule-day-inner">
                             ${renderReadOnlyCellBody(dayEntries, employeeId, positionId, date)}
                         </div>
@@ -2227,7 +2232,7 @@
 
             if (!editable) {
                 return `
-                    <td class="schedule-day-cell">
+                    <td class="schedule-day-cell" ${dayCellAttributes}>
                         <div class="schedule-day-inner ${dayEntries.length > 0 ? "has-entries" : ""}">
                             ${renderReadOnlyCellBody(dayEntries, employeeId, positionId, date)}
                         </div>
@@ -2236,7 +2241,7 @@
             }
 
             return `
-                <td class="schedule-day-cell">
+                <td class="schedule-day-cell" ${dayCellAttributes}>
                     <div class="schedule-day-inner ${dayEntries.length > 0 ? "has-entries" : ""}">
                             <div class="add-box">
                             <div class="cell-actions">
@@ -2363,7 +2368,7 @@
                         </div>
                     </td>
 
-                    ${weekDates.map(date => renderScheduleCell(employee.id, positionId, date)).join("")}
+                    ${weekDates.map((date, index) => renderScheduleCell(employee.id, positionId, date, getWeekdayName(index))).join("")}
                 </tr>
             `).join("");
 
@@ -2568,6 +2573,10 @@
                     <button class="shift-picker-option status-picker-option" type="button" data-status-type="day_off">
                         <div class="shift-picker-option-title">${t("status_day_off", "Day off")}</div>
                         <div class="shift-picker-option-meta">${t("schedule_status_day_off_hint", "Marks the whole day as a day off")}</div>
+                    </button>
+                    <button class="shift-picker-option status-picker-option" type="button" data-status-type="vacation">
+                        <div class="shift-picker-option-title">${t("status_vacation", "Vacation")}</div>
+                        <div class="shift-picker-option-meta">${t("schedule_status_vacation_hint", "Marks the whole day as vacation")}</div>
                     </button>
                 </div>
                 <div class="shift-picker-group">

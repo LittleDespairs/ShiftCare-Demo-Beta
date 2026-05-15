@@ -115,11 +115,12 @@ from update_service import (
 import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.16.1_beta"
+APP_VERSION = "0.17.0_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
+RETRYABLE_CLOUD_STATUS_CODES = {429, 502, 503, 504}
 AUTH_LOGIN_RATE_LIMIT_ATTEMPTS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
 AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
 AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS", "900"))
@@ -334,6 +335,36 @@ def is_desktop_invitation_request(request: Request) -> bool:
     return getattr(sys, "frozen", False) or hostname in {"127.0.0.1", "localhost", "::1"}
 
 
+def get_cloud_request_timeout_seconds() -> float:
+    try:
+        return max(5.0, float(os.environ.get("SCHEDULE_APP_CLOUD_REQUEST_TIMEOUT_SECONDS", "45")))
+    except ValueError:
+        return 45.0
+
+
+def get_cloud_request_max_attempts() -> int:
+    try:
+        return min(5, max(1, int(os.environ.get("SCHEDULE_APP_CLOUD_REQUEST_MAX_ATTEMPTS", "3"))))
+    except ValueError:
+        return 3
+
+
+def parse_retry_after_seconds(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        return max(0.0, min(30.0, float(value)))
+    except ValueError:
+        return None
+
+
+def get_cloud_retry_delay_seconds(attempt: int, retry_after: str | None = None) -> float:
+    parsed_retry_after = parse_retry_after_seconds(retry_after)
+    if parsed_retry_after is not None:
+        return parsed_retry_after
+    return min(8.0, 1.0 * (2 ** attempt))
+
+
 def request_cloud_json(
     base_url: str,
     path: str,
@@ -356,10 +387,12 @@ def request_cloud_json(
     headers.update(extra_headers or {})
     raw = ""
     last_network_error: Exception | None = None
-    for attempt in range(2):
+    max_attempts = get_cloud_request_max_attempts()
+    timeout_seconds = get_cloud_request_timeout_seconds()
+    for attempt in range(max_attempts):
         request = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                 raw = response.read().decode("utf-8")
             break
         except urllib.error.HTTPError as exc:
@@ -368,11 +401,14 @@ def request_cloud_json(
             except (json.JSONDecodeError, UnicodeDecodeError):
                 error_payload = {}
             detail = error_payload.get("detail") or f"Cloud request failed with {exc.code}"
+            if exc.code in RETRYABLE_CLOUD_STATUS_CODES and attempt < max_attempts - 1:
+                sleep(get_cloud_retry_delay_seconds(attempt, exc.headers.get("Retry-After")))
+                continue
             raise HTTPException(status_code=exc.code, detail=detail) from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_network_error = exc
-            if attempt == 0:
-                sleep(1)
+            if attempt < max_attempts - 1:
+                sleep(get_cloud_retry_delay_seconds(attempt))
                 continue
             raise HTTPException(status_code=503, detail=f"Cloud is not reachable: {exc}") from exc
     if last_network_error and not raw:
@@ -1798,9 +1834,9 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
             """
             INSERT INTO employee_week_preferences (
                 organization_id, public_id, employee_id, week_start_date, preference_date,
-                preference_type, created_at, updated_at, updated_by
+                preference_type, request_type, target_category, created_at, updated_at, updated_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 organization_id,
@@ -1809,6 +1845,8 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
                 row.get("week_start_date"),
                 row.get("preference_date"),
                 row.get("preference_type"),
+                row.get("request_type") or "request_shift",
+                row.get("target_category"),
                 row.get("created_at") or now,
                 row.get("updated_at") or now,
                 row.get("updated_by"),
@@ -2283,17 +2321,74 @@ def get_fatigue_penalty(connection, employee_id: int, date_string: str, template
 
 
 def get_week_preference(connection, employee_id: int, date_string: str) -> str:
+    preferences = get_week_preferences(connection, employee_id, date_string)
+    if any(item["request_type"] in {"day_off", "vacation"} for item in preferences):
+        blocker = next(item["request_type"] for item in preferences if item["request_type"] in {"day_off", "vacation"})
+        return "off_day" if blocker == "day_off" else blocker
+    excluded = [item["target_category"] for item in preferences if item["request_type"] == "exclude_shift"]
+    requested = [item["target_category"] for item in preferences if item["request_type"] == "request_shift"]
+    if len(excluded) == 1:
+        return f"not_{excluded[0]}"
+    if len(requested) == 1 and not excluded:
+        return f"only_{requested[0]}"
+    return "no_preference"
+
+
+def get_week_preferences(connection, employee_id: int, date_string: str) -> list[dict]:
     cursor = connection.cursor()
     cursor.execute(
         """
-        SELECT preference_type
+        SELECT preference_type, request_type, target_category
         FROM employee_week_preferences
         WHERE employee_id = ? AND preference_date = ?
         """,
         (employee_id, date_string),
     )
-    row = cursor.fetchone()
-    return row["preference_type"] if row else "no_preference"
+    rows = [dict(row) for row in cursor.fetchall()]
+    normalized = []
+    for row in rows:
+        request_type = row.get("request_type")
+        target_category = row.get("target_category")
+        preference_type = row.get("preference_type") or ""
+        if not request_type:
+            if preference_type == "off_day":
+                request_type = "day_off"
+            elif preference_type == "vacation":
+                request_type = "vacation"
+            elif preference_type.startswith("not_"):
+                request_type = "exclude_shift"
+                target_category = preference_type.removeprefix("not_")
+            elif preference_type.startswith("only_"):
+                request_type = "request_shift"
+                target_category = preference_type.removeprefix("only_")
+        normalized.append({
+            "preference_type": preference_type,
+            "request_type": request_type,
+            "target_category": target_category,
+        })
+    return normalized
+
+
+def week_preferences_allow_category(preferences: list[dict], category: str) -> bool:
+    if any(item["request_type"] in {"day_off", "vacation"} for item in preferences):
+        return False
+    if any(item["request_type"] == "exclude_shift" and item["target_category"] == category for item in preferences):
+        return False
+    return True
+
+
+def weekly_shift_request_penalty(connection, employee_id: int, date_string: str, category: str) -> int:
+    preferences = get_week_preferences(connection, employee_id, date_string)
+    requested_categories = {
+        item["target_category"]
+        for item in preferences
+        if item["request_type"] == "request_shift" and item["target_category"]
+    }
+    if not requested_categories:
+        return 0
+    if category in requested_categories:
+        return -250
+    return 120
 
 
 def get_recurring_preference(connection, employee_id: int, date_string: str, preference_kind: str) -> str:
@@ -2397,7 +2492,7 @@ def category_allowed_by_preferences(connection, employee: dict, date_string: str
         return False
 
     weekly = get_week_preference(connection, employee["id"], date_string)
-    if not preference_allows_category(weekly, category):
+    if not week_preferences_allow_category(get_week_preferences(connection, employee["id"], date_string), category):
         return False
 
     strict_recurring = get_recurring_preference(connection, employee["id"], date_string, "strict")
@@ -3261,9 +3356,9 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
             """
             INSERT INTO employee_week_preferences (
                 organization_id, public_id, employee_id, week_start_date, preference_date,
-                preference_type, created_at, updated_at, updated_by
+                preference_type, request_type, target_category, created_at, updated_at, updated_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 1,
@@ -3272,6 +3367,8 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
                 row.get("week_start_date"),
                 row.get("preference_date"),
                 row.get("preference_type"),
+                row.get("request_type") or "request_shift",
+                row.get("target_category"),
                 row.get("created_at") or now,
                 row.get("updated_at") or now,
                 None,
@@ -5984,16 +6081,35 @@ def save_employee_week_preference(
             "Employee not found",
         )
         now = current_utc_timestamp()
+        if preference.request_type in {"day_off", "vacation"}:
+            cursor.execute(
+                """
+                DELETE FROM employee_week_preferences
+                WHERE organization_id = ? AND employee_id = ? AND preference_date = ?
+                """,
+                (organization_id, preference.employee_id, preference.preference_date),
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE FROM employee_week_preferences
+                WHERE organization_id = ? AND employee_id = ? AND preference_date = ?
+                  AND request_type = ? AND target_category = ?
+                """,
+                (
+                    organization_id,
+                    preference.employee_id,
+                    preference.preference_date,
+                    preference.request_type,
+                    preference.target_category,
+                ),
+            )
         cursor.execute(
             """
             INSERT INTO employee_week_preferences
-                (organization_id, employee_id, week_start_date, preference_date, preference_type, updated_at, updated_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(employee_id, preference_date)
-            DO UPDATE SET week_start_date = excluded.week_start_date,
-                          preference_type = excluded.preference_type,
-                          updated_at = excluded.updated_at,
-                          updated_by = excluded.updated_by
+                (organization_id, employee_id, week_start_date, preference_date, preference_type,
+                 request_type, target_category, updated_at, updated_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 organization_id,
@@ -6001,6 +6117,8 @@ def save_employee_week_preference(
                 preference.week_start_date,
                 preference.preference_date,
                 preference.preference_type,
+                preference.request_type,
+                preference.target_category,
                 now,
                 user_id,
             ),
@@ -6015,10 +6133,15 @@ def save_employee_week_preference(
                 "week_start_date": preference.week_start_date,
                 "preference_date": preference.preference_date,
                 "preference_type": preference.preference_type,
+                "request_type": preference.request_type,
+                "target_category": preference.target_category,
             },
         )
         connection.commit()
-        return {"message": "Weekly preference saved successfully", "preference": preference.model_dump()}
+        return {
+            "message": "Weekly preference saved successfully",
+            "preference": {**preference.model_dump(), "id": cursor.lastrowid},
+        }
     finally:
         connection.close()
 
@@ -6027,6 +6150,7 @@ def save_employee_week_preference(
 def delete_employee_week_preference(
     employee_id: int,
     preference_date: str,
+    preference_id: int | None = None,
     preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
 ):
     require_employee_preference_scope(preference_context, employee_id)
@@ -6035,13 +6159,22 @@ def delete_employee_week_preference(
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute(
-            """
-            DELETE FROM employee_week_preferences
-            WHERE organization_id = ? AND employee_id = ? AND preference_date = ?
-            """,
-            (organization_id, employee_id, preference_date),
-        )
+        if preference_id is not None:
+            cursor.execute(
+                """
+                DELETE FROM employee_week_preferences
+                WHERE organization_id = ? AND employee_id = ? AND preference_date = ? AND id = ?
+                """,
+                (organization_id, employee_id, preference_date, preference_id),
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE FROM employee_week_preferences
+                WHERE organization_id = ? AND employee_id = ? AND preference_date = ?
+                """,
+                (organization_id, employee_id, preference_date),
+            )
         write_auth_audit_event(
             cursor,
             "employee_week_preference_deleted",
@@ -6994,6 +7127,10 @@ def choose_best_interval_candidate(
                     assignment_templates,
                     projected_entries,
                 )
+                soft_preference_penalty += sum(
+                    weekly_shift_request_penalty(connection, employee["id"], date_string, assignment_template["category"])
+                    for assignment_template in assignment_templates
+                )
                 fatigue_penalty = sum(
                     get_fatigue_penalty(connection, employee["id"], date_string, assignment_template)
                     for assignment_template in assignment_templates
@@ -7802,6 +7939,12 @@ def fill_day_by_legacy_categories(
                                 date_string,
                                 [template],
                                 projected_entries,
+                            )
+                            soft_preference_penalty += weekly_shift_request_penalty(
+                                connection,
+                                employee["id"],
+                                date_string,
+                                template["category"],
                             )
                             projected_same_category_count, projected_same_category_streak = get_projected_category_metrics(
                                 connection,
