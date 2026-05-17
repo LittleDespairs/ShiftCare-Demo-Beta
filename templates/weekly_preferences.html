@@ -22,6 +22,12 @@
            PAGE-SPECIFIC STYLES / СТИЛИ ТОЛЬКО ДЛЯ СТРАНИЦЫ ПОЖЕЛАНИЙ
            ========================================================= */
 
+        .page-shell {
+            --shift-morning-bg: #ecfeff;
+            --shift-evening-bg: #fff7ed;
+            --shift-night-bg: #eef2ff;
+        }
+
         /* Top filter panel / Верхняя панель фильтров */
         .preferences-toolbar {
             display: grid;
@@ -282,9 +288,37 @@
         }
 
         .request-category-option.is-selected {
-            border-color: #0f766e;
-            background: #ecfeff;
-            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
+            box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+        }
+
+        .request-category-option[data-request-category="morning"] {
+            background: var(--shift-morning-bg);
+            border-color: color-mix(in srgb, var(--shift-morning-bg) 58%, #0f766e);
+            color: #134e4a;
+        }
+
+        .request-category-option[data-request-category="morning"].is-selected {
+            box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
+        }
+
+        .request-category-option[data-request-category="evening"] {
+            background: var(--shift-evening-bg);
+            border-color: color-mix(in srgb, var(--shift-evening-bg) 58%, #c2410c);
+            color: #9a3412;
+        }
+
+        .request-category-option[data-request-category="evening"].is-selected {
+            box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.18);
+        }
+
+        .request-category-option[data-request-category="night"] {
+            background: var(--shift-night-bg);
+            border-color: color-mix(in srgb, var(--shift-night-bg) 58%, #4338ca);
+            color: #312e81;
+        }
+
+        .request-category-option[data-request-category="night"].is-selected {
+            box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.18);
         }
 
         .request-category-name {
@@ -309,6 +343,61 @@
 
             .request-category-header {
                 display: grid;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .preferences-table-shell {
+                overflow: visible;
+                border: none;
+                border-radius: 0;
+                background: transparent;
+            }
+
+            .preferences-table {
+                display: block;
+                min-width: 0;
+                width: 100%;
+                border-collapse: separate;
+            }
+
+            .preferences-table thead {
+                display: none;
+            }
+
+            .preferences-table tbody {
+                display: grid;
+                gap: 10px;
+            }
+
+            .preferences-table tr {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr);
+                gap: 4px;
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                background: #fff;
+                padding: 12px;
+                box-shadow: var(--shadow-sm);
+            }
+
+            .preferences-table td {
+                display: block;
+                border-bottom: none;
+                padding: 0;
+            }
+
+            .preferences-table td:nth-child(1) {
+                font-size: 1rem;
+            }
+
+            .preferences-table td:nth-child(2) {
+                margin-bottom: 8px;
+            }
+
+            .request-stack > .btn {
+                width: 100%;
+                justify-content: center;
             }
         }
 
