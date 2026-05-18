@@ -109,6 +109,66 @@ def _ensure_postgres_runtime_schema(connection) -> None:
     cursor = connection.cursor(track_lastrowid=False)
     try:
         cursor.execute("""
+            ALTER TABLE employees
+            ADD COLUMN IF NOT EXISTS id_card TEXT
+        """)
+        cursor.execute("""
+            ALTER TABLE employees
+            ADD COLUMN IF NOT EXISTS target_shifts_per_week INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
+            ALTER TABLE employees
+            ADD COLUMN IF NOT EXISTS can_work_evenings_after_night INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
+            ALTER TABLE employees
+            ADD COLUMN IF NOT EXISTS can_work_mornings_and_evenings INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
+            ALTER TABLE positions
+            ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '#eff6ff'
+        """)
+        cursor.execute("""
+            ALTER TABLE positions
+            ADD COLUMN IF NOT EXISTS requires_continuous_coverage INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
+            ALTER TABLE positions
+            ADD COLUMN IF NOT EXISTS minimum_staff_presence INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
+            ALTER TABLE positions
+            ADD COLUMN IF NOT EXISTS allow_same_day_other_positions INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
+            ALTER TABLE positions
+            ADD COLUMN IF NOT EXISTS max_consecutive_nights INTEGER
+        """)
+        cursor.execute("""
+            ALTER TABLE positions
+            ADD COLUMN IF NOT EXISTS emergency_max_consecutive_nights INTEGER
+        """)
+        cursor.execute("""
+            ALTER TABLE positions
+            ADD COLUMN IF NOT EXISTS max_consecutive_split_days INTEGER
+        """)
+        cursor.execute("""
+            ALTER TABLE positions
+            ADD COLUMN IF NOT EXISTS emergency_max_consecutive_split_days INTEGER
+        """)
+        cursor.execute("""
+            ALTER TABLE shift_requirements
+            ADD COLUMN IF NOT EXISTS required_male_min INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
+            ALTER TABLE coverage_requirements
+            ADD COLUMN IF NOT EXISTS required_male_min INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
+            ALTER TABLE schedule_entries
+            ADD COLUMN IF NOT EXISTS no_show INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
             ALTER TABLE employee_week_preferences
             ADD COLUMN IF NOT EXISTS request_type TEXT NOT NULL DEFAULT 'request_shift'
         """)
