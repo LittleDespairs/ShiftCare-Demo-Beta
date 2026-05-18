@@ -3191,6 +3191,12 @@ def run_desktop_sync_once() -> bool:
             """,
             (now,),
         )
+        cursor.execute(
+            """
+            DELETE FROM app_settings
+            WHERE organization_id = 1 AND key = 'desktop_cloud_last_push_error'
+            """
+        )
         connection.commit()
         return True
     except Exception as exc:
