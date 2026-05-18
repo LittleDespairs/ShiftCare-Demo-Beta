@@ -23,6 +23,13 @@
            ========================================================= */
 
         /* Layout for the page body / Макет основной части страницы */
+        .page-shell {
+            --shift-morning-bg: #ecfeff;
+            --shift-evening-bg: #fff7ed;
+            --shift-night-bg: #eef2ff;
+            --shift-status-bg: #f5f3ff;
+        }
+
         .employees-layout {
             display: block;
         }
@@ -143,7 +150,7 @@
 
         .recurring-preference-row {
             display: grid;
-            grid-template-columns: minmax(92px, 0.7fr) minmax(120px, 1fr);
+            grid-template-columns: minmax(92px, 0.55fr) minmax(0, 1fr);
             gap: 8px;
             align-items: center;
         }
@@ -154,10 +161,210 @@
             font-weight: 800;
         }
 
-        .recurring-preference-row .select {
-            min-height: 40px;
-            padding-block: 8px;
+        .recurring-preference-card {
+            width: 100%;
+            min-height: 42px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+            padding: 8px 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            text-align: start;
             font-size: 0.84rem;
+            font-weight: 800;
+            transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+        }
+
+        .recurring-preference-card:hover {
+            border-color: #bfdbfe;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .recurring-preference-card:disabled {
+            cursor: not-allowed;
+            opacity: 0.68;
+        }
+
+        .recurring-preference-card.morning {
+            background: var(--shift-morning-bg);
+            border-color: color-mix(in srgb, var(--shift-morning-bg) 58%, #0f766e);
+            color: #134e4a;
+        }
+
+        .recurring-preference-card.evening {
+            background: var(--shift-evening-bg);
+            border-color: color-mix(in srgb, var(--shift-evening-bg) 58%, #c2410c);
+            color: #9a3412;
+        }
+
+        .recurring-preference-card.night {
+            background: var(--shift-night-bg);
+            border-color: color-mix(in srgb, var(--shift-night-bg) 58%, #4338ca);
+            color: #312e81;
+        }
+
+        .recurring-preference-card.block {
+            background: var(--shift-status-bg);
+            color: #5b21b6;
+            border-color: #c4b5fd;
+        }
+
+        .recurring-preference-card.exclude {
+            border-style: dashed;
+        }
+
+        .recurring-preference-card.combo {
+            background: #f8fafc;
+            color: #334155;
+            border-color: #cbd5e1;
+        }
+
+        .recurring-preference-action {
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .recurring-request-modal {
+            width: min(560px, 100%);
+        }
+
+        .recurring-request-grid {
+            display: grid;
+            gap: 18px;
+        }
+
+        .recurring-request-intro {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .recurring-choice-group {
+            display: grid;
+            gap: 10px;
+        }
+
+        .recurring-choice-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .recurring-choice-card,
+        .recurring-category-option {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+            padding: 12px;
+            text-align: start;
+            display: grid;
+            gap: 6px;
+            transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+        }
+
+        .recurring-choice-card {
+            min-height: 92px;
+            align-content: start;
+        }
+
+        .recurring-choice-card:hover,
+        .recurring-category-option:hover {
+            border-color: #bfdbfe;
+            background: #f8fafc;
+        }
+
+        .recurring-choice-card.is-selected {
+            border-color: #2563eb;
+            background: #eff6ff;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        }
+
+        .recurring-choice-title,
+        .recurring-category-name {
+            font-weight: 850;
+            font-size: 0.92rem;
+        }
+
+        .recurring-choice-hint,
+        .recurring-category-time {
+            color: var(--muted);
+            font-size: 0.8rem;
+            line-height: 1.35;
+        }
+
+        .recurring-category-panel {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            background: #f8fafc;
+        }
+
+        .recurring-category-panel[hidden] {
+            display: none;
+        }
+
+        .recurring-category-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .recurring-category-options {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .recurring-category-option {
+            min-height: 68px;
+            text-align: center;
+            place-items: center;
+        }
+
+        .recurring-category-option[data-recurring-category="morning"] {
+            background: var(--shift-morning-bg);
+            border-color: color-mix(in srgb, var(--shift-morning-bg) 58%, #0f766e);
+            color: #134e4a;
+        }
+
+        .recurring-category-option[data-recurring-category="morning"].is-selected {
+            box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
+        }
+
+        .recurring-category-option[data-recurring-category="evening"] {
+            background: var(--shift-evening-bg);
+            border-color: color-mix(in srgb, var(--shift-evening-bg) 58%, #c2410c);
+            color: #9a3412;
+        }
+
+        .recurring-category-option[data-recurring-category="evening"].is-selected {
+            box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.18);
+        }
+
+        .recurring-category-option[data-recurring-category="night"] {
+            background: var(--shift-night-bg);
+            border-color: color-mix(in srgb, var(--shift-night-bg) 58%, #4338ca);
+            color: #312e81;
+        }
+
+        .recurring-category-option[data-recurring-category="night"].is-selected {
+            box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.18);
+        }
+
+        .recurring-modal-hidden-selects {
+            display: none;
         }
 
         /* Messages / Сообщения */
@@ -454,6 +661,16 @@
 
             .recurring-preference-row {
                 grid-template-columns: 1fr;
+                gap: 6px;
+            }
+
+            .recurring-choice-grid,
+            .recurring-category-options {
+                grid-template-columns: 1fr;
+            }
+
+            .recurring-category-header {
+                display: grid;
             }
         }
     </style>
@@ -754,6 +971,83 @@
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            </div>
+
+            <div id="recurring-request-modal-overlay" class="app-modal-overlay" aria-hidden="true">
+                <div class="app-modal recurring-request-modal" role="dialog" aria-modal="true" aria-labelledby="recurring-request-modal-title">
+                    <div class="app-modal-header">
+                        <h2 id="recurring-request-modal-title" class="app-modal-title" data-i18n="employees_permanent_preferences_title">Permanent wishes</h2>
+                        <button id="recurring-request-modal-close" class="app-modal-close" type="button" aria-label="Close">×</button>
+                    </div>
+                    <div class="app-modal-body recurring-request-grid">
+                        <p class="recurring-request-intro" data-i18n="preferences_request_modal_intro">
+                            Choose what this employee is asking for on the selected day.
+                        </p>
+
+                        <div class="recurring-choice-group" role="radiogroup" aria-labelledby="recurring-request-type-label">
+                            <div id="recurring-request-type-label" class="form-label" data-i18n="preferences_request_type">Request type</div>
+                            <div class="recurring-choice-grid">
+                                <button class="recurring-choice-card" type="button" data-recurring-request-type="no_preference" role="radio" aria-checked="false">
+                                    <span class="recurring-choice-title" data-i18n="preference_no_preference">No preference</span>
+                                    <span class="recurring-choice-hint" data-i18n="employees_recurring_no_preference_hint">No permanent rule for this weekday.</span>
+                                </button>
+                                <button class="recurring-choice-card" type="button" data-recurring-request-type="request_shift" role="radio" aria-checked="false">
+                                    <span class="recurring-choice-title" data-i18n="preferences_request_shift">Request shift</span>
+                                    <span class="recurring-choice-hint" data-i18n="preferences_request_shift_hint">Prefer one specific shift.</span>
+                                </button>
+                                <button class="recurring-choice-card" type="button" data-recurring-request-type="exclude_shift" role="radio" aria-checked="false">
+                                    <span class="recurring-choice-title" data-i18n="preferences_exclude_shift">Exclude shift</span>
+                                    <span class="recurring-choice-hint" data-i18n="preferences_exclude_shift_hint">Do not assign one specific shift.</span>
+                                </button>
+                                <button class="recurring-choice-card" type="button" data-recurring-request-type="off_day" role="radio" aria-checked="false">
+                                    <span class="recurring-choice-title" data-i18n="preference_off_day">Day off</span>
+                                    <span class="recurring-choice-hint" data-i18n="preferences_day_off_hint">Block work for this day.</span>
+                                </button>
+                                <button class="recurring-choice-card" type="button" data-recurring-request-type="vacation" role="radio" aria-checked="false">
+                                    <span class="recurring-choice-title" data-i18n="preference_vacation">Vacation</span>
+                                    <span class="recurring-choice-hint" data-i18n="preferences_vacation_hint">Mark as unavailable because of vacation.</span>
+                                </button>
+                                <button class="recurring-choice-card" type="button" data-recurring-request-type="no_morning_evening_combo" role="radio" aria-checked="false">
+                                    <span class="recurring-choice-title" data-i18n="preference_no_morning_evening_combo">No morning + evening combo</span>
+                                    <span class="recurring-choice-hint" data-i18n="employees_recurring_combo_hint">Avoid morning and evening on the same date.</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="recurring-category-field" class="recurring-category-panel">
+                            <div class="recurring-category-header">
+                                <div class="form-label" data-i18n="preferences_request_shift_category">Shift</div>
+                                <div class="recurring-choice-hint" data-i18n="preferences_request_category_hint">
+                                    Pick the exact shift this request applies to.
+                                </div>
+                            </div>
+                            <div class="recurring-category-options" role="radiogroup" aria-label="Shift">
+                                <button class="recurring-category-option" type="button" data-recurring-category="morning" role="radio" aria-checked="false">
+                                    <span class="recurring-category-name" data-i18n="shift_morning">Morning</span>
+                                    <span class="recurring-category-time" data-i18n="preferences_morning_hint">Day start</span>
+                                </button>
+                                <button class="recurring-category-option" type="button" data-recurring-category="evening" role="radio" aria-checked="false">
+                                    <span class="recurring-category-name" data-i18n="shift_evening">Evening</span>
+                                    <span class="recurring-category-time" data-i18n="preferences_evening_hint">Late day</span>
+                                </button>
+                                <button class="recurring-category-option" type="button" data-recurring-category="night" role="radio" aria-checked="false">
+                                    <span class="recurring-category-name" data-i18n="shift_night">Night</span>
+                                    <span class="recurring-category-time" data-i18n="preferences_night_hint">Overnight</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="recurring-modal-hidden-selects" aria-hidden="true">
+                            <input id="recurring_request_value" type="hidden" value="no_preference">
+                            <input id="recurring_category_value" type="hidden" value="morning">
+                        </div>
+
+                        <div class="employee-modal-actions">
+                            <button id="recurring-request-modal-cancel" class="btn btn-secondary" type="button" data-i18n="common_cancel">Cancel</button>
+                            <button id="recurring-request-modal-save" class="btn btn-primary" type="button" data-i18n="preferences_save_request">Save request</button>
+                        </div>
                     </div>
                 </div>
             </div>

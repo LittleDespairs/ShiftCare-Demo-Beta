@@ -1,6 +1,8 @@
 let editingEmployeeId = null; // Track editing mode / Отслеживаем режим редактирования
 let currentEmployees = [];
 let currentRecurringPreferences = createEmptyRecurringPreferenceState();
+let employeeAppSettings = {};
+let pendingRecurringTarget = null;
 
 const RECURRING_PREFERENCE_KINDS = ["strict", "soft"];
 const RECURRING_PREFERENCE_DAYS = [
@@ -24,6 +26,11 @@ const RECURRING_PREFERENCE_OPTIONS = [
     ["not_night", "preference_not_night", "Not night"],
     ["no_morning_evening_combo", "preference_no_morning_evening_combo", "No morning + evening combo"],
 ];
+const RECURRING_CATEGORY_LABELS = {
+    morning: ["shift_morning", "Morning"],
+    evening: ["shift_evening", "Evening"],
+    night: ["shift_night", "Night"],
+};
 
 function employeeText(key, fallback = "") {
     if (typeof translate === "function") {
@@ -53,7 +60,7 @@ function employeeSexLabel(sex) {
 }
 
 // Initialize page / Инициализация страницы
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     const employeeForm = document.getElementById("employee-form");
 
     if (employeeForm) {
@@ -64,6 +71,8 @@ document.addEventListener("DOMContentLoaded", () => {
         tableBody.addEventListener("click", handleEmployeesTableClick);
     }
     bindEmployeeModal();
+    bindRecurringPreferenceModal();
+    await loadEmployeeAppSettings();
     renderRecurringPreferenceControls();
 
     loadEmployees();
@@ -90,12 +99,33 @@ function canManagePermanentPreferences() {
     return ["owner", "admin"].includes(membership.role);
 }
 
+function applyEmployeeShiftColorSettings(settings = {}) {
+    employeeAppSettings = settings || {};
+    const shell = document.querySelector(".page-shell");
+    if (!shell) return;
+    shell.style.setProperty("--shift-morning-bg", employeeAppSettings.schedule_morning_color || "#ecfeff");
+    shell.style.setProperty("--shift-evening-bg", employeeAppSettings.schedule_evening_color || "#fff7ed");
+    shell.style.setProperty("--shift-night-bg", employeeAppSettings.schedule_night_color || "#eef2ff");
+    shell.style.setProperty("--shift-status-bg", employeeAppSettings.schedule_status_color || "#f5f3ff");
+}
+
+async function loadEmployeeAppSettings() {
+    try {
+        const response = await fetch("/api/app-settings");
+        if (!response.ok) throw new Error("Failed to load app settings");
+        applyEmployeeShiftColorSettings(await response.json());
+    } catch (error) {
+        console.error("Load employee app settings error:", error);
+        applyEmployeeShiftColorSettings({});
+    }
+}
+
 function collectRecurringPreferenceState() {
     const state = createEmptyRecurringPreferenceState();
     RECURRING_PREFERENCE_KINDS.forEach(kind => {
         for (let day = 0; day < 7; day += 1) {
             const select = document.querySelector(`[data-recurring-kind="${kind}"][data-recurring-day="${day}"]`);
-            if (select) {
+            if (select && select.tagName === "SELECT") {
                 state[kind][day] = select.value || "no_preference";
             } else if (currentRecurringPreferences?.[kind]?.[day]) {
                 state[kind][day] = currentRecurringPreferences[kind][day];
@@ -113,6 +143,37 @@ function recurringPreferenceOptionsHtml(selectedValue) {
     `).join("");
 }
 
+function recurringPreferenceLabel(preferenceType) {
+    const option = RECURRING_PREFERENCE_OPTIONS.find(([value]) => value === preferenceType);
+    if (!option) return preferenceType || employeeText("preference_no_preference", "No preference");
+    return employeeText(option[1], option[2]);
+}
+
+function recurringPreferenceCardClass(preferenceType) {
+    if (preferenceType === "off_day" || preferenceType === "vacation") return "block";
+    if (preferenceType === "no_morning_evening_combo") return "combo";
+    if (preferenceType.includes("morning")) return `morning ${preferenceType.startsWith("not_") ? "exclude" : ""}`.trim();
+    if (preferenceType.includes("evening")) return `evening ${preferenceType.startsWith("not_") ? "exclude" : ""}`.trim();
+    if (preferenceType.includes("night")) return `night ${preferenceType.startsWith("not_") ? "exclude" : ""}`.trim();
+    return "";
+}
+
+function recurringPreferenceToRequest(preferenceType) {
+    if (preferenceType?.startsWith("only_")) {
+        return { requestType: "request_shift", category: preferenceType.replace("only_", "") };
+    }
+    if (preferenceType?.startsWith("not_")) {
+        return { requestType: "exclude_shift", category: preferenceType.replace("not_", "") };
+    }
+    return { requestType: preferenceType || "no_preference", category: "morning" };
+}
+
+function recurringRequestToPreference(requestType, category) {
+    if (requestType === "request_shift") return `only_${category || "morning"}`;
+    if (requestType === "exclude_shift") return `not_${category || "morning"}`;
+    return requestType || "no_preference";
+}
+
 function renderRecurringPreferenceControls() {
     const canManage = canManagePermanentPreferences();
     const disabledNote = document.getElementById("permanent-preferences-disabled-note");
@@ -125,20 +186,95 @@ function renderRecurringPreferenceControls() {
         container.innerHTML = RECURRING_PREFERENCE_DAYS.map(([dayKey, dayFallback], dayIndex) => {
             const selectedValue = currentRecurringPreferences?.[kind]?.[dayIndex] || "no_preference";
             return `
-                <label class="recurring-preference-row">
+                <div class="recurring-preference-row">
                     <span class="recurring-preference-day">${employeeText(dayKey, dayFallback)}</span>
-                    <select
-                        class="select"
+                    <button
+                        class="recurring-preference-card ${recurringPreferenceCardClass(selectedValue)}"
+                        type="button"
                         data-recurring-kind="${kind}"
                         data-recurring-day="${dayIndex}"
                         ${canManage ? "" : "disabled"}
                     >
-                        ${recurringPreferenceOptionsHtml(selectedValue)}
-                    </select>
-                </label>
+                        <span>${escapeHtml(recurringPreferenceLabel(selectedValue))}</span>
+                        <span class="recurring-preference-action">${employeeText("employees_recurring_change", "Change")}</span>
+                    </button>
+                </div>
             `;
         }).join("");
     });
+}
+
+function bindRecurringPreferenceModal() {
+    document.querySelectorAll("[data-recurring-request-type]").forEach(button => {
+        button.addEventListener("click", () => setRecurringRequestType(button.dataset.recurringRequestType));
+    });
+    document.querySelectorAll("[data-recurring-category]").forEach(button => {
+        button.addEventListener("click", () => setRecurringCategory(button.dataset.recurringCategory));
+    });
+    document.getElementById("recurring-request-modal-save")?.addEventListener("click", savePendingRecurringPreference);
+    document.getElementById("recurring-request-modal-close")?.addEventListener("click", closeRecurringPreferenceModal);
+    document.getElementById("recurring-request-modal-cancel")?.addEventListener("click", closeRecurringPreferenceModal);
+    document.getElementById("recurring-request-modal-overlay")?.addEventListener("click", event => {
+        if (event.target.id === "recurring-request-modal-overlay") closeRecurringPreferenceModal();
+    });
+    document.addEventListener("click", event => {
+        const button = event.target.closest("[data-recurring-kind][data-recurring-day]");
+        if (!button || button.disabled || button.tagName !== "BUTTON") return;
+        openRecurringPreferenceModal(button.dataset.recurringKind, Number(button.dataset.recurringDay));
+    });
+}
+
+function openRecurringPreferenceModal(kind, dayIndex) {
+    pendingRecurringTarget = { kind, dayIndex };
+    const preferenceType = currentRecurringPreferences?.[kind]?.[dayIndex] || "no_preference";
+    const { requestType, category } = recurringPreferenceToRequest(preferenceType);
+    setRecurringRequestType(requestType);
+    setRecurringCategory(category || "morning");
+    const title = document.getElementById("recurring-request-modal-title");
+    if (title) {
+        const day = RECURRING_PREFERENCE_DAYS[dayIndex];
+        title.textContent = `${employeeText(day?.[0], day?.[1] || "")} · ${kind === "strict" ? employeeText("employees_permanent_strict_title", "Strict wishes") : employeeText("employees_permanent_soft_title", "Preferences")}`;
+    }
+    const overlay = document.getElementById("recurring-request-modal-overlay");
+    overlay?.classList.add("is-open");
+    overlay?.setAttribute("aria-hidden", "false");
+}
+
+function closeRecurringPreferenceModal() {
+    pendingRecurringTarget = null;
+    const overlay = document.getElementById("recurring-request-modal-overlay");
+    overlay?.classList.remove("is-open");
+    overlay?.setAttribute("aria-hidden", "true");
+}
+
+function setRecurringRequestType(requestType) {
+    const valueInput = document.getElementById("recurring_request_value");
+    if (valueInput) valueInput.value = requestType;
+    document.getElementById("recurring-category-field").hidden = !["request_shift", "exclude_shift"].includes(requestType);
+    document.querySelectorAll("[data-recurring-request-type]").forEach(button => {
+        const isSelected = button.dataset.recurringRequestType === requestType;
+        button.classList.toggle("is-selected", isSelected);
+        button.setAttribute("aria-checked", String(isSelected));
+    });
+}
+
+function setRecurringCategory(category) {
+    const valueInput = document.getElementById("recurring_category_value");
+    if (valueInput) valueInput.value = category;
+    document.querySelectorAll("[data-recurring-category]").forEach(button => {
+        const isSelected = button.dataset.recurringCategory === category;
+        button.classList.toggle("is-selected", isSelected);
+        button.setAttribute("aria-checked", String(isSelected));
+    });
+}
+
+function savePendingRecurringPreference() {
+    if (!pendingRecurringTarget) return;
+    const requestType = document.getElementById("recurring_request_value")?.value || "no_preference";
+    const category = document.getElementById("recurring_category_value")?.value || "morning";
+    currentRecurringPreferences[pendingRecurringTarget.kind][pendingRecurringTarget.dayIndex] = recurringRequestToPreference(requestType, category);
+    renderRecurringPreferenceControls();
+    closeRecurringPreferenceModal();
 }
 
 async function loadEmployeeRecurringPreferences(employeeId) {

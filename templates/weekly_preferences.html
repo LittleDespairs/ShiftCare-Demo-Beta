@@ -26,6 +26,7 @@
             --shift-morning-bg: #ecfeff;
             --shift-evening-bg: #fff7ed;
             --shift-night-bg: #eef2ff;
+            --shift-status-bg: #f5f3ff;
         }
 
         /* Top filter panel / Верхняя панель фильтров */
@@ -155,9 +156,31 @@
         }
 
         .request-chip.block {
-            background: #f5f3ff;
+            background: var(--shift-status-bg);
             color: #5b21b6;
             border-color: #c4b5fd;
+        }
+
+        .request-chip.morning {
+            background: var(--shift-morning-bg);
+            border-color: color-mix(in srgb, var(--shift-morning-bg) 58%, #0f766e);
+            color: #134e4a;
+        }
+
+        .request-chip.evening {
+            background: var(--shift-evening-bg);
+            border-color: color-mix(in srgb, var(--shift-evening-bg) 58%, #c2410c);
+            color: #9a3412;
+        }
+
+        .request-chip.night {
+            background: var(--shift-night-bg);
+            border-color: color-mix(in srgb, var(--shift-night-bg) 58%, #4338ca);
+            color: #312e81;
+        }
+
+        .request-chip.exclude {
+            border-style: dashed;
         }
 
         .request-remove {
@@ -866,6 +889,7 @@
         let weekDates = [];
         let preferencesMap = {};
         let pendingRequestTarget = null;
+        let appSettings = {};
 
         /* =========================================================
            HELPERS / ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -948,6 +972,26 @@
             return { ...item, request_type: requestType, target_category: targetCategory };
         }
 
+        function applyShiftColorSettings(settings = {}) {
+            appSettings = settings || {};
+            const shell = document.querySelector(".page-shell");
+            if (!shell) return;
+            shell.style.setProperty("--shift-morning-bg", appSettings.schedule_morning_color || "#ecfeff");
+            shell.style.setProperty("--shift-evening-bg", appSettings.schedule_evening_color || "#fff7ed");
+            shell.style.setProperty("--shift-night-bg", appSettings.schedule_night_color || "#eef2ff");
+            shell.style.setProperty("--shift-status-bg", appSettings.schedule_status_color || "#f5f3ff");
+        }
+
+        async function loadAppSettings() {
+            try {
+                const settings = await window.scheduleAuth.request("/api/app-settings");
+                applyShiftColorSettings(settings);
+            } catch (error) {
+                console.error("Load app settings error:", error);
+                applyShiftColorSettings({});
+            }
+        }
+
         function renderRequestChip(request) {
             const normalized = normalizeRequest(request);
             const chipClass = normalized.request_type === "request_shift"
@@ -955,9 +999,10 @@
                 : normalized.request_type === "exclude_shift"
                     ? "exclude"
                     : "block";
+            const categoryClass = normalized.target_category || "";
             const categoryText = normalized.target_category ? ` · ${getShiftCategoryLabel(normalized.target_category)}` : "";
             return `
-                <div class="request-chip ${chipClass}">
+                <div class="request-chip ${chipClass} ${categoryClass}">
                     <span>${escapeHtml(getRequestTypeLabel(normalized.request_type))}${escapeHtml(categoryText)}</span>
                     <button
                         class="request-remove"
@@ -1030,6 +1075,7 @@
             applySidebarState(getSavedSidebarState());
 
             setWeekStart();
+            await loadAppSettings();
             await loadEmployees();
 
             document.getElementById("load-btn").addEventListener("click", loadWeekPreferences);

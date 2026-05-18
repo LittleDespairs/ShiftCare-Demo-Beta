@@ -380,6 +380,9 @@ const I18N_TRANSLATIONS = {
         employees_permanent_soft_title: "Preferences",
         employees_permanent_soft_text: "The generator uses these wishes when coverage allows.",
         employees_permanent_preferences_admin_only: "Permanent wishes can be changed only by an admin or owner.",
+        employees_recurring_change: "Change",
+        employees_recurring_no_preference_hint: "No permanent rule for this weekday.",
+        employees_recurring_combo_hint: "Avoid morning and evening on the same date.",
 
         employees_add_button: "Add employee",
         employees_update_button: "Update employee",
@@ -1398,6 +1401,9 @@ const I18N_TRANSLATIONS = {
         employees_permanent_soft_title: "Постоянные предпочтения",
         employees_permanent_soft_text: "Генератор учитывает эти пожелания, если это не мешает закрытию смен.",
         employees_permanent_preferences_admin_only: "Постоянные пожелания может менять только админ или владелец.",
+        employees_recurring_change: "Изменить",
+        employees_recurring_no_preference_hint: "На этот день недели нет постоянного правила.",
+        employees_recurring_combo_hint: "Не ставить утро и вечер в одну дату.",
 
         employees_add_button: "Добавить сотрудника",
         employees_update_button: "Обновить сотрудника",
@@ -2313,6 +2319,9 @@ const I18N_TRANSLATIONS = {
         employees_permanent_soft_title: "העדפות קבועות",
         employees_permanent_soft_text: "מחולל הסידור מתחשב בהן כאשר הכיסוי מאפשר זאת.",
         employees_permanent_preferences_admin_only: "רק מנהל או בעלים יכולים לשנות העדפות קבועות.",
+        employees_recurring_change: "שנה",
+        employees_recurring_no_preference_hint: "אין כלל קבוע ליום זה בשבוע.",
+        employees_recurring_combo_hint: "להימנע מבוקר וערב באותו תאריך.",
 
         employees_add_button: "הוסף עובד",
         employees_update_button: "עדכן עובד",

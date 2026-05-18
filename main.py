@@ -115,7 +115,7 @@ from update_service import (
 import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.17.1_beta"
+APP_VERSION = "0.17.2_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
