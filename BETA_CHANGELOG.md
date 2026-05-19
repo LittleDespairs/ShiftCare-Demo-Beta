@@ -1,6 +1,95 @@
 # Beta Changelog
 
-This file tracks beta builds across the `0.12.x_beta`, `0.13.x_beta`, `0.14.x_beta`, and `0.15.x_beta` lines.
+This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
+
+# 0.18.0_beta - 2026-05-19
+
+## Release Focus
+
+Prepare the beta line for release-hardening instead of adding a large new workflow.
+
+## Changed
+
+- Updated runtime, service worker, Windows packaging metadata, build docs, and installer script to `0.18.0_beta`.
+- Added the missing `0.17.x` entries back into this changelog.
+- Added a GitHub Actions regression workflow with a disposable PostgreSQL service so the PostgreSQL integration test can run outside a manually configured machine.
+- Updated the Android wrapper version and backend sync file list so Gradle prebuild copies the current backend modules instead of an incomplete older module set.
+- Reworked the Home page into an operational start page with a live next-step recommendation, workspace readiness checklist, current-week counts, license status, and compact shortcuts.
+- Shifted the shared interface palette away from the generic blue SaaS baseline toward a quieter graphite/green operations console, with tighter radii and lighter shadows.
+- Kept employee weekly request colors, mobile request cards, vacation blockers, and Cloud Run stability work from the `0.17.x` line.
+
+## Verified
+
+- Full Python unittest suite passed: 112 tests OK, 1 PostgreSQL integration test skipped locally because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not set.
+- Python root module compile check passed.
+- JavaScript syntax checks passed for `static/js/home.js`, `static/js/i18n.js`, `static/js/employees.js`, `static/js/schedule.js`, `static/js/auth.js`, `static/js/auth_client.js`, `static/js/access_control.js`, and `static/js/organization.js`.
+- Browser UI verification passed for the new Home page on desktop width and a 390px mobile viewport, including no horizontal overflow and wrapped action text on mobile.
+- Main page and health endpoint smoke checks passed for `/`, `/login`, `/schedule`, `/weekly-preferences`, `/employees`, `/settings`, `/organization`, `/support`, `/guide`, `/download`, `/api/health/live`, and `/api/health/ready`.
+- Android backend sync tasks passed: `gradlew.bat syncScheduleBackend syncScheduleBackendAssets --no-daemon`.
+- Android shim import smoke passed with synced backend reporting `0.18.0_beta`.
+- Packaged app smoke passed for `dist\ShiftCare_0.18.0_beta\ShiftCare_0.18.0_beta.exe` on port `8018`, including `/api/health/live` and `/api/health/ready`.
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.18.0-beta.exe`
+- Installer SHA256: `D32F501A0799B7D3F2A14637F2AC028D746E396756DB38300FA93E07364B3A2A`
+- Cloud Build passed for image tag `0.18.0-beta` with build ID `a2a482db-c998-487f-954d-7ba28318cb54`.
+- Cloud Run deployed revision `schedule-app-beta-api-00084-xg6`; traffic was explicitly moved to that revision after deploy preserved traffic on the previous revision.
+- Deployed health checks passed for `/api/health/live`, `/api/health/ready`, and `/api/client-config` on `portal.shiftcare.co.il`, all reporting `0.18.0_beta`.
+
+# 0.17.2_beta - 2026-05-18
+
+## Changed
+
+- Weekly request chips now use the same shift colors as the schedule cards.
+- Weekly request and employee permanent-preference cards now read shift colors from app settings instead of fixed local values.
+- Employee permanent strict wishes and preferences now use the same card-based request editor pattern as weekly wishes.
+
+## Verified
+
+- Python root module compile check passed.
+- JavaScript syntax checks passed for `static/js/i18n.js` and `static/js/employees.js`.
+- Weekly request regression tests passed.
+- Full Python unittest suite passed: 112 tests OK, 1 PostgreSQL integration test skipped because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not set.
+- Cloud Build and Cloud Run deploy passed for `schedule-app-beta-api`.
+- Deployed health checks passed for `/api/health/live` and `/api/health/ready` on `portal.shiftcare.co.il`.
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.17.2-beta.exe`
+- Installer SHA256: `A981731C1ACC891E54B8FDA12F221A7B8E87F7581E76AF970A67CFF2D73EE7C2`
+
+# 0.17.1_beta - 2026-05-17
+
+## Changed
+
+- Matched weekly request shift-picking cards to the main schedule card colors for morning, evening, and night shifts.
+- Reworked the mobile weekly requests table into stacked day cards so employees do not need horizontal scrolling on phones.
+- Kept the 0.17.0 request modal flow and Cloud Run stability profile.
+
+## Verified
+
+- Python root module compile check passed.
+- JavaScript syntax checks passed for `static/js/i18n.js`.
+- Weekly request regression tests passed.
+- Full Python unittest suite passed: 112 tests OK, 1 PostgreSQL integration test skipped because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not set.
+- Cloud Build and Cloud Run deploy passed for `schedule-app-beta-api`.
+- Deployed health checks passed for `/api/health/live` and `/api/health/ready` on `portal.shiftcare.co.il`.
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.17.1-beta.exe`
+- Installer SHA256: `137026E1101C97C234D87AC31D093DB5D73EE4E9C62E21761C7B7D2AF89033EA`
+
+# 0.17.0_beta - 2026-05-15
+
+## Changed
+
+- Reworked employee weekly requests into multiple per-day requests with request, exclude, day off, and vacation types.
+- Added vacation as a schedule day status and generator blocker.
+- Improved Cloud Run stability defaults and cloud request retry behavior.
+- Kept the mobile schedule layout fixes and Cloud SQL migrations in the release.
+
+## Verified
+
+- Full Python unittest suite passed: 112 tests OK, 1 PostgreSQL integration test skipped because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not set.
+- Python root module compile check passed.
+- JavaScript syntax checks passed for `static/js/schedule.js` and `static/js/i18n.js`.
+- Cloud Build and Cloud Run deploy passed for `schedule-app-beta-api`.
+- Deployed health checks passed for `/api/health/live` and `/api/health/ready` on `portal.shiftcare.co.il`.
+- Windows installer build: `dist\installer\ShiftCare_Setup_0.17.0-beta.exe`
+- Installer SHA256: `DF98D4AE30ED70A1A98EB5B717F87C638D9E724436F7268D591CA0F51CFB4E1E`
 
 # 0.16.1_beta - 2026-05-14
 

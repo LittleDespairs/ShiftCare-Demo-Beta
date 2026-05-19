@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="theme-color" content="#246b5a">
     <meta name="mobile-web-app-capable" content="yes">
     <title>ShiftCare</title>
     <link rel="manifest" href="/static/manifest.webmanifest">
@@ -67,9 +67,9 @@
         <main class="main-area">
             <header class="topbar">
                 <div class="page-heading">
-                    <h2 class="page-title" data-i18n="home_title">Main Menu</h2>
+                    <h2 class="page-title" data-i18n="home_title">Operations home</h2>
                     <p class="page-subtitle" data-i18n="home_subtitle">
-                        Choose the action you need right now.
+                        Start with the next operational step, not another dashboard.
                     </p>
                 </div>
 
@@ -82,54 +82,167 @@
                 </div>
             </header>
 
-            <section class="panel">
-                <div class="panel-body">
-                    <div class="quick-actions" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
-                        <a href="/schedule" class="quick-action">
-                            <h3 class="quick-action-title" data-i18n="home_schedule_title">Create schedule</h3>
-                            <p class="quick-action-text" data-i18n="home_schedule_text">
-                                Open the weekly schedule and create or edit shifts.
-                            </p>
-                        </a>
+            <section class="home-ops-layout" aria-live="polite">
+                <div class="home-primary-stack">
+                    <section class="home-section home-next-section">
+                        <div class="home-section-kicker" data-i18n="home_next_kicker">Next step</div>
+                        <div class="home-next-body">
+                            <div>
+                                <h3 id="home-next-title" class="home-next-title" data-i18n="home_next_loading_title">
+                                    Checking workspace
+                                </h3>
+                                <p id="home-next-text" class="home-next-text" data-i18n="home_next_loading_text">
+                                    Reading employees, roles, templates, coverage rules, and this week's schedule.
+                                </p>
+                            </div>
+                            <a id="home-next-action" class="btn btn-primary home-next-action" href="/schedule"
+                               data-i18n="home_next_action">Open schedule</a>
+                        </div>
+                    </section>
 
-                        <a href="/employees" class="quick-action">
-                            <h3 class="quick-action-title" data-i18n="home_employees_title">Employees</h3>
-                            <p class="quick-action-text" data-i18n="home_employees_text">
-                                Add, edit, and manage employees.
-                            </p>
-                        </a>
+                    <section class="home-section">
+                        <div class="home-section-header">
+                            <div>
+                                <div class="home-section-kicker" data-i18n="home_week_kicker">Current week</div>
+                                <h3 class="home-section-title" data-i18n="home_week_title">Working set</h3>
+                            </div>
+                            <span id="home-week-label" class="home-status-pill">-</span>
+                        </div>
+                        <div class="home-week-grid">
+                            <div class="home-metric">
+                                <span class="home-metric-label" data-i18n="home_metric_position">Primary position</span>
+                                <strong id="home-primary-position">-</strong>
+                            </div>
+                            <div class="home-metric">
+                                <span class="home-metric-label" data-i18n="home_metric_schedule_entries">Scheduled shifts</span>
+                                <strong id="home-schedule-count">-</strong>
+                            </div>
+                            <div class="home-metric">
+                                <span class="home-metric-label" data-i18n="home_metric_preferences">Preferences</span>
+                                <strong id="home-preferences-count">-</strong>
+                            </div>
+                            <div class="home-metric">
+                                <span class="home-metric-label" data-i18n="home_metric_coverage">Coverage rules</span>
+                                <strong id="home-coverage-count">-</strong>
+                            </div>
+                        </div>
+                    </section>
 
-                        <a href="/weekly-preferences" class="quick-action">
-                            <h3 class="quick-action-title" data-i18n="home_requests_title">Preferences</h3>
-                            <p class="quick-action-text" data-i18n="home_requests_text">
-                                Review weekly preferences, days off, and restrictions.
-                            </p>
-                        </a>
-
-                        <a href="/settings" class="quick-action">
-                            <h3 class="quick-action-title" data-i18n="home_settings_title">Settings</h3>
-                            <p class="quick-action-text" data-i18n="home_settings_text">
-                                Configure positions, templates, and system data.
-                            </p>
-                        </a>
-
-                        <a href="/organization" class="quick-action">
-                            <h3 class="quick-action-title">Organization access</h3>
-                            <p class="quick-action-text">
-                                Manage users, roles, and invitation links for the 0.14 beta authorization flow.
-                            </p>
-                        </a>
-
-                        {% if developer_mode_enabled() %}
-                        <a href="/support" class="quick-action">
-                            <h3 class="quick-action-title">Developer support</h3>
-                            <p class="quick-action-text">
-                                Read-only beta diagnostics for organizations, accounts, and employees.
-                            </p>
-                        </a>
-                        {% endif %}
-                    </div>
+                    <section class="home-section">
+                        <div class="home-section-header">
+                            <div>
+                                <div class="home-section-kicker" data-i18n="quick_actions_title">Quick actions</div>
+                                <h3 class="home-section-title" data-i18n="home_actions_title">Operational shortcuts</h3>
+                            </div>
+                        </div>
+                        <div class="home-action-list">
+                            <a href="/schedule" class="home-action-row">
+                                <span class="home-action-index">01</span>
+                                <span class="home-action-copy">
+                                    <strong data-i18n="home_schedule_title">Create schedule</strong>
+                                    <small data-i18n="home_schedule_text">Open the weekly schedule and create or edit shifts.</small>
+                                </span>
+                                <span class="home-action-arrow">›</span>
+                            </a>
+                            <a href="/employees" class="home-action-row">
+                                <span class="home-action-index">02</span>
+                                <span class="home-action-copy">
+                                    <strong data-i18n="home_employees_title">Employees</strong>
+                                    <small data-i18n="home_employees_text">Add, edit, and manage employees.</small>
+                                </span>
+                                <span class="home-action-arrow">›</span>
+                            </a>
+                            <a href="/weekly-preferences" class="home-action-row">
+                                <span class="home-action-index">03</span>
+                                <span class="home-action-copy">
+                                    <strong data-i18n="home_requests_title">Preferences</strong>
+                                    <small data-i18n="home_requests_text">Review weekly preferences, days off, and restrictions.</small>
+                                </span>
+                                <span class="home-action-arrow">›</span>
+                            </a>
+                            <a href="/settings" class="home-action-row">
+                                <span class="home-action-index">04</span>
+                                <span class="home-action-copy">
+                                    <strong data-i18n="home_settings_title">Settings</strong>
+                                    <small data-i18n="home_settings_text">Configure positions, templates, and system data.</small>
+                                </span>
+                                <span class="home-action-arrow">›</span>
+                            </a>
+                        </div>
+                    </section>
                 </div>
+
+                <aside class="home-side-stack">
+                    <section class="home-section">
+                        <div class="home-section-header">
+                            <div>
+                                <div class="home-section-kicker" data-i18n="home_ready_kicker">Readiness</div>
+                                <h3 class="home-section-title" data-i18n="home_ready_title">Workspace checklist</h3>
+                            </div>
+                            <span id="home-ready-summary" class="home-status-pill attention">-</span>
+                        </div>
+                        <div class="home-readiness-list">
+                            <div class="home-readiness-item" data-home-readiness="employees">
+                                <span data-i18n="home_readiness_employees">Employees</span>
+                                <strong>-</strong>
+                            </div>
+                            <div class="home-readiness-item" data-home-readiness="positions">
+                                <span data-i18n="home_readiness_positions">Positions</span>
+                                <strong>-</strong>
+                            </div>
+                            <div class="home-readiness-item" data-home-readiness="assignments">
+                                <span data-i18n="home_readiness_assignments">Assignments</span>
+                                <strong>-</strong>
+                            </div>
+                            <div class="home-readiness-item" data-home-readiness="templates">
+                                <span data-i18n="home_readiness_templates">Shift templates</span>
+                                <strong>-</strong>
+                            </div>
+                            <div class="home-readiness-item" data-home-readiness="coverage">
+                                <span data-i18n="home_readiness_coverage">Coverage rules</span>
+                                <strong>-</strong>
+                            </div>
+                            <div class="home-readiness-item" data-home-readiness="license">
+                                <span data-i18n="home_readiness_license">License</span>
+                                <strong>-</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="home-section">
+                        <div class="home-section-kicker" data-i18n="home_org_kicker">Workspace</div>
+                        <h3 class="home-section-title" data-i18n="home_org_title">Operational status</h3>
+                        <div class="home-info-list">
+                            <div class="home-info-row">
+                                <span data-i18n="home_org_users">Active users</span>
+                                <strong id="home-active-users">-</strong>
+                            </div>
+                            <div class="home-info-row">
+                                <span data-i18n="home_org_environment">Environment</span>
+                                <strong id="home-environment">-</strong>
+                            </div>
+                            <div class="home-info-row">
+                                <span data-i18n="home_org_version">Version</span>
+                                <strong id="home-app-version">{{ app_version }}</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="home-section">
+                        <div class="home-section-kicker" data-i18n="home_license_kicker">License</div>
+                        <h3 class="home-section-title" data-i18n="home_license_title">Access limits</h3>
+                        <div class="home-info-list">
+                            <div class="home-info-row">
+                                <span data-i18n="home_license_status">Status</span>
+                                <strong id="home-license-status">-</strong>
+                            </div>
+                            <div class="home-info-row">
+                                <span data-i18n="home_license_usage">Employees</span>
+                                <strong id="home-license-usage">-</strong>
+                            </div>
+                        </div>
+                    </section>
+                </aside>
             </section>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
@@ -148,6 +261,7 @@
 <script src="/static/js/access_control.js?v={{ app_version }}-directory-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
+<script src="/static/js/home.js?v={{ app_version }}-ops-home"></script>
 </body>
 
 </html>

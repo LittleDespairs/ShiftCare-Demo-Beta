@@ -84,8 +84,9 @@ Invoke-RestMethod http://127.0.0.1:8080/api/health/live
 Invoke-RestMethod http://127.0.0.1:8080/api/health/ready
 ```
 
-Important: `0.14.2_beta` Cloud Run deployment is a smoke backend only. The data layer still uses SQLite.
-Do not use it for production organization data until PostgreSQL/Cloud SQL support is implemented and tested.
+Cloud Run beta deployments use PostgreSQL through Cloud SQL. For release confidence,
+run the PostgreSQL integration test with `SCHEDULE_APP_POSTGRES_TEST_DSN` set, or use
+the GitHub Actions workflow that starts a disposable PostgreSQL service.
 
 ## Android Standalone APK
 
@@ -114,13 +115,13 @@ See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
 Current spec:
 
 ```text
-ShiftCare_0.17.2_beta.spec
+ShiftCare_0.18.0_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ShiftCare_0.17.2_beta.spec
+.\.venv\Scripts\pyinstaller.exe ShiftCare_0.18.0_beta.spec
 ```
 
 ## Windows Installer
@@ -143,7 +144,7 @@ If Inno Setup is not installed locally:
 Expected installer output:
 
 ```text
-dist\installer\ShiftCare_Setup_0.17.2-beta.exe
+dist\installer\ShiftCare_Setup_0.18.0-beta.exe
 ```
 
 ## Before Committing

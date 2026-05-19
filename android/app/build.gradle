@@ -11,8 +11,8 @@ android {
         applicationId "com.scheduleapp.tablet.current"
         minSdk 26
         targetSdk 35
-        versionCode 3
-        versionName "0.14.6-beta-tablet-current"
+        versionCode 4
+        versionName "0.18.0-beta-tablet-current"
 
         ndk {
             abiFilters "arm64-v8a"
@@ -46,6 +46,11 @@ tasks.register("syncScheduleBackend", Copy) {
         include "db_adapter.py"
         include "excel_export.py"
         include "license_runtime.py"
+        include "app_settings_service.py"
+        include "row_serializers.py"
+        include "schedule_time.py"
+        include "schemas.py"
+        include "update_service.py"
         include "word_export.py"
         include "schedule_app.db"
         include "templates/**"
@@ -64,6 +69,11 @@ tasks.register("syncScheduleBackendAssets", Copy) {
         include "db_adapter.py"
         include "excel_export.py"
         include "license_runtime.py"
+        include "app_settings_service.py"
+        include "row_serializers.py"
+        include "schedule_time.py"
+        include "schemas.py"
+        include "update_service.py"
         include "word_export.py"
         include "schedule_app.db"
         include "templates/**"

@@ -1,3 +1,4 @@
+import re
 import types
 from typing import Any, Literal, Union, get_args, get_origin
 
@@ -6,13 +7,14 @@ EmailStr = str
 
 
 class FieldInfo:
-    def __init__(self, default: Any = ..., **constraints: Any):
+    def __init__(self, default: Any = ..., default_factory: Any = None, **constraints: Any):
         self.default = default
+        self.default_factory = default_factory
         self.constraints = constraints
 
 
-def Field(default: Any = ..., **constraints: Any) -> FieldInfo:
-    return FieldInfo(default, **constraints)
+def Field(default: Any = ..., default_factory: Any = None, **constraints: Any) -> FieldInfo:
+    return FieldInfo(default, default_factory=default_factory, **constraints)
 
 
 def model_validator(mode: str = "after"):
@@ -94,6 +96,8 @@ def _validate_constraints(name: str, value: Any, field_info: FieldInfo | None) -
         raise ValueError(f"{name} is below minimum")
     if "le" in constraints and value > constraints["le"]:
         raise ValueError(f"{name} is above maximum")
+    if "pattern" in constraints and not re.match(constraints["pattern"], str(value)):
+        raise ValueError(f"{name} does not match pattern")
 
 
 class BaseModel:
@@ -106,6 +110,8 @@ class BaseModel:
 
             if name in data:
                 value = data[name]
+            elif field_info and field_info.default_factory is not None:
+                value = field_info.default_factory()
             elif field_info and field_info.default is not ...:
                 value = field_info.default
             elif default is not ... and not isinstance(default, FieldInfo):
