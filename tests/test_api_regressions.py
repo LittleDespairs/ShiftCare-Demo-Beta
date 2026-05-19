@@ -190,6 +190,33 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIsNotNone(migration_row)
         self.assertEqual(migration_row["to_version"], database.CURRENT_SCHEMA_VERSION)
 
+    def test_openapi_exposes_bearer_auth_for_protected_routes(self):
+        main.app.openapi_schema = None
+        schema = main.app.openapi()
+
+        security_schemes = schema["components"]["securitySchemes"]
+        self.assertEqual(security_schemes["BearerAuth"]["type"], "http")
+        self.assertEqual(security_schemes["BearerAuth"]["scheme"], "bearer")
+
+        employees_get = schema["paths"]["/api/employees"]["get"]
+        employees_post = schema["paths"]["/api/employees"]["post"]
+        self.assertIn({"BearerAuth": []}, employees_get["security"])
+        self.assertIn({"BearerAuth": []}, employees_post["security"])
+        self.assertNotIn(
+            ("authorization", "header"),
+            [(parameter["name"], parameter["in"]) for parameter in employees_get.get("parameters", [])],
+        )
+        self.assertNotIn("security", schema["paths"]["/api/auth/status"]["get"])
+
+    def test_docs_page_uses_current_browser_session_token(self):
+        response = self.client.get("/docs")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("schedule_app_auth_token", response.text)
+        self.assertIn("requestInterceptor", response.text)
+        self.assertIn("BearerAuth", response.text)
+        self.assertIn("Bearer \" + token", response.text)
+
     def test_license_status_defaults_to_trial_runtime(self):
         response = self.client.get("/api/license/status")
         self.assertEqual(response.status_code, 200)

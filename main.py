@@ -19,8 +19,9 @@ from urllib.parse import quote, urlparse
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -163,6 +164,7 @@ app = FastAPI(
     description="Web application for nursing staff scheduling",
     version=APP_VERSION,
     openapi_tags=tags_metadata,
+    docs_url=None,
 )
 
 app.add_middleware(
@@ -187,6 +189,136 @@ init_db()
 app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 templates.env.globals["app_version"] = APP_VERSION
+
+OPENAPI_BEARER_AUTH_SCHEME = "BearerAuth"
+
+
+def build_openapi_schema() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=tags_metadata,
+    )
+    components = openapi_schema.setdefault("components", {})
+    security_schemes = components.setdefault("securitySchemes", {})
+    security_schemes[OPENAPI_BEARER_AUTH_SCHEME] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "ShiftCare session token",
+        "description": "Use the access_token returned by /api/auth/login or your active ShiftCare browser session.",
+    }
+
+    for path_item in openapi_schema.get("paths", {}).values():
+        for method in ("get", "put", "post", "delete", "options", "head", "patch", "trace"):
+            operation = path_item.get(method)
+            if not isinstance(operation, dict):
+                continue
+
+            parameters = operation.get("parameters") or []
+            has_authorization_header = any(
+                str(parameter.get("name", "")).lower() == "authorization"
+                and str(parameter.get("in", "")).lower() == "header"
+                for parameter in parameters
+            )
+            if not has_authorization_header:
+                continue
+
+            filtered_parameters = [
+                parameter
+                for parameter in parameters
+                if not (
+                    str(parameter.get("name", "")).lower() == "authorization"
+                    and str(parameter.get("in", "")).lower() == "header"
+                )
+            ]
+            if filtered_parameters:
+                operation["parameters"] = filtered_parameters
+            else:
+                operation.pop("parameters", None)
+
+            security = operation.setdefault("security", [])
+            if not any(OPENAPI_BEARER_AUTH_SCHEME in entry for entry in security):
+                security.insert(0, {OPENAPI_BEARER_AUTH_SCHEME: []})
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = build_openapi_schema
+
+
+@app.get("/docs", include_in_schema=False)
+def swagger_ui_html() -> HTMLResponse:
+    return HTMLResponse(
+        f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+            <title>{APP_TITLE} - API docs</title>
+        </head>
+        <body>
+            <div id="swagger-ui"></div>
+            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+            <script>
+            (function () {{
+                const tokenKey = "schedule_app_auth_token";
+                function storedToken() {{
+                    return window.localStorage.getItem(tokenKey) || "";
+                }}
+                function isApiRequest(request) {{
+                    try {{
+                        const url = new URL(request.url, window.location.origin);
+                        return url.pathname.startsWith("/api/");
+                    }} catch (error) {{
+                        return String(request.url || "").startsWith("/api/");
+                    }}
+                }}
+
+                const ui = SwaggerUIBundle({{
+                    url: "/openapi.json",
+                    dom_id: "#swagger-ui",
+                    deepLinking: true,
+                    persistAuthorization: true,
+                    presets: [
+                        SwaggerUIBundle.presets.apis,
+                        SwaggerUIBundle.SwaggerUIStandalonePreset
+                    ],
+                    layout: "BaseLayout",
+                    requestInterceptor: function (request) {{
+                        const token = storedToken();
+                        if (token && isApiRequest(request)) {{
+                            request.headers = request.headers || {{}};
+                            if (!request.headers.Authorization) {{
+                                request.headers.Authorization = "Bearer " + token;
+                            }}
+                        }}
+                        return request;
+                    }}
+                }});
+
+                window.ui = ui;
+                const token = storedToken();
+                if (token && typeof ui.preauthorizeApiKey === "function") {{
+                    window.setTimeout(function () {{
+                        try {{
+                            ui.preauthorizeApiKey("{OPENAPI_BEARER_AUTH_SCHEME}", token);
+                        }} catch (error) {{
+                            // The request interceptor above still applies the active session token.
+                        }}
+                    }}, 0);
+                }}
+            }})();
+            </script>
+        </body>
+        </html>
+        """
+    )
 
 
 def is_developer_mode_enabled() -> bool:
