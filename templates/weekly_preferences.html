@@ -974,12 +974,22 @@
 
         function applyShiftColorSettings(settings = {}) {
             appSettings = settings || {};
-            const shell = document.querySelector(".page-shell");
-            if (!shell) return;
-            shell.style.setProperty("--shift-morning-bg", appSettings.schedule_morning_color || "#ecfeff");
-            shell.style.setProperty("--shift-evening-bg", appSettings.schedule_evening_color || "#fff7ed");
-            shell.style.setProperty("--shift-night-bg", appSettings.schedule_night_color || "#eef2ff");
-            shell.style.setProperty("--shift-status-bg", appSettings.schedule_status_color || "#f5f3ff");
+            const colorMap = {
+                "--shift-morning-bg": appSettings.schedule_morning_color || "#ecfeff",
+                "--shift-evening-bg": appSettings.schedule_evening_color || "#fff7ed",
+                "--shift-night-bg": appSettings.schedule_night_color || "#eef2ff",
+                "--shift-status-bg": appSettings.schedule_status_color || "#f5f3ff",
+            };
+            [
+                document.documentElement,
+                document.body,
+                document.querySelector(".page-shell"),
+                document.getElementById("request-modal-overlay"),
+            ].filter(Boolean).forEach((target) => {
+                Object.entries(colorMap).forEach(([property, value]) => {
+                    target.style.setProperty(property, value);
+                });
+            });
         }
 
         async function loadAppSettings() {

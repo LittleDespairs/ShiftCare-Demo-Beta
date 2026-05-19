@@ -101,12 +101,23 @@ function canManagePermanentPreferences() {
 
 function applyEmployeeShiftColorSettings(settings = {}) {
     employeeAppSettings = settings || {};
-    const shell = document.querySelector(".page-shell");
-    if (!shell) return;
-    shell.style.setProperty("--shift-morning-bg", employeeAppSettings.schedule_morning_color || "#ecfeff");
-    shell.style.setProperty("--shift-evening-bg", employeeAppSettings.schedule_evening_color || "#fff7ed");
-    shell.style.setProperty("--shift-night-bg", employeeAppSettings.schedule_night_color || "#eef2ff");
-    shell.style.setProperty("--shift-status-bg", employeeAppSettings.schedule_status_color || "#f5f3ff");
+    const colorMap = {
+        "--shift-morning-bg": employeeAppSettings.schedule_morning_color || "#ecfeff",
+        "--shift-evening-bg": employeeAppSettings.schedule_evening_color || "#fff7ed",
+        "--shift-night-bg": employeeAppSettings.schedule_night_color || "#eef2ff",
+        "--shift-status-bg": employeeAppSettings.schedule_status_color || "#f5f3ff",
+    };
+    [
+        document.documentElement,
+        document.body,
+        document.querySelector(".page-shell"),
+        document.getElementById("employee-modal-overlay"),
+        document.getElementById("recurring-request-modal-overlay"),
+    ].filter(Boolean).forEach((target) => {
+        Object.entries(colorMap).forEach(([property, value]) => {
+            target.style.setProperty(property, value);
+        });
+    });
 }
 
 async function loadEmployeeAppSettings() {
