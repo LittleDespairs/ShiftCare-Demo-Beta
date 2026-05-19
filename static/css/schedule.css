@@ -4,10 +4,10 @@
 
         /* Toolbar container / Контейнер верхней панели управления */
         .schedule-panel {
-            --shift-morning-bg: #edf7ef;
+            --shift-morning-bg: #ecfeff;
             --shift-evening-bg: #fff7ed;
-            --shift-night-bg: #e8edf7;
-            --shift-status-bg: #f0ece6;
+            --shift-night-bg: #eef2ff;
+            --shift-status-bg: #f5f3ff;
         }
 
         .schedule-command-panel {
@@ -33,8 +33,8 @@
             align-items: end;
             padding: 14px;
             border: 1px solid var(--border);
-            border-radius: 8px;
-            background: var(--panel-soft);
+            border-radius: 12px;
+            background: #f8fafc;
         }
 
         /* Responsive layout blocks / Адаптивные блоки панели */
@@ -57,7 +57,7 @@
             min-width: 0;
             padding: 10px;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             background: #ffffff;
         }
 
@@ -70,7 +70,7 @@
             color: var(--muted);
             font-size: 0.72rem;
             font-weight: 800;
-            letter-spacing: 0;
+            letter-spacing: 0.04em;
             text-transform: uppercase;
         }
 
@@ -203,7 +203,7 @@
             font-size: 0.72rem;
             font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 0;
+            letter-spacing: 0.04em;
             margin-bottom: 4px;
         }
 
@@ -231,10 +231,10 @@
 
         .schedule-floating-header-scroller {
             overflow: hidden;
-            border: 1px solid var(--border-strong);
-            border-radius: 8px 8px 0 0;
-            background: #dce4dc;
-            box-shadow: 0 8px 24px rgba(32, 42, 37, 0.12);
+            border: 1px solid #b8c3d4;
+            border-radius: 16px 16px 0 0;
+            background: #d9e1ec;
+            box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
         }
 
         .schedule-floating-table {
@@ -248,11 +248,11 @@
             position: relative;
             overflow-x: auto;
             overflow-y: visible;
-            border: 1px solid var(--border-strong);
-            border-radius: 8px;
-            background: #dce4dc;
+            border: 1px solid #b8c3d4;
+            border-radius: 16px;
+            background: #d9e1ec;
             box-shadow:
-                0 10px 28px rgba(32, 42, 37, 0.12),
+                0 22px 60px rgba(15, 23, 42, 0.14),
                 0 0 0 1px rgba(255, 255, 255, 0.7) inset;
             min-height: 320px;
             max-width: 100%;
@@ -260,14 +260,14 @@
         }
 
         .schedule-panel {
-            border-color: var(--border-strong);
-            background: #e8eee8;
-            box-shadow: var(--shadow);
+            border-color: #c7d2e1;
+            background: #edf2f8;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
             overflow: visible;
         }
 
         .schedule-panel .panel-body {
-            background: #e8eee8;
+            background: #eef3f8;
         }
 
         .schedule-loading-overlay {
@@ -288,8 +288,8 @@
 
         .generation-card {
             width: min(440px, 100%);
-            border: 1px solid #b8d3c8;
-            border-radius: 8px;
+            border: 1px solid #bfdbfe;
+            border-radius: 18px;
             background: #ffffff;
             box-shadow: 0 22px 60px rgba(15, 23, 42, 0.16);
             padding: 24px;
@@ -301,7 +301,7 @@
             height: 62px;
             margin: 0 auto 16px;
             border-radius: 50%;
-            border: 5px solid #d5e8df;
+            border: 5px solid #dbeafe;
             border-top-color: var(--primary);
             animation: generation-spin 0.9s linear infinite;
         }
@@ -336,7 +336,7 @@
             bottom: 0;
             width: 42%;
             border-radius: inherit;
-            background: linear-gradient(90deg, #86a99c, var(--primary), #c48a3a);
+            background: linear-gradient(90deg, #60a5fa, var(--primary), #22c55e);
             animation: generation-progress 1.4s ease-in-out infinite;
         }
 
@@ -370,8 +370,8 @@
 
         .schedule-table th,
         .schedule-table td {
-            border-bottom: 1px solid #d5ddd4;
-            border-inline-end: 1px solid #d5ddd4;
+            border-bottom: 1px solid #d3dce8;
+            border-inline-end: 1px solid #d3dce8;
             vertical-align: top;
             padding: 0;
             background: #fdfefe;
@@ -383,7 +383,7 @@
         }
 
         .schedule-table thead th {
-            background: #edf2ed;
+            background: #eaf0f7;
         }
 
         /* Sticky first column / Липкая первая колонка с именем сотрудника */
@@ -393,7 +393,7 @@
             position: sticky;
             left: 0;
             z-index: 3;
-            background: #f7f8f4;
+            background: #f7fafc;
         }
 
         body.rtl .employee-column {
@@ -403,7 +403,7 @@
 
         .schedule-table thead .employee-column {
             z-index: 16;
-            background: #edf2ed;
+            background: #eaf0f7;
         }
 
         /* Header cells / Ячейки заголовка по дням */
@@ -411,7 +411,7 @@
             min-width: 150px;
             min-height: var(--schedule-date-header-height);
             box-sizing: border-box;
-            background: #edf2ed;
+            background: #eaf0f7;
             padding: 10px 10px;
         }
 
@@ -537,7 +537,7 @@
         }
 
         .cell-status-cover.vacation {
-            border-color: #b8d3c8;
+            border-color: #bfdbfe;
             background: rgba(239, 246, 255, 0.97);
             color: #1d4ed8;
             box-shadow: 0 10px 30px rgba(29, 78, 216, 0.12);
@@ -570,7 +570,7 @@
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: 8px;
-            background: var(--panel-soft);
+            background: #f8fafc;
         }
 
         .box-label {
@@ -593,8 +593,8 @@
 
         .small-control:focus {
             outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(36, 107, 90, 0.12);
+            border-color: #93c5fd;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
         }
 
         .cell-actions {
@@ -859,7 +859,7 @@
             gap: 16px;
             padding: 18px 20px;
             border-bottom: 1px solid var(--border);
-            background: var(--panel-soft);
+            background: #f8fafc;
         }
 
         .shift-picker-title {
@@ -918,8 +918,8 @@
 
         .shift-picker-option:hover {
             transform: translateY(-1px);
-            border-color: var(--primary);
-            background: var(--panel-soft);
+            border-color: #93c5fd;
+            background: #f8fafc;
         }
 
         .shift-picker-option-title {
@@ -941,7 +941,7 @@
         /* Coverage row / Строка покрытия */
         .coverage-header-cell {
             padding: 6px;
-            background: var(--panel-soft);
+            background: #f8fafc;
         }
 
         .coverage-header-cell.has-attention {
@@ -1020,7 +1020,7 @@
         .generation-summary-panel {
             margin-bottom: 22px;
             border-color: #cbd5e1;
-            background: var(--panel-soft);
+            background: #f8fafc;
         }
 
         .generation-summary-header {
@@ -1169,9 +1169,9 @@
         }
 
         .page-message.info {
-            background: var(--primary-soft);
-            border-color: #b8d3c8;
-            color: var(--primary);
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
         }
 
         /* Sidebar button placement / Положение кнопки сворачивания меню */
@@ -1191,7 +1191,7 @@
         }
 
         .sidebar-toggle:hover {
-            background: var(--panel-soft);
+            background: #f8fafc;
             transform: translateY(-1px);
         }
 
@@ -1370,7 +1370,7 @@
             body.hosted-employee-schedule .schedule-shell {
                 overflow: visible;
                 border-radius: 12px;
-                border-color: var(--border-strong);
+                border-color: #c7d2e1;
                 background: transparent;
                 box-shadow: none;
                 min-height: 0;
@@ -1409,7 +1409,7 @@
                 overflow: hidden;
                 border: 1px solid #cbd5e1;
                 border-radius: 12px;
-                background: var(--panel-soft);
+                background: #f8fafc;
                 box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
             }
 
@@ -1425,7 +1425,7 @@
             body.hosted-employee-schedule .employee-column {
                 position: static;
                 z-index: auto;
-                background: #edf2ed;
+                background: #eaf0f7;
             }
 
             body.hosted-employee-schedule .employee-cell {
