@@ -75,8 +75,14 @@ class OrganizationInvitationCreate(BaseModel):
     email: EmailStr
     employee_id: int | None = Field(default=None, ge=1)
     employee_public_id: str | None = Field(default=None, min_length=2, max_length=120)
-    role: Literal["admin", "scheduler", "employee", "manager", "read_only"] = "employee"
+    role: Literal["owner", "admin", "scheduler", "employee", "manager", "read_only"] = "employee"
     expires_in_days: int = Field(default=7, ge=1, le=30)
+
+
+class OrganizationMemberRoleUpdate(BaseModel):
+    role: Literal["owner", "admin", "scheduler", "employee", "manager", "read_only"]
+    employee_id: int | None = Field(default=None, ge=1)
+    employee_public_id: str | None = Field(default=None, min_length=2, max_length=120)
 
 
 class OrganizationMemberEmployeeLinkUpdate(BaseModel):

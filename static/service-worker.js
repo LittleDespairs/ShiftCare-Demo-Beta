@@ -1,4 +1,4 @@
-const CACHE_NAME = "shiftcare-0.18.1-beta-shell-20260519-blue-017-palette";
+const CACHE_NAME = "shiftcare-0.18.1-beta-shell-20260520-role-management";
 
 const SHELL_ASSETS = [
   "/",

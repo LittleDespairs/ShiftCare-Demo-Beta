@@ -129,6 +129,14 @@
                     </label>
 
                     <label class="form-field">
+                        <span data-i18n="auth_initial_role">Your role</span>
+                        <select id="bootstrap-role" disabled>
+                            <option value="owner" data-i18n="org_role_owner">Owner</option>
+                        </select>
+                        <small class="field-hint" data-i18n="auth_initial_role_hint">The first account is always the organization owner.</small>
+                    </label>
+
+                    <label class="form-field">
                         <span>Password</span>
                         <input id="bootstrap-password" type="password" autocomplete="new-password" required minlength="8">
                     </label>
@@ -142,7 +150,7 @@
 
     <script src="/static/js/i18n.js?v={{ app_version }}-auth-i18n-fix"></script>
     <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-    <script src="/static/js/auth_i18n.js?v={{ app_version }}-portal-entry"></script>
+    <script src="/static/js/auth_i18n.js?v={{ app_version }}-role-management-refresh"></script>
     <script src="/static/js/auth.js?v={{ app_version }}-portal-entry"></script>
     <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>

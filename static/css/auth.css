@@ -280,6 +280,13 @@
     border-color: var(--primary);
 }
 
+.field-hint {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
 .auth-submit {
     width: 100%;
     min-height: 44px;
@@ -469,6 +476,7 @@
 
 .organization-table-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     justify-content: flex-start;
     align-items: center;
@@ -476,13 +484,25 @@
 
 .organization-table-select {
     min-height: 32px;
-    min-width: 180px;
+    min-width: 160px;
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 4px 8px;
     background: #ffffff;
     color: var(--text);
     font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.organization-table-select.compact {
+    min-width: 130px;
+}
+
+.organization-table-note {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.76rem;
     font-weight: 700;
 }
 

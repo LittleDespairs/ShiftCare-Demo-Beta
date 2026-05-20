@@ -96,6 +96,7 @@ from schemas import (
     LicenseImportRequest,
     OrganizationInvitationCreate,
     OrganizationMemberEmployeeLinkUpdate,
+    OrganizationMemberRoleUpdate,
     PositionCreate,
     ScheduleEntryCreate,
     ScheduleEntryStatusUpdate,
@@ -618,6 +619,8 @@ def upsert_desktop_cloud_user(cursor: sqlite3.Cursor, cloud_user: dict, cloud_me
 
 
 DESKTOP_CLOUD_SYNC_ROLES = {"owner", "admin", "scheduler", "manager"}
+ORGANIZATION_MEMBER_ROLES = {"owner", "admin", "scheduler", "manager", "read_only", "employee"}
+OWNER_MANAGED_ROLES = {"owner", "admin"}
 DESKTOP_CLOUD_LOGIN_BASE_URL = "https://schedule-app-beta.web.app"
 
 
@@ -4252,7 +4255,9 @@ def create_organization_invitation(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ):
-    require_organization_role(current_user, organization_id, {"owner", "admin"})
+    actor_membership = require_organization_role(current_user, organization_id, {"owner", "admin"})
+    if request_data.role in OWNER_MANAGED_ROLES and actor_membership["role"] != "owner":
+        raise HTTPException(status_code=403, detail="Only owners can invite owners or administrators")
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -4559,6 +4564,169 @@ def remove_organization_member(
         )
         connection.commit()
         return {"message": "Organization member access removed"}
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.put("/api/organizations/{organization_id}/members/{user_id}/role", tags=["Auth"])
+def update_organization_member_role(
+    organization_id: int,
+    user_id: int,
+    request_data: OrganizationMemberRoleUpdate,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    actor_membership = require_organization_role(current_user, organization_id, {"owner", "admin"})
+    actor_role = actor_membership["role"]
+    new_role = request_data.role
+
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="You cannot change your own organization role")
+    if actor_role != "owner" and new_role in OWNER_MANAGED_ROLES:
+        raise HTTPException(status_code=403, detail="Only owners can assign owner or administrator roles")
+
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        employee_id = request_data.employee_id
+        employee_public_id = request_data.employee_public_id
+
+        if is_desktop_sqlite_runtime() and is_desktop_invitation_request(request):
+            settings = read_desktop_cloud_sync_settings(cursor, organization_id)
+            if desktop_cloud_sync_is_ready(settings):
+                return request_cloud_json(
+                    settings["cloud_api_base_url"],
+                    f"/api/organizations/{int(settings['cloud_organization_id'])}/members/{user_id}/role",
+                    method="PUT",
+                    payload={
+                        "role": new_role,
+                        "employee_id": None,
+                        "employee_public_id": employee_public_id,
+                    },
+                    token=settings["desktop_cloud_access_token"],
+                )
+
+        cursor.execute(
+            """
+            SELECT om.role, om.status, om.employee_id, u.email, u.full_name
+            FROM organization_memberships om
+            JOIN users u ON u.id = om.user_id
+            WHERE om.organization_id = ? AND om.user_id = ?
+            """,
+            (organization_id, user_id),
+        )
+        target = cursor.fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="Organization member not found")
+        if target["status"] != "active":
+            raise HTTPException(status_code=409, detail="Organization member is not active")
+
+        target_role = target["role"]
+        if target_role in OWNER_MANAGED_ROLES and actor_role != "owner":
+            raise HTTPException(status_code=403, detail="Only owners can change owners or administrators")
+
+        if target_role == "owner" and new_role != "owner":
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS owner_count
+                FROM organization_memberships
+                WHERE organization_id = ? AND role = 'owner' AND status = 'active'
+                """,
+                (organization_id,),
+            )
+            if cursor.fetchone()["owner_count"] <= 1:
+                raise HTTPException(status_code=409, detail="Cannot demote the last active owner")
+
+        if new_role == "employee":
+            if employee_id is None and employee_public_id:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM employees
+                    WHERE public_id = ? AND organization_id = ?
+                    """,
+                    (employee_public_id, organization_id),
+                )
+                employee_row = cursor.fetchone()
+                if not employee_row:
+                    raise HTTPException(status_code=404, detail="Employee not found in this organization")
+                employee_id = int(employee_row["id"])
+            elif employee_id is not None:
+                cursor.execute(
+                    """
+                    SELECT public_id
+                    FROM employees
+                    WHERE id = ? AND organization_id = ?
+                    """,
+                    (employee_id, organization_id),
+                )
+                employee_row = cursor.fetchone()
+                if not employee_row:
+                    raise HTTPException(status_code=404, detail="Employee not found in this organization")
+                employee_public_id = employee_row["public_id"]
+
+            if employee_id is not None:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM organization_memberships
+                    WHERE organization_id = ?
+                      AND employee_id = ?
+                      AND user_id != ?
+                      AND status = 'active'
+                    """,
+                    (organization_id, employee_id, user_id),
+                )
+                if cursor.fetchone():
+                    raise HTTPException(status_code=409, detail="Employee is already linked to another active user")
+        else:
+            employee_id = None
+
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            UPDATE organization_memberships
+            SET role = ?, employee_id = ?, updated_at = ?
+            WHERE organization_id = ? AND user_id = ? AND status = 'active'
+            """,
+            (new_role, employee_id, now, organization_id, user_id),
+        )
+        cursor.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND revoked_at IS NULL
+            """,
+            (now, user_id),
+        )
+        write_auth_audit_event(
+            cursor,
+            "member_role_updated",
+            user_id=current_user["id"],
+            organization_id=organization_id,
+            metadata={
+                "target_user_id": user_id,
+                "target_email": target["email"],
+                "old_role": target_role,
+                "new_role": new_role,
+                "employee_id": employee_id,
+            },
+        )
+        connection.commit()
+        return {
+            "message": "Organization member role updated",
+            "member": {
+                "user_id": user_id,
+                "email": target["email"],
+                "full_name": target["full_name"],
+                "role": new_role,
+                "employee_id": employee_id,
+                "membership_status": "active",
+            },
+        }
     except HTTPException:
         connection.rollback()
         raise

@@ -16,6 +16,8 @@
             auth_id_card_placeholder: "Example: 123456789",
             auth_email_placeholder: "name@example.com",
             auth_create_organization: "Create organization",
+            auth_initial_role: "Your role",
+            auth_initial_role_hint: "The first account is always the organization owner.",
             auth_msg_cloud_unreachable: "Cloud is not reachable. Check the internet connection and try again.",
             auth_msg_desktop_ready: "Authorize a cloud user or add a new organization. Work will continue locally on this computer.",
             auth_msg_employee_portal_ready: "Employee portal is ready.",
@@ -55,8 +57,8 @@
             org_current_password: "Current password",
             org_new_password: "New password",
             org_change_password: "Change password",
-            org_invite: "Invite employee",
-            org_invite_text: "Create a one-time invitation link.",
+            org_invite: "Invite member",
+            org_invite_text: "Create a one-time invitation link and choose the access role.",
             org_role: "Role",
             org_expires: "Expires in days",
             org_create_invitation: "Create invitation",
@@ -113,6 +115,10 @@
             org_msg_creating_invitation: "Creating invitation...",
             org_msg_select_employee_first: "Select an employee before creating an employee invitation.",
             org_msg_invitation_created: "Invitation created.",
+            org_msg_updating_role: "Updating role...",
+            org_msg_role_updated: "Role updated.",
+            org_msg_updating_employee_link: "Updating employee link...",
+            org_msg_employee_link_updated: "Employee link updated.",
             org_msg_saving_profile: "Saving profile...",
             org_msg_profile_saved: "Profile saved.",
             org_msg_changing_password: "Changing password...",
@@ -122,7 +128,14 @@
             org_role_admin: "Admin",
             org_role_manager: "Manager",
             org_role_scheduler: "Scheduler",
+            org_role_read_only: "Observer",
             org_role_employee: "Employee",
+            org_role_hint_owner: "Owner has full access and can manage other owners and admins.",
+            org_role_hint_admin: "Admin can manage schedules, employees, invitations, and most organization settings.",
+            org_role_hint_scheduler: "Scheduler can edit schedules and employee setup but cannot manage owners.",
+            org_role_hint_manager: "Manager can view schedule workflows and weekly preferences without schedule editing.",
+            org_role_hint_read_only: "Observer can view schedules and organization information without editing.",
+            org_role_hint_employee: "Employee access requires linking this account to an employee record.",
             org_status_active: "Active",
             org_status_disabled: "Disabled",
             org_status_invited: "Invited",
@@ -162,6 +175,8 @@
             auth_id_card_placeholder: "Например: 123456789",
             auth_email_placeholder: "name@example.com",
             auth_create_organization: "Создать организацию",
+            auth_initial_role: "Ваша роль",
+            auth_initial_role_hint: "Первый аккаунт всегда становится владельцем организации.",
             auth_msg_cloud_unreachable: "Облако недоступно. Проверьте интернет и попробуйте ещё раз.",
             auth_msg_desktop_ready: "Авторизуйте облачного пользователя или добавьте новую организацию. Работа продолжится локально на этом компьютере.",
             auth_msg_employee_portal_ready: "Портал сотрудников готов.",
@@ -201,8 +216,8 @@
             org_current_password: "Текущий пароль",
             org_new_password: "Новый пароль",
             org_change_password: "Сменить пароль",
-            org_invite: "Пригласить сотрудника",
-            org_invite_text: "Создайте одноразовую ссылку приглашения.",
+            org_invite: "Пригласить участника",
+            org_invite_text: "Создайте одноразовую ссылку приглашения и выберите роль доступа.",
             org_role: "Роль",
             org_expires: "Действует дней",
             org_create_invitation: "Создать приглашение",
@@ -259,6 +274,10 @@
             org_msg_creating_invitation: "Создание приглашения...",
             org_msg_select_employee_first: "Сначала выберите сотрудника для приглашения.",
             org_msg_invitation_created: "Приглашение создано.",
+            org_msg_updating_role: "Обновление роли...",
+            org_msg_role_updated: "Роль обновлена.",
+            org_msg_updating_employee_link: "Обновление привязки сотрудника...",
+            org_msg_employee_link_updated: "Привязка сотрудника обновлена.",
             org_msg_saving_profile: "Сохранение профиля...",
             org_msg_profile_saved: "Профиль сохранён.",
             org_msg_changing_password: "Смена пароля...",
@@ -268,7 +287,14 @@
             org_role_admin: "Администратор",
             org_role_manager: "Менеджер",
             org_role_scheduler: "Планировщик",
+            org_role_read_only: "Наблюдатель",
             org_role_employee: "Сотрудник",
+            org_role_hint_owner: "Владелец имеет полный доступ и управляет другими владельцами и администраторами.",
+            org_role_hint_admin: "Администратор управляет расписанием, сотрудниками, приглашениями и большинством настроек организации.",
+            org_role_hint_scheduler: "Планировщик редактирует расписание и настройки сотрудников, но не управляет владельцами.",
+            org_role_hint_manager: "Менеджер видит рабочие процессы расписания и пожелания без права редактирования расписания.",
+            org_role_hint_read_only: "Наблюдатель просматривает расписания и данные организации без редактирования.",
+            org_role_hint_employee: "Доступ сотрудника требует привязки аккаунта к записи сотрудника.",
             org_status_active: "Активен",
             org_status_disabled: "Отключён",
             org_status_invited: "Приглашён",
@@ -308,6 +334,8 @@
             auth_id_card_placeholder: "לדוגמה: 123456789",
             auth_email_placeholder: "name@example.com",
             auth_create_organization: "צור ארגון",
+            auth_initial_role: "התפקיד שלך",
+            auth_initial_role_hint: "החשבון הראשון הוא תמיד בעלים של הארגון.",
             auth_msg_cloud_unreachable: "הענן אינו זמין. בדוק את החיבור לאינטרנט ונסה שוב.",
             auth_msg_desktop_ready: "אשר משתמש ענן או הוסף ארגון חדש. העבודה תמשיך מקומית במחשב הזה.",
             auth_msg_employee_portal_ready: "פורטל העובדים מוכן.",
@@ -347,8 +375,8 @@
             org_current_password: "סיסמה נוכחית",
             org_new_password: "סיסמה חדשה",
             org_change_password: "שנה סיסמה",
-            org_invite: "הזמן עובד",
-            org_invite_text: "צור קישור הזמנה חד-פעמי.",
+            org_invite: "הזמן חבר",
+            org_invite_text: "צור קישור הזמנה חד-פעמי ובחר תפקיד גישה.",
             org_role: "תפקיד",
             org_expires: "תוקף בימים",
             org_create_invitation: "צור הזמנה",
@@ -405,6 +433,10 @@
             org_msg_creating_invitation: "יוצר הזמנה...",
             org_msg_select_employee_first: "יש לבחור עובד לפני יצירת הזמנה.",
             org_msg_invitation_created: "ההזמנה נוצרה.",
+            org_msg_updating_role: "מעדכן תפקיד...",
+            org_msg_role_updated: "התפקיד עודכן.",
+            org_msg_updating_employee_link: "מעדכן קישור לעובד...",
+            org_msg_employee_link_updated: "הקישור לעובד עודכן.",
             org_msg_saving_profile: "שומר פרופיל...",
             org_msg_profile_saved: "הפרופיל נשמר.",
             org_msg_changing_password: "משנה סיסמה...",
@@ -414,7 +446,14 @@
             org_role_admin: "אדמין",
             org_role_manager: "מנהל",
             org_role_scheduler: "מתזמן",
+            org_role_read_only: "צופה",
             org_role_employee: "עובד",
+            org_role_hint_owner: "לבעלים יש גישה מלאה וניהול של בעלים ואדמינים אחרים.",
+            org_role_hint_admin: "אדמין מנהל סידורים, עובדים, הזמנות ורוב הגדרות הארגון.",
+            org_role_hint_scheduler: "מתזמן יכול לערוך סידורים והגדרות עובדים, אך לא לנהל בעלים.",
+            org_role_hint_manager: "מנהל יכול לצפות בתהליכי סידור ובבקשות שבועיות ללא עריכת סידור.",
+            org_role_hint_read_only: "צופה יכול לראות סידורים ופרטי ארגון ללא עריכה.",
+            org_role_hint_employee: "גישת עובד דורשת קישור החשבון לרשומת עובד.",
             org_status_active: "פעיל",
             org_status_disabled: "מושבת",
             org_status_invited: "הוזמן",
@@ -449,9 +488,23 @@
         return (translations[lang] || translations.en)[key] || translations.en[key] || key;
     }
 
+    function hasAuthTranslation(key) {
+        const lang = language();
+        return Boolean((translations[lang] || translations.en)[key] || translations.en[key]);
+    }
+
     function setText(selector, key) {
         document.querySelectorAll(selector).forEach((element) => {
             element.textContent = t(key);
+        });
+    }
+
+    function applyDataTranslations() {
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+            const key = element.dataset.i18n;
+            if (hasAuthTranslation(key)) {
+                element.textContent = t(key);
+            }
         });
     }
 
@@ -482,10 +535,12 @@
         setText("#login-tab", "auth_login");
         setText("#bootstrap-tab", "auth_create_owner");
         setText('label[for="login-email"], #login-form label:nth-of-type(1) span, #bootstrap-form label:nth-of-type(3) span', "auth_email");
-        setText('#login-form label:nth-of-type(2) span, #bootstrap-form label:nth-of-type(4) span, #accept-form label:nth-of-type(3) span', "auth_password");
+        setText('#login-form label:nth-of-type(2) span, #bootstrap-form label:nth-of-type(5) span, #accept-form label:nth-of-type(3) span', "auth_password");
         setText("#login-form .auth-submit", "auth_login");
         setText("#bootstrap-form label:nth-of-type(1) span", "auth_org_name");
         setText("#bootstrap-form label:nth-of-type(2) span, #accept-form label:nth-of-type(2) span", "auth_your_name");
+        setText("#bootstrap-form label:nth-of-type(4) span", "auth_initial_role");
+        setText("#bootstrap-form label:nth-of-type(4) .field-hint", "auth_initial_role_hint");
         setText("#bootstrap-form .auth-submit", "auth_create_organization");
         setText(".auth-side h2", isAcceptInvitation ? "auth_join_org" : "auth_foundation");
         setText(".auth-side-content > p:not(.auth-kicker):not(.api-mode-status):not(.api-mode-title)", isAcceptInvitation ? "auth_join_text" : "auth_foundation_text");
@@ -511,9 +566,10 @@
         setText("#password-form .btn", "org_change_password");
         setText("#invite-form .settings-section-title", "org_invite");
         setText("#invite-form .settings-section-text", "org_invite_text");
-        setText("#invite-form label:nth-of-type(1) span", "org_employee");
-        setText("#invite-form label:nth-of-type(2) span", "auth_email");
-        setText("#invite-form label:nth-of-type(3) span", "org_expires");
+        setText("#invite-form label:nth-of-type(1) span", "org_role");
+        setText("#invite-form label:nth-of-type(2) span", "org_employee");
+        setText("#invite-form label:nth-of-type(3) span", "auth_email");
+        setText("#invite-form label:nth-of-type(4) span", "org_expires");
         setText("#invite-form > .btn", "org_create_invitation");
         setText("#employee-portal-panel .settings-section-title", "org_employee_portal");
         setText("#employee-portal-panel .settings-section-text", "org_employee_portal_text");
@@ -559,6 +615,7 @@
                 if (keys[index]) header.textContent = t(keys[index]);
             });
         });
+        applyDataTranslations();
     }
 
     window.organizationAuthText = t;

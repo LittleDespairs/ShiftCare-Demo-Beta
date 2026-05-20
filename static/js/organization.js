@@ -14,6 +14,9 @@
     const elements = {};
     const INVITATION_ROLES = new Set(["owner", "admin"]);
     const MEMBER_VIEW_ROLES = new Set(["owner", "admin", "scheduler", "manager"]);
+    const ALL_MEMBER_ROLES = ["owner", "admin", "scheduler", "manager", "read_only", "employee"];
+    const ADMIN_ASSIGNABLE_ROLES = ["scheduler", "manager", "read_only", "employee"];
+    const INVITE_ROLES = ["employee", "read_only", "manager", "scheduler", "admin", "owner"];
 
     function text(value) {
         return window.escapeHtml ? window.escapeHtml(value) : String(value ?? "");
@@ -202,6 +205,70 @@
         return uiText(`org_role_${role}`, role || "-");
     }
 
+    function isEmployeeRole(role) {
+        return role === "employee";
+    }
+
+    function canManagePrivilegedRoles() {
+        return state.membership?.role === "owner";
+    }
+
+    function assignableRolesForCurrentUser() {
+        return canManagePrivilegedRoles() ? ALL_MEMBER_ROLES : ADMIN_ASSIGNABLE_ROLES;
+    }
+
+    function canManageMemberRole(member) {
+        if (!canManageInvitations()) return false;
+        if (!member || member.membership_status !== "active") return false;
+        if (Number(member.user_id) === Number(state.user?.id)) return false;
+        if (state.membership?.role !== "owner" && ["owner", "admin"].includes(member.role)) return false;
+        return true;
+    }
+
+    function canManageMemberEmployeeLink(member) {
+        return canManageInvitations()
+            && member?.membership_status === "active"
+            && member.role === "employee";
+    }
+
+    function roleOptions(currentRole, roles = assignableRolesForCurrentUser()) {
+        const roleSet = new Set(roles);
+        if (currentRole) roleSet.add(currentRole);
+        return ALL_MEMBER_ROLES
+            .filter((role) => roleSet.has(role))
+            .map((role) => `<option value="${role}" ${role === currentRole ? "selected" : ""}>${text(formatRole(role))}</option>`)
+            .join("");
+    }
+
+    function inviteRoleOptions() {
+        const roles = canManagePrivilegedRoles() ? INVITE_ROLES : INVITE_ROLES.filter((role) => !["owner", "admin"].includes(role));
+        return roles
+            .map((role) => `<option value="${role}">${text(formatRole(role))}</option>`)
+            .join("");
+    }
+
+    function inviteRoleHint(role) {
+        if (role === "employee") {
+            return uiText("org_role_hint_employee", "Employee access requires linking this account to an employee record.");
+        }
+        if (role === "read_only") {
+            return uiText("org_role_hint_read_only", "Observer can view schedules and organization information without editing.");
+        }
+        if (role === "manager") {
+            return uiText("org_role_hint_manager", "Manager can view schedule workflows and weekly preferences without schedule editing.");
+        }
+        if (role === "scheduler") {
+            return uiText("org_role_hint_scheduler", "Scheduler can edit schedules and employee setup but cannot manage owners.");
+        }
+        if (role === "admin") {
+            return uiText("org_role_hint_admin", "Admin can manage schedules, employees, invitations, and most organization settings.");
+        }
+        if (role === "owner") {
+            return uiText("org_role_hint_owner", "Owner has full access and can manage other owners and admins.");
+        }
+        return "";
+    }
+
     function formatStatus(status) {
         return uiText(`org_status_${status}`, status || "-");
     }
@@ -221,7 +288,7 @@
                 <td>${text(member.full_name)}</td>
                 <td>${text(member.email)}</td>
                 <td>${renderMemberEmployeeCell(member)}</td>
-                <td>${text(formatRole(member.role))}</td>
+                <td>${renderMemberRoleCell(member)}</td>
                 <td>${text(formatStatus(member.membership_status))}</td>
                 <td>${text(yesNo(member.email_verified))}</td>
                 <td>
@@ -243,9 +310,52 @@
         `).join("");
     }
 
+    function renderMemberRoleCell(member) {
+        if (!canManageMemberRole(member)) {
+            return text(formatRole(member.role));
+        }
+        return `
+            <select
+                class="organization-table-select compact"
+                data-organization-action="member-role"
+                data-user-id="${Number(member.user_id)}"
+                data-current-role="${text(member.role)}"
+            >
+                ${roleOptions(member.role)}
+            </select>
+        `;
+    }
+
     function renderMemberEmployeeCell(member) {
         if (member.role !== "employee") return "";
-        return text(member.employee_name || uiText("org_member_employee_not_linked", "Not linked"));
+        if (!canManageMemberEmployeeLink(member)) {
+            return text(member.employee_name || uiText("org_member_employee_not_linked", "Not linked"));
+        }
+        return `
+            <select
+                class="organization-table-select"
+                data-organization-action="member-employee-link"
+                data-user-id="${Number(member.user_id)}"
+                data-current-employee-id="${Number(member.employee_id || 0)}"
+            >
+                ${employeeLinkOptions(member.employee_id)}
+            </select>
+            ${member.employee_id ? "" : `<span class="organization-table-note">${text(uiText("org_member_employee_not_linked", "Not linked"))}</span>`}
+        `;
+    }
+
+    function employeeLinkOptions(currentEmployeeId) {
+        const linkedIds = linkedEmployeeIds(Number(currentEmployeeId || 0));
+        const currentValue = Number(currentEmployeeId || 0);
+        return [
+            `<option value="">${text(uiText("org_no_employee_link", "No employee link"))}</option>`,
+            ...state.employees.map((employee) => {
+                const employeeId = Number(employee.id);
+                const disabled = linkedIds.has(employeeId) && employeeId !== currentValue ? "disabled" : "";
+                const selected = employeeId === currentValue ? "selected" : "";
+                return `<option value="${employeeId}" ${disabled} ${selected}>${text(employee.full_name)}</option>`;
+            }),
+        ].join("");
     }
 
     function renderInvitations(invitations, emptyMessage = uiText("org_no_invitations", "No invitations found.")) {
@@ -343,6 +453,46 @@
         }
     }
 
+    async function updateMemberRole(userId, role, selectElement) {
+        setMessage(uiText("org_msg_updating_role", "Updating role..."), "");
+        try {
+            await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/members/${userId}/role`, {
+                method: "PUT",
+                body: JSON.stringify({ role }),
+            });
+            await refreshCurrentUser();
+            renderOrganizationSelector();
+            renderIdentity();
+            renderPermissions();
+            await loadOrganizationData();
+            renderEmployeeSelector();
+            setMessage(uiText("org_msg_role_updated", "Role updated."), "success");
+        } catch (error) {
+            if (selectElement?.dataset.currentRole) {
+                selectElement.value = selectElement.dataset.currentRole;
+            }
+            setMessage(error.message, "error");
+        }
+    }
+
+    async function updateMemberEmployeeLink(userId, employeeId, selectElement) {
+        setMessage(uiText("org_msg_updating_employee_link", "Updating employee link..."), "");
+        try {
+            await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/members/${userId}/employee-link`, {
+                method: "PUT",
+                body: JSON.stringify({ employee_id: employeeId || null }),
+            });
+            await loadOrganizationData();
+            renderEmployeeSelector();
+            setMessage(uiText("org_msg_employee_link_updated", "Employee link updated."), "success");
+        } catch (error) {
+            if (selectElement?.dataset.currentEmployeeId) {
+                selectElement.value = selectElement.dataset.currentEmployeeId === "0" ? "" : selectElement.dataset.currentEmployeeId;
+            }
+            setMessage(error.message, "error");
+        }
+    }
+
     async function loadOrganizationData() {
         if (!state.organizationId) {
             setMessage(uiText("org_msg_no_active_organization", "Current user has no active organization."), "error");
@@ -387,36 +537,45 @@
         }
     }
 
-    function linkedEmployeeIds() {
+    function linkedEmployeeIds(allowedEmployeeId = 0) {
         const ids = new Set();
-        elements.membersBody.querySelectorAll("[data-linked-employee-id]").forEach((element) => {
-            const employeeId = Number(element.dataset.linkedEmployeeId);
-            if (employeeId) ids.add(employeeId);
+        (state.members || []).forEach((member) => {
+            const employeeId = Number(member.employee_id || 0);
+            if (employeeId && employeeId !== Number(allowedEmployeeId || 0) && member.membership_status === "active") {
+                ids.add(employeeId);
+            }
         });
-        elements.invitationsBody.querySelectorAll("[data-pending-employee-id]").forEach((element) => {
-            if (element.disabled) return;
-            const employeeId = Number(element.dataset.pendingEmployeeId);
-            if (employeeId) ids.add(employeeId);
+        (state.invitations || []).forEach((invitation) => {
+            const employeeId = Number(invitation.employee_id || 0);
+            if (employeeId && employeeId !== Number(allowedEmployeeId || 0) && invitation.status === "pending") {
+                ids.add(employeeId);
+            }
         });
         return ids;
     }
 
-    function linkedEmployeePublicIds() {
+    function linkedEmployeePublicIds(allowedEmployeePublicId = "") {
         const ids = new Set();
-        elements.membersBody.querySelectorAll("[data-linked-employee-public-id]").forEach((element) => {
-            const employeePublicId = String(element.dataset.linkedEmployeePublicId || "").trim();
-            if (employeePublicId) ids.add(employeePublicId);
+        const allowedValue = String(allowedEmployeePublicId || "").trim();
+        (state.members || []).forEach((member) => {
+            const employeePublicId = String(member.employee_public_id || "").trim();
+            if (employeePublicId && employeePublicId !== allowedValue && member.membership_status === "active") {
+                ids.add(employeePublicId);
+            }
         });
-        elements.invitationsBody.querySelectorAll("[data-pending-employee-public-id]").forEach((element) => {
-            if (element.disabled) return;
-            const employeePublicId = String(element.dataset.pendingEmployeePublicId || "").trim();
-            if (employeePublicId) ids.add(employeePublicId);
+        (state.invitations || []).forEach((invitation) => {
+            const employeePublicId = String(invitation.employee_public_id || "").trim();
+            if (employeePublicId && employeePublicId !== allowedValue && invitation.status === "pending") {
+                ids.add(employeePublicId);
+            }
         });
         return ids;
     }
 
     function renderEmployeeSelector() {
         if (!elements.inviteEmployee) return;
+        const selectedRole = elements.inviteRole?.value || "employee";
+        const employeeRequired = isEmployeeRole(selectedRole);
         const linkedIds = linkedEmployeeIds();
         const linkedPublicIds = linkedEmployeePublicIds();
         const currentValue = elements.inviteEmployee.value;
@@ -428,7 +587,28 @@
                 return `<option value="${Number(employee.id)}" ${disabled} ${selected}>${text(employee.full_name)}</option>`;
             }),
         ].join("");
-        elements.inviteEmployee.required = true;
+        elements.inviteEmployee.required = employeeRequired;
+        elements.inviteEmployee.disabled = !employeeRequired;
+        if (!employeeRequired) {
+            elements.inviteEmployee.value = "";
+        }
+    }
+
+    function updateInviteRoleState() {
+        if (!elements.inviteRole) return;
+        const currentRole = elements.inviteRole.value || "employee";
+        elements.inviteRole.innerHTML = inviteRoleOptions();
+        if ([...elements.inviteRole.options].some((option) => option.value === currentRole)) {
+            elements.inviteRole.value = currentRole;
+        }
+        const role = elements.inviteRole.value || "employee";
+        if (elements.inviteEmployeeField) {
+            elements.inviteEmployeeField.hidden = !isEmployeeRole(role);
+        }
+        if (elements.inviteRoleHint) {
+            elements.inviteRoleHint.textContent = inviteRoleHint(role);
+        }
+        renderEmployeeSelector();
     }
 
     function bindInviteForm() {
@@ -437,24 +617,30 @@
             if (!canManageInvitations()) return;
             setInviteResult("");
             setMessage(uiText("org_msg_creating_invitation", "Creating invitation..."), "");
-            if (!elements.inviteEmployee.value) {
+            const selectedRole = elements.inviteRole.value || "employee";
+            const isEmployeeInvitation = isEmployeeRole(selectedRole);
+            if (isEmployeeInvitation && !elements.inviteEmployee.value) {
                 setMessage(uiText("org_msg_select_employee_first", "Select an employee before creating an employee invitation."), "error");
                 elements.inviteEmployee.focus();
                 return;
             }
             try {
+                const payload = {
+                    email: elements.inviteEmail.value,
+                    role: selectedRole,
+                    expires_in_days: Number(elements.inviteDays.value),
+                };
+                if (isEmployeeInvitation) {
+                    payload.employee_id = Number(elements.inviteEmployee.value);
+                }
                 const response = await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/invitations`, {
                     method: "POST",
-                    body: JSON.stringify({
-                        email: elements.inviteEmail.value,
-                        employee_id: Number(elements.inviteEmployee.value),
-                        role: "employee",
-                        expires_in_days: Number(elements.inviteDays.value),
-                    }),
+                    body: JSON.stringify(payload),
                 });
                 setInviteResult(invitationUrlFromResponse(response));
                 elements.inviteForm.reset();
                 elements.inviteDays.value = "7";
+                updateInviteRoleState();
                 await loadOrganizationData();
                 renderEmployeeSelector();
                 setMessage(uiText("org_msg_invitation_created", "Invitation created."), "success");
@@ -718,6 +904,7 @@
             selectMembership();
             renderIdentity();
             renderPermissions();
+            updateInviteRoleState();
             setMessage("", "");
             try {
                 await loadOrganizationData();
@@ -737,6 +924,7 @@
             await navigator.clipboard.writeText(elements.employeePortalUrl.value);
             setMessage(uiText("org_msg_employee_portal_copied", "Employee portal link copied."), "success");
         });
+        elements.inviteRole?.addEventListener("change", updateInviteRoleState);
         elements.cloudLinkForm?.addEventListener("submit", async (event) => {
             event.preventDefault();
             await uploadAndLinkCloudOrganization();
@@ -746,6 +934,17 @@
             const button = event.target.closest('[data-organization-action="remove-member"]');
             if (!button || button.disabled) return;
             removeMember(Number(button.dataset.userId));
+        });
+        elements.membersBody.addEventListener("change", (event) => {
+            const roleSelect = event.target.closest('[data-organization-action="member-role"]');
+            if (roleSelect) {
+                updateMemberRole(Number(roleSelect.dataset.userId), roleSelect.value, roleSelect);
+                return;
+            }
+            const employeeSelect = event.target.closest('[data-organization-action="member-employee-link"]');
+            if (employeeSelect) {
+                updateMemberEmployeeLink(Number(employeeSelect.dataset.userId), Number(employeeSelect.value || 0), employeeSelect);
+            }
         });
         elements.invitationsBody.addEventListener("click", (event) => {
             const revokeButton = event.target.closest('[data-organization-action="revoke-invitation"]');
@@ -788,9 +987,11 @@
             employeePortalPanel: document.getElementById("employee-portal-panel"),
             membersPanel: document.getElementById("members-panel"),
             invitationsPanel: document.getElementById("invitations-panel"),
+            inviteEmployeeField: document.getElementById("invite-employee-field"),
             inviteEmployee: document.getElementById("invite-employee"),
             inviteEmail: document.getElementById("invite-email"),
             inviteRole: document.getElementById("invite-role"),
+            inviteRoleHint: document.getElementById("invite-role-hint"),
             inviteDays: document.getElementById("invite-days"),
             inviteResult: document.getElementById("invite-result"),
             inviteResultWrap: document.getElementById("invite-result-wrap"),
@@ -828,6 +1029,7 @@
             renderIdentity();
             renderEmployeePortal();
             renderPermissions();
+            updateInviteRoleState();
             await loadOrganizationData();
             await loadEmployeesForInvitations();
             await loadCloudLinkStatus();

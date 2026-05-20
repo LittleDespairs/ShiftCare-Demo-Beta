@@ -127,12 +127,25 @@
                 <form id="invite-form" class="organization-panel">
                     <div class="settings-section-header">
                         <div>
-                            <h3 class="settings-section-title" data-i18n="org_invite">Invite employee</h3>
-                            <p class="settings-section-text" data-i18n="org_invite_text">Create a one-time invitation link.</p>
+                            <h3 class="settings-section-title" data-i18n="org_invite">Invite member</h3>
+                            <p class="settings-section-text" data-i18n="org_invite_text">Create a one-time invitation link and choose the access role.</p>
                         </div>
                     </div>
 
                     <label class="form-field">
+                        <span data-i18n="org_role">Role</span>
+                        <select id="invite-role" required>
+                            <option value="employee" data-i18n="org_role_employee">Employee</option>
+                            <option value="read_only" data-i18n="org_role_read_only">Observer</option>
+                            <option value="manager" data-i18n="org_role_manager">Manager</option>
+                            <option value="scheduler" data-i18n="org_role_scheduler">Scheduler</option>
+                            <option value="admin" data-i18n="org_role_admin">Admin</option>
+                            <option value="owner" data-i18n="org_role_owner">Owner</option>
+                        </select>
+                        <small id="invite-role-hint" class="field-hint"></small>
+                    </label>
+
+                    <label id="invite-employee-field" class="form-field">
                         <span data-i18n="org_employee">Employee</span>
                         <select id="invite-employee">
                             <option value="" data-i18n="preferences_select_employee">Select employee</option>
@@ -143,8 +156,6 @@
                         <span data-i18n="auth_email">Email</span>
                         <input id="invite-email" type="email" autocomplete="email" required>
                     </label>
-
-                    <input id="invite-role" type="hidden" value="employee">
 
                     <label class="form-field">
                         <span data-i18n="org_expires">Expires in days</span>
@@ -222,8 +233,8 @@
 <script src="/static/js/i18n.js?v={{ app_version }}-auth-i18n-fix"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
 <script src="/static/js/access_control.js?v={{ app_version }}-directory-access"></script>
-<script src="/static/js/auth_i18n.js?v={{ app_version }}-cloud-link-status"></script>
-<script src="/static/js/organization.js?v={{ app_version }}-employee-invite-link"></script>
+<script src="/static/js/auth_i18n.js?v={{ app_version }}-role-management-refresh"></script>
+<script src="/static/js/organization.js?v={{ app_version }}-member-role-management"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

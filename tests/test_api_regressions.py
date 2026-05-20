@@ -1851,9 +1851,11 @@ class ApiRegressionTests(unittest.TestCase):
         organization_response = self.client.get("/organization")
         self.assertEqual(organization_response.status_code, 200)
         self.assertIn("/static/js/organization.js", organization_response.text)
-        self.assertIn("Invite employee", organization_response.text)
+        self.assertIn("Invite member", organization_response.text)
         self.assertIn("Public page for employee wishes", organization_response.text)
-        self.assertIn('id="invite-role" type="hidden" value="employee"', organization_response.text)
+        self.assertIn('id="invite-role"', organization_response.text)
+        self.assertIn('value="read_only"', organization_response.text)
+        self.assertIn('id="invite-employee-field"', organization_response.text)
         self.assertNotIn("No employee link", organization_response.text)
         self.assertNotIn("Optional beta add-on", organization_response.text)
         self.assertNotIn("Upload and link cloud organization", organization_response.text)
@@ -1869,8 +1871,10 @@ class ApiRegressionTests(unittest.TestCase):
 
     def test_organization_frontend_uses_invitation_employee_link_without_manual_member_link(self):
         organization_js = Path("static/js/organization.js").read_text(encoding="utf-8")
-        self.assertIn('role: "employee"', organization_js)
-        self.assertIn("employee_id: Number(elements.inviteEmployee.value)", organization_js)
+        self.assertIn("role: selectedRole", organization_js)
+        self.assertIn("payload.employee_id = Number(elements.inviteEmployee.value)", organization_js)
+        self.assertIn('data-organization-action="member-role"', organization_js)
+        self.assertIn("/members/${userId}/role", organization_js)
         self.assertNotIn("link-member-employee", organization_js)
         self.assertNotIn("data-member-employee-select", organization_js)
 
@@ -2680,6 +2684,100 @@ class ApiRegressionTests(unittest.TestCase):
 
         cursor.execute("SELECT employee_id FROM organization_memberships WHERE user_id = ?", (employee_user_id,))
         self.assertEqual(cursor.fetchone()["employee_id"], employee_id)
+
+    def test_owner_can_update_member_role_and_employee_link_together(self):
+        employee_id = self._create_employee(full_name="Employee B")
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "viewer@example.com", "role": "read_only", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        viewer_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "full_name": "Viewer User",
+                "password": "ViewerPass123",
+            },
+        )
+        self.assertEqual(viewer_response.status_code, 200)
+        viewer_user_id = viewer_response.json()["user"]["id"]
+
+        scheduler_response = self.client.put(
+            f"/api/organizations/1/members/{viewer_user_id}/role",
+            headers=owner_headers,
+            json={"role": "scheduler"},
+        )
+        self.assertEqual(scheduler_response.status_code, 200)
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT role, employee_id FROM organization_memberships WHERE user_id = ?", (viewer_user_id,))
+        updated_role = cursor.fetchone()
+        self.assertEqual(updated_role["role"], "scheduler")
+        self.assertIsNone(updated_role["employee_id"])
+
+        employee_role_response = self.client.put(
+            f"/api/organizations/1/members/{viewer_user_id}/role",
+            headers=owner_headers,
+            json={"role": "employee", "employee_id": employee_id},
+        )
+        self.assertEqual(employee_role_response.status_code, 200)
+        cursor.execute("SELECT role, employee_id FROM organization_memberships WHERE user_id = ?", (viewer_user_id,))
+        employee_role = cursor.fetchone()
+        self.assertEqual(employee_role["role"], "employee")
+        self.assertEqual(employee_role["employee_id"], employee_id)
+
+        self_update_response = self.client.put(
+            f"/api/organizations/1/members/{owner_response.json()['user']['id']}/role",
+            headers=owner_headers,
+            json={"role": "read_only"},
+        )
+        self.assertEqual(self_update_response.status_code, 400)
+
+    def test_role_management_protects_owner_only_roles(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        admin_invitation = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "admin@example.com", "role": "admin", "expires_in_days": 7},
+        )
+        self.assertEqual(admin_invitation.status_code, 200)
+        admin_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": admin_invitation.json()["invitation_token"],
+                "full_name": "Admin User",
+                "password": "AdminPass123",
+            },
+        )
+        self.assertEqual(admin_response.status_code, 200)
+        admin_headers = {"Authorization": f"Bearer {admin_response.json()['access_token']}"}
+
+        owner_invitation = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=admin_headers,
+            json={"email": "next-owner@example.com", "role": "owner", "expires_in_days": 7},
+        )
+        self.assertEqual(owner_invitation.status_code, 403)
 
     def test_schedule_edit_permissions_after_auth_bootstrap(self):
         owner_response = self.client.post(
