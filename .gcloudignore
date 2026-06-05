@@ -7,6 +7,8 @@ __pycache__/
 build/
 dist/
 backups/
+docs/business_plan/
+tools/build_business_plan_docs.py
 tmp_demo_qa/
 tmp_demo_qa_01510/
 *.db

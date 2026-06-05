@@ -113,6 +113,20 @@
         throw new Error("Invitation link was not generated. Check cloud connection and try again.");
     }
 
+    function invitationEmailMessage(response, createdFallback, sentFallback) {
+        const status = response?.email_status?.status || "";
+        if (status === "sent" || status === "sent_by_cloud") {
+            return uiText("org_msg_invitation_email_sent", sentFallback);
+        }
+        if (status === "failed") {
+            return uiText("org_msg_invitation_email_failed", "Invitation created, but email delivery failed. Copy the link and send it manually.");
+        }
+        if (status === "disabled") {
+            return uiText("org_msg_invitation_email_disabled", "Invitation created. Email delivery is not configured, so copy the link and send it manually.");
+        }
+        return uiText("org_msg_invitation_created", createdFallback);
+    }
+
     function activeMemberships() {
         return (state.user?.memberships || []).filter((membership) => membership.status === "active");
     }
@@ -447,7 +461,7 @@
             setInviteResult(invitationUrlFromResponse(response));
             await loadOrganizationData();
             renderEmployeeSelector();
-            setMessage(uiText("org_msg_invitation_link_generated", "Invitation link generated."), "success");
+            setMessage(invitationEmailMessage(response, "Invitation link generated.", "New invitation link emailed."), "success");
         } catch (error) {
             setMessage(error.message, "error");
         }
@@ -643,7 +657,7 @@
                 updateInviteRoleState();
                 await loadOrganizationData();
                 renderEmployeeSelector();
-                setMessage(uiText("org_msg_invitation_created", "Invitation created."), "success");
+                setMessage(invitationEmailMessage(response, "Invitation created.", "Invitation emailed."), "success");
             } catch (error) {
                 setMessage(error.message, "error");
             }

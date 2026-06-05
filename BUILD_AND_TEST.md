@@ -115,13 +115,13 @@ See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
 Current spec:
 
 ```text
-ShiftCare_0.18.1_beta.spec
+ShiftCare_0.19.0_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ShiftCare_0.18.1_beta.spec
+.\.venv\Scripts\pyinstaller.exe ShiftCare_0.19.0_beta.spec
 ```
 
 ## Windows Installer
@@ -144,7 +144,7 @@ If Inno Setup is not installed locally:
 Expected installer output:
 
 ```text
-dist\installer\ShiftCare_Setup_0.18.1-beta.exe
+dist\installer\ShiftCare_Setup_0.19.0-beta.exe
 ```
 
 ## Before Committing

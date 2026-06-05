@@ -48,6 +48,13 @@ from app_settings_service import (
 from app_config import get_app_config, validate_runtime_config
 from cloud_sql import check_postgres_connection
 from database import get_connection, init_db
+from email_service import (
+    email_delivery_is_enabled,
+    public_email_status,
+    send_email_verification_email,
+    send_invitation_email,
+    send_password_reset_email,
+)
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from row_serializers import (
     row_to_coverage_requirement_dict,
@@ -117,7 +124,7 @@ from update_service import (
 import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
-APP_VERSION = "0.18.1_beta"
+APP_VERSION = "0.19.0_beta"
 APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
@@ -386,6 +393,14 @@ def build_invitation_url(invitation_token: str) -> str:
     return build_public_app_url(f"/accept-invitation?token={quote(invitation_token)}")
 
 
+def build_password_reset_url(reset_token: str) -> str:
+    return build_public_app_url(f"/reset-password?token={quote(reset_token)}")
+
+
+def build_email_verification_url(verification_token: str) -> str:
+    return build_public_app_url(f"/verify-email?token={quote(verification_token)}")
+
+
 def build_invitation_url_for_request(request: Request | None, invitation_token: str) -> str:
     configured_url = build_invitation_url(invitation_token)
     if configured_url:
@@ -395,6 +410,28 @@ def build_invitation_url_for_request(request: Request | None, invitation_token: 
         if parsed.hostname and parsed.hostname not in {"127.0.0.1", "localhost", "::1", "testserver"}:
             return f"{parsed.scheme}://{parsed.netloc}/accept-invitation?token={quote(invitation_token)}"
     return f"/accept-invitation?token={quote(invitation_token)}"
+
+
+def build_password_reset_url_for_request(request: Request | None, reset_token: str) -> str:
+    configured_url = build_password_reset_url(reset_token)
+    if configured_url:
+        return configured_url
+    if request:
+        parsed = urlparse(str(request.base_url))
+        if parsed.hostname and parsed.hostname not in {"127.0.0.1", "localhost", "::1", "testserver"}:
+            return f"{parsed.scheme}://{parsed.netloc}/reset-password?token={quote(reset_token)}"
+    return f"/reset-password?token={quote(reset_token)}"
+
+
+def build_email_verification_url_for_request(request: Request | None, verification_token: str) -> str:
+    configured_url = build_email_verification_url(verification_token)
+    if configured_url:
+        return configured_url
+    if request:
+        parsed = urlparse(str(request.base_url))
+        if parsed.hostname and parsed.hostname not in {"127.0.0.1", "localhost", "::1", "testserver"}:
+            return f"{parsed.scheme}://{parsed.netloc}/verify-email?token={quote(verification_token)}"
+    return f"/verify-email?token={quote(verification_token)}"
 
 
 def read_organization_cloud_link_settings(cursor: sqlite3.Cursor, organization_id: int) -> dict:
@@ -3635,6 +3672,8 @@ def change_authenticated_password(
 @app.post("/api/auth/request-password-reset", tags=["Auth"])
 def request_password_reset(request_data: AuthPasswordResetRequest, request: Request):
     connection = get_connection()
+    reset_email = None
+    reset_url = ""
     try:
         cursor = connection.cursor()
         email = str(request_data.email).strip().lower()
@@ -3656,10 +3695,17 @@ def request_password_reset(request_data: AuthPasswordResetRequest, request: Requ
                 user_id=user_row["id"],
                 metadata={"email": email, "ip": get_request_ip(request)},
             )
+            reset_email = email
+            reset_url = build_password_reset_url_for_request(request, reset_token)
         connection.commit()
+        email_result = None
+        if reset_email and reset_url:
+            email_result = send_password_reset_email(to_email=reset_email, reset_url=reset_url)
+        include_debug_token = not email_delivery_is_enabled()
         return {
             "message": "If the account exists, password reset instructions were created.",
-            "reset_token": reset_token,
+            "reset_token": reset_token if include_debug_token else None,
+            "email_status": public_email_status(email_result) if reset_token else {"status": "not_attempted"},
         }
     finally:
         connection.close()
@@ -3708,7 +3754,7 @@ def reset_password(request_data: AuthPasswordResetConfirmRequest):
 
 
 @app.post("/api/auth/request-email-verification", tags=["Auth"])
-def request_email_verification(current_user: dict = Depends(get_current_user)):
+def request_email_verification(request: Request, current_user: dict = Depends(get_current_user)):
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3722,9 +3768,16 @@ def request_email_verification(current_user: dict = Depends(get_current_user)):
         )
         write_auth_audit_event(cursor, "email_verification_requested", user_id=current_user["id"])
         connection.commit()
+        verification_url = build_email_verification_url_for_request(request, verification_token)
+        email_result = send_email_verification_email(
+            to_email=str(current_user["email"]),
+            verification_url=verification_url,
+        )
+        include_debug_token = not email_delivery_is_enabled()
         return {
             "message": "Email verification token created.",
-            "verification_token": verification_token,
+            "verification_token": verification_token if include_debug_token else None,
+            "email_status": public_email_status(email_result),
         }
     finally:
         connection.close()
@@ -4261,7 +4314,12 @@ def create_organization_invitation(
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM organizations WHERE id = ?", (organization_id,), "Organization not found")
+        organization = fetch_one_or_404(
+            cursor,
+            "SELECT id, name FROM organizations WHERE id = ?",
+            (organization_id,),
+            "Organization not found",
+        )
         email = str(request_data.email).strip().lower()
         cursor.execute(
             """
@@ -4278,6 +4336,7 @@ def create_organization_invitation(
 
         employee_id = request_data.employee_id
         employee_public_id = request_data.employee_public_id
+        employee_name = ""
         if employee_id is None and employee_public_id:
             cursor.execute(
                 """
@@ -4298,7 +4357,7 @@ def create_organization_invitation(
                 raise HTTPException(status_code=400, detail="Employee link is only available for employee invitations")
             cursor.execute(
                 """
-                SELECT id, public_id
+                SELECT id, public_id, full_name
                 FROM employees
                 WHERE id = ? AND organization_id = ?
                 """,
@@ -4308,6 +4367,7 @@ def create_organization_invitation(
             if not employee_row:
                 raise HTTPException(status_code=404, detail="Employee not found in this organization")
             employee_public_id = employee_row["public_id"]
+            employee_name = str(employee_row["full_name"] or "")
             cursor.execute(
                 """
                 SELECT 1
@@ -4410,6 +4470,7 @@ def create_organization_invitation(
                     },
                     "invitation_token": cloud_token,
                     "invitation_url": cloud_response.get("invitation_url") or build_invitation_url_for_request(request, cloud_token),
+                    "email_status": cloud_response.get("email_status") or {"status": "sent_by_cloud"},
                 }
             raise HTTPException(
                 status_code=409,
@@ -4452,7 +4513,16 @@ def create_organization_invitation(
                 "employee_id": employee_id,
             },
         )
+        invitation_url = build_invitation_url_for_request(request, invitation_token)
         connection.commit()
+        email_result = send_invitation_email(
+            to_email=email,
+            invitation_url=invitation_url,
+            organization_name=str(organization["name"] or "ShiftCare"),
+            role=request_data.role,
+            expires_at=expires_at,
+            employee_name=employee_name,
+        )
         return {
             "invitation": {
                 "id": invitation_id,
@@ -4464,7 +4534,8 @@ def create_organization_invitation(
                 "expires_at": expires_at,
             },
             "invitation_token": invitation_token,
-            "invitation_url": build_invitation_url_for_request(request, invitation_token),
+            "invitation_url": invitation_url,
+            "email_status": public_email_status(email_result),
         }
     except sqlite3.IntegrityError as exc:
         connection.rollback()
@@ -4960,9 +5031,11 @@ def regenerate_organization_invitation_token(
         cursor.execute(
             """
             SELECT oi.id, oi.email, oi.employee_id, oi.role, oi.status,
-                   e.full_name AS employee_name
+                   e.full_name AS employee_name,
+                   o.name AS organization_name
             FROM organization_invitations oi
             LEFT JOIN employees e ON e.id = oi.employee_id
+            JOIN organizations o ON o.id = oi.organization_id
             WHERE oi.id = ? AND oi.organization_id = ?
             """,
             (invitation_id, organization_id),
@@ -4997,7 +5070,16 @@ def regenerate_organization_invitation_token(
                 "expires_at": expires_at,
             },
         )
+        invitation_url = build_invitation_url_for_request(request, invitation_token)
         connection.commit()
+        email_result = send_invitation_email(
+            to_email=str(invitation["email"]),
+            invitation_url=invitation_url,
+            organization_name=str(invitation["organization_name"] or "ShiftCare"),
+            role=str(invitation["role"]),
+            expires_at=expires_at,
+            employee_name=str(invitation["employee_name"] or ""),
+        )
         return {
             "invitation": {
                 "id": invitation_id,
@@ -5009,7 +5091,8 @@ def regenerate_organization_invitation_token(
                 "expires_at": expires_at,
             },
             "invitation_token": invitation_token,
-            "invitation_url": build_invitation_url_for_request(request, invitation_token),
+            "invitation_url": invitation_url,
+            "email_status": public_email_status(email_result),
         }
     except sqlite3.IntegrityError as exc:
         connection.rollback()
@@ -5277,6 +5360,16 @@ def support_page(request: Request):
 @app.get("/accept-invitation", tags=["Pages"])
 def accept_invitation_page(request: Request):
     return templates.TemplateResponse(request=request, name="accept_invitation.html", context={})
+
+
+@app.get("/reset-password", tags=["Pages"])
+def reset_password_page(request: Request):
+    return templates.TemplateResponse(request=request, name="reset_password.html", context={})
+
+
+@app.get("/verify-email", tags=["Pages"])
+def verify_email_page(request: Request):
+    return templates.TemplateResponse(request=request, name="verify_email.html", context={})
 
 
 @app.get("/employees", tags=["Pages"])

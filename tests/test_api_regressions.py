@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from tests.test_support import database, main
+import email_service
 import license_runtime
 from db_adapter import CompatRow, PostgresCursorAdapter, _is_postgres_integrity_error, _rewrite_sql_for_postgres
 
@@ -1315,6 +1316,7 @@ class ApiRegressionTests(unittest.TestCase):
             json={"email": "owner@example.com"},
         )
         self.assertEqual(reset_request.status_code, 200)
+        self.assertEqual(reset_request.json()["email_status"]["status"], "disabled")
         reset_token = reset_request.json()["reset_token"]
         self.assertTrue(reset_token)
 
@@ -1340,6 +1342,7 @@ class ApiRegressionTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {new_login.json()['access_token']}"},
         )
         self.assertEqual(verification_request.status_code, 200)
+        self.assertEqual(verification_request.json()["email_status"]["status"], "disabled")
         verification_token = verification_request.json()["verification_token"]
 
         verify_response = self.client.post(
@@ -1371,6 +1374,75 @@ class ApiRegressionTests(unittest.TestCase):
                 "email_verified",
             ],
         )
+
+    def test_email_enabled_sends_invitation_and_hides_auth_debug_tokens(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_token = owner_response.json()["access_token"]
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+        employee_record_id = self._create_employee(headers=owner_headers, full_name="Employee User")
+
+        with (
+            patch.dict(os.environ, {"PUBLIC_APP_BASE_URL": "https://shiftcare.example.com"}, clear=False),
+            patch.object(main, "send_invitation_email", return_value=email_service.EmailSendResult("sent")) as send_invitation,
+        ):
+            invitation_response = self.client.post(
+                "/api/organizations/1/invitations",
+                headers=owner_headers,
+                json={
+                    "email": "employee@example.com",
+                    "employee_id": employee_record_id,
+                    "role": "employee",
+                    "expires_in_days": 7,
+                },
+            )
+
+        self.assertEqual(invitation_response.status_code, 200)
+        payload = invitation_response.json()
+        self.assertEqual(payload["email_status"]["status"], "sent")
+        send_invitation.assert_called_once()
+        self.assertEqual(send_invitation.call_args.kwargs["to_email"], "employee@example.com")
+        self.assertEqual(send_invitation.call_args.kwargs["organization_name"], "Beta Clinic")
+        self.assertIn(payload["invitation_token"], send_invitation.call_args.kwargs["invitation_url"])
+
+        with (
+            patch.object(main, "email_delivery_is_enabled", return_value=True),
+            patch.object(main, "send_password_reset_email", return_value=email_service.EmailSendResult("sent")) as send_reset,
+        ):
+            reset_request = self.client.post(
+                "/api/auth/request-password-reset",
+                json={"email": "owner@example.com"},
+            )
+        self.assertEqual(reset_request.status_code, 200)
+        self.assertIsNone(reset_request.json()["reset_token"])
+        self.assertEqual(reset_request.json()["email_status"]["status"], "sent")
+        send_reset.assert_called_once()
+
+        login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "CorrectHorse123"},
+        )
+        self.assertEqual(login_response.status_code, 200)
+        with (
+            patch.object(main, "email_delivery_is_enabled", return_value=True),
+            patch.object(main, "send_email_verification_email", return_value=email_service.EmailSendResult("sent")) as send_verify,
+        ):
+            verification_request = self.client.post(
+                "/api/auth/request-email-verification",
+                headers={"Authorization": f"Bearer {login_response.json()['access_token']}"},
+            )
+        self.assertEqual(verification_request.status_code, 200)
+        self.assertIsNone(verification_request.json()["verification_token"])
+        self.assertEqual(verification_request.json()["email_status"]["status"], "sent")
+        send_verify.assert_called_once()
 
     def test_invitation_flow_creates_employee_membership_and_enforces_roles(self):
         owner_response = self.client.post(
@@ -1408,6 +1480,7 @@ class ApiRegressionTests(unittest.TestCase):
             )
         self.assertEqual(invitation_response.status_code, 200)
         self.assertEqual(invitation_response.json()["invitation"]["employee_id"], employee_record_id)
+        self.assertEqual(invitation_response.json()["email_status"]["status"], "disabled")
         invitation_token = invitation_response.json()["invitation_token"]
         self.assertEqual(
             invitation_response.json()["invitation_url"],

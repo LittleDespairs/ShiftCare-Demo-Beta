@@ -2,6 +2,27 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.19.0_beta - 2026-06-05
+
+## Release Focus
+
+Ship transactional email delivery for invitations and auth links, then align cloud and desktop version metadata on the `0.19.0_beta` beta line.
+
+## Changed
+
+- Added SMTP-backed email delivery for organization invitations, password reset, and email verification.
+- Added `/reset-password` and `/verify-email` pages for emailed auth links.
+- Added Cloud Run email configuration with Secret Manager-backed SMTP password handling.
+- Added Box SMTP support for `invite@shiftcare.co.il` and DNS authentication records for `shiftcare.co.il` including MX, SPF, DMARC, and DKIM.
+- Updated Organization invite feedback for sent, disabled, and failed email states while preserving copyable invitation links.
+- Updated runtime, service worker cache keys, Android metadata, PyInstaller spec, installer metadata, build docs, and release notes to `0.19.0_beta`.
+
+## Verification
+
+- SMTP login and test send passed through `cp57.box.co.il:465`.
+- Google Cloud DNS resolves the new email authentication records.
+- API regression tests and deployed `/api/client-config` version verification are part of the release pass.
+
 # 0.18.1_beta - 2026-05-19
 
 ## Release Focus

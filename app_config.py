@@ -25,6 +25,15 @@ class AppConfig:
     auth_token_secret: str
     cloud_run_service: str
     public_app_base_url: str
+    email_enabled: bool
+    email_from: str
+    email_reply_to: str
+    smtp_host: str
+    smtp_port: int
+    smtp_username: str
+    smtp_password: str
+    smtp_use_tls: bool
+    smtp_use_ssl: bool
 
     @property
     def is_cloud_run(self) -> bool:
@@ -52,6 +61,15 @@ def get_app_config() -> AppConfig:
         auth_token_secret=os.environ.get("AUTH_TOKEN_SECRET", "").strip(),
         cloud_run_service=os.environ.get("K_SERVICE", "").strip(),
         public_app_base_url=os.environ.get("PUBLIC_APP_BASE_URL", "").strip().rstrip("/"),
+        email_enabled=os.environ.get("EMAIL_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on", "enabled"},
+        email_from=os.environ.get("EMAIL_FROM", "").strip(),
+        email_reply_to=os.environ.get("EMAIL_REPLY_TO", "").strip(),
+        smtp_host=os.environ.get("SMTP_HOST", "").strip(),
+        smtp_port=int(os.environ.get("SMTP_PORT", "587").strip() or "587"),
+        smtp_username=os.environ.get("SMTP_USERNAME", "").strip(),
+        smtp_password=os.environ.get("SMTP_PASSWORD", "").strip(),
+        smtp_use_tls=os.environ.get("SMTP_USE_TLS", "1").strip().lower() in {"1", "true", "yes", "on", "enabled"},
+        smtp_use_ssl=os.environ.get("SMTP_USE_SSL", "0").strip().lower() in {"1", "true", "yes", "on", "enabled"},
     )
 
 
@@ -81,6 +99,17 @@ def validate_runtime_config(config: AppConfig | None = None) -> dict:
             "AUTH_TOKEN_SECRET is not set. The current beta token implementation is database-backed, "
             "but deployed environments should still define a server secret before adding signed tokens or external integrations."
         )
+
+    if config.email_enabled:
+        missing_email = []
+        if not config.email_from:
+            missing_email.append("EMAIL_FROM")
+        if not config.smtp_host:
+            missing_email.append("SMTP_HOST")
+        if not config.smtp_port:
+            missing_email.append("SMTP_PORT")
+        if missing_email:
+            issues.append("Email delivery is enabled but incomplete: " + ", ".join(missing_email))
 
     if config.is_cloud_run and config.database_engine == "sqlite":
         warnings.append(

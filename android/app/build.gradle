@@ -12,7 +12,7 @@ android {
         minSdk 26
         targetSdk 35
         versionCode 5
-        versionName "0.18.1-beta-tablet-current"
+        versionName "0.19.0-beta-tablet-current"
 
         ndk {
             abiFilters "arm64-v8a"
@@ -44,6 +44,7 @@ tasks.register("syncScheduleBackend", Copy) {
         include "cloud_sql.py"
         include "database.py"
         include "db_adapter.py"
+        include "email_service.py"
         include "excel_export.py"
         include "license_runtime.py"
         include "app_settings_service.py"
@@ -67,6 +68,7 @@ tasks.register("syncScheduleBackendAssets", Copy) {
         include "cloud_sql.py"
         include "database.py"
         include "db_adapter.py"
+        include "email_service.py"
         include "excel_export.py"
         include "license_runtime.py"
         include "app_settings_service.py"

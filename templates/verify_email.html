@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <title>Verify Email - ShiftCare</title>
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}">
+</head>
+
+<body class="app-shell ltr auth-page" data-app-version="{{ app_version }}">
+    <main class="auth-layout">
+        <section class="auth-panel" aria-labelledby="verify-title">
+            <div class="auth-brand">
+                <div class="brand-logo">SC</div>
+                <div>
+                    <h1 id="verify-title">Verify email</h1>
+                    <p>Confirm your account email address</p>
+                </div>
+            </div>
+
+            <form id="verify-email-form" class="auth-form">
+                <label id="verify-token-field" class="form-field">
+                    <span>Verification token</span>
+                    <textarea id="verify-token" rows="3" required></textarea>
+                </label>
+
+                <button class="btn btn-primary auth-submit" type="submit">Verify email</button>
+            </form>
+
+            <div id="verify-message" class="auth-message" role="status" aria-live="polite"></div>
+        </section>
+    </main>
+
+    <script src="/static/js/verify_email.js?v={{ app_version }}"></script>
+    <script src="/static/js/online_status.js?v={{ app_version }}"></script>
+</body>
+
+</html>

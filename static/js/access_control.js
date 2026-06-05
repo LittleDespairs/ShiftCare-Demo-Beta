@@ -75,7 +75,7 @@
     }
 
     function isAuthPage() {
-        return ["/login", "/accept-invitation"].includes(canonicalPath(window.location.pathname));
+        return ["/login", "/accept-invitation", "/reset-password", "/verify-email"].includes(canonicalPath(window.location.pathname));
     }
 
     function translateLocal(key, fallback) {
