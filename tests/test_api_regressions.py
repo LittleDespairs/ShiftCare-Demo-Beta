@@ -1872,10 +1872,17 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("data-login-method=\"email\"", response.text)
         self.assertIn("data-login-method=\"id_card\"", response.text)
         self.assertIn("class=\"lang-switcher\"", response.text)
+        self.assertIn("href=\"/static/icons/app-icon.svg\"", response.text)
         self.assertIn("/static/js/i18n.js", response.text)
         self.assertNotIn("Cloud portal and migration", response.text)
         self.assertNotIn("Cloud is the primary workspace", response.text)
         self.assertIn("/static/js/auth.js", response.text)
+
+    def test_favicon_route_serves_app_icon(self):
+        response = self.client.get("/favicon.ico")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/x-icon")
+        self.assertGreater(len(response.content), 0)
 
     def test_shared_i18n_contains_auth_page_keys(self):
         i18n_js = Path("static/js/i18n.js").read_text(encoding="utf-8")
@@ -4158,6 +4165,9 @@ class ApiRegressionTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["cache-control"], "no-store, no-cache, must-revalidate, max-age=0")
+        self.assertIn("href=\"/static/manifest.webmanifest\"", response.text)
+        self.assertIn("href=\"/static/icons/app-icon.svg\"", response.text)
+        self.assertIn("href=\"/favicon.ico\"", response.text)
         self.assertIn("0.15.18-beta", response.text)
         self.assertIn("ShiftCare_Setup_0.15.18-beta.exe", response.text)
         self.assertNotIn("0.15.11-beta", response.text)

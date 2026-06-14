@@ -203,6 +203,7 @@ BASE_PATH = get_base_path()
 init_db()
 
 app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
+FAVICON_PATH = BASE_PATH / "static" / "icons" / "app-icon.ico"
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 templates.env.globals["app_version"] = APP_VERSION
 templates.env.globals["app_name"] = APP_NAME
@@ -267,6 +268,11 @@ def build_openapi_schema() -> dict:
 
 
 app.openapi = build_openapi_schema
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse(FAVICON_PATH, media_type="image/x-icon")
 
 
 @app.get("/docs", include_in_schema=False)
