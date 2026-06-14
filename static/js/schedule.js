@@ -71,7 +71,7 @@
                 showMessage(
                     t(
                         "demo_schedule_notice",
-                        "ShiftCare Demo includes sample data. Generation and export are available; cleanup, backup, cloud sync, updates, and license activation are disabled."
+                        "ShiftCare Demo includes sample data. Generation, export, and schedule cleanup are available; backup, cloud sync, updates, and license activation are disabled."
                     ),
                     "info"
                 );
@@ -701,10 +701,6 @@
         }
 
         function openScheduleActionModal(modalId) {
-            if (isDemoMode() && modalId === "danger-actions-modal") {
-                showDemoRestriction();
-                return;
-            }
             if (!canEditSchedule() && ["generation-actions-modal", "danger-actions-modal"].includes(modalId)) {
                 return;
             }
@@ -880,22 +876,6 @@
             outputActionsButton.disabled = !hasPositions || !hasWeek;
             dangerActionsButton.disabled = !hasPositions || !hasWeek;
 
-            if (isDemoMode()) {
-                [
-                    clearButton,
-                    clearAllButton
-                ].forEach(button => {
-                    if (!button) return;
-                    button.disabled = true;
-                    button.title = demoRestrictionText();
-                });
-                generationActionsButton.disabled = !hasPositions || !hasWeek;
-                outputActionsButton.disabled = !hasPositions || !hasWeek;
-                dangerActionsButton.disabled = true;
-                dangerActionsButton.hidden = true;
-                dangerActionsButton.style.display = "none";
-            }
-
             [
                 generateButton,
                 generateAllButton,
@@ -925,18 +905,6 @@
             outputActionsButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
             dangerActionsButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
 
-            if (isDemoMode()) {
-                [
-                    clearButton,
-                    clearAllButton,
-                    dangerActionsButton
-                ].forEach(button => {
-                    if (button) button.title = demoRestrictionText();
-                });
-                dangerActionsButton.disabled = true;
-                dangerActionsButton.hidden = true;
-                dangerActionsButton.style.display = "none";
-            }
         }
 
         /* =========================================================

@@ -7233,7 +7233,6 @@ def clear_week_schedule(
     request_data: ClearWeekScheduleRequest,
     _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
 ):
-    require_not_demo("Clearing schedules")
     connection = get_connection()
     try:
         week_dates = build_week_dates(request_data.week_start_date)
@@ -7327,7 +7326,6 @@ def clear_all_week_schedules(
     request_data: ClearAllWeekScheduleRequest,
     _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
 ):
-    require_not_demo("Clearing schedules")
     connection = get_connection()
     try:
         week_dates = build_week_dates(request_data.week_start_date)
