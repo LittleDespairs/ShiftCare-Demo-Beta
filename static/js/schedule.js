@@ -71,7 +71,7 @@
                 showMessage(
                     t(
                         "demo_schedule_notice",
-                        "ShiftCare Demo limits scheduling to a small manual sample. Auto-generation, export, cleanup, backup, cloud sync, and license activation are disabled."
+                        "ShiftCare Demo includes sample data. Generation and export are available; cleanup, backup, cloud sync, updates, and license activation are disabled."
                     ),
                     "info"
                 );
@@ -882,14 +882,8 @@
 
             if (isDemoMode()) {
                 [
-                    generateButton,
-                    generateAllButton,
                     clearButton,
-                    clearAllButton,
-                    exportButton,
-                    exportAllButton,
-                    exportWordButton,
-                    exportAllWordButton
+                    clearAllButton
                 ].forEach(button => {
                     if (!button) return;
                     button.disabled = true;
@@ -933,20 +927,12 @@
 
             if (isDemoMode()) {
                 [
-                    generateButton,
-                    generateAllButton,
                     clearButton,
                     clearAllButton,
-                    exportButton,
-                    exportAllButton,
-                    exportWordButton,
-                    exportAllWordButton,
                     dangerActionsButton
                 ].forEach(button => {
                     if (button) button.title = demoRestrictionText();
                 });
-                generationActionsButton.title = demoRestrictionText();
-                outputActionsButton.title = demoRestrictionText();
                 dangerActionsButton.disabled = true;
                 dangerActionsButton.hidden = true;
                 dangerActionsButton.style.display = "none";

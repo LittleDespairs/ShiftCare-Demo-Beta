@@ -81,7 +81,7 @@ DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
 CURRENT_SCHEMA_VERSION = 18
 POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
-DEMO_SEED_VERSION = "2026-06-14-loginless-demo-v1"
+DEMO_SEED_VERSION = "2026-06-14-care-coverage-demo-v2"
 DEMO_ORGANIZATION_PUBLIC_ID = "shiftcare-demo-center"
 DEMO_USER_EMAIL = "demo@shiftcare.local"
 PUBLIC_ID_TABLE_PREFIXES = {
@@ -241,12 +241,21 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
         position_ids[public_id] = int(cursor.lastrowid)
 
     employees = [
-        ("demo-emp-anna", "900000001", "Anna Levin", "female", 2, 4, 5, 1, 1, 1, 1),
-        ("demo-emp-maya", "900000002", "Maya Cohen", "female", 2, 3, 4, 0, 1, 0, 1),
-        ("demo-emp-david", "900000003", "David Bar", "male", 2, 4, 5, 1, 1, 1, 0),
-        ("demo-emp-lior", "900000004", "Lior Kaplan", "male", 1, 3, 4, 1, 1, 1, 1),
-        ("demo-emp-noa", "900000005", "Noa Amir", "female", 1, 3, 4, 0, 1, 0, 1),
-        ("demo-emp-roman", "900000006", "Roman Stein", "male", 2, 4, 5, 1, 1, 1, 0),
+        ("demo-emp-anna", "900000001", "Anna Levin", "female", 3, 6, 8, 1, 1, 1, 1),
+        ("demo-emp-maya", "900000002", "Maya Cohen", "female", 3, 6, 8, 0, 1, 0, 1),
+        ("demo-emp-david", "900000003", "David Bar", "male", 3, 6, 8, 1, 1, 1, 0),
+        ("demo-emp-lior", "900000004", "Lior Kaplan", "male", 3, 6, 8, 1, 1, 1, 1),
+        ("demo-emp-noa", "900000005", "Noa Amir", "female", 3, 6, 8, 0, 1, 0, 1),
+        ("demo-emp-roman", "900000006", "Roman Stein", "male", 3, 6, 8, 1, 1, 1, 0),
+        ("demo-emp-sara", "900000007", "Sara Weiss", "female", 3, 6, 8, 0, 1, 0, 1),
+        ("demo-emp-eli", "900000008", "Eli Mor", "male", 3, 6, 8, 1, 1, 1, 1),
+        ("demo-emp-dina", "900000009", "Dina Azulay", "female", 3, 6, 8, 0, 1, 0, 1),
+        ("demo-emp-yossi", "900000010", "Yossi Peretz", "male", 3, 6, 8, 1, 1, 1, 0),
+        ("demo-emp-tal", "900000011", "Tal Shahar", "female", 3, 6, 8, 0, 1, 0, 1),
+        ("demo-emp-irina", "900000012", "Irina Katz", "female", 3, 6, 8, 1, 1, 1, 1),
+        ("demo-emp-omar", "900000013", "Omar Haddad", "male", 3, 6, 8, 1, 1, 1, 0),
+        ("demo-emp-gal", "900000014", "Gal Rosen", "male", 3, 6, 8, 0, 1, 0, 1),
+        ("demo-emp-rachel", "900000015", "Rachel Stern", "female", 3, 6, 8, 0, 1, 0, 1),
     ]
     employee_ids: dict[str, int] = {}
     for employee in employees:
@@ -265,16 +274,29 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
         employee_ids[employee[0]] = int(cursor.lastrowid)
 
     for employee_key, position_key, is_primary, priority_score, is_fallback_only in (
-        ("demo-emp-anna", "demo-pos-nursing", 1, 95, 0),
-        ("demo-emp-maya", "demo-pos-nursing", 1, 90, 0),
-        ("demo-emp-david", "demo-pos-nursing", 1, 88, 0),
+        ("demo-emp-anna", "demo-pos-care", 1, 96, 0),
+        ("demo-emp-maya", "demo-pos-care", 1, 94, 0),
+        ("demo-emp-david", "demo-pos-care", 1, 92, 0),
+        ("demo-emp-lior", "demo-pos-care", 1, 90, 0),
+        ("demo-emp-noa", "demo-pos-care", 1, 88, 0),
+        ("demo-emp-roman", "demo-pos-care", 1, 86, 0),
+        ("demo-emp-sara", "demo-pos-care", 1, 84, 0),
+        ("demo-emp-eli", "demo-pos-care", 1, 82, 0),
+        ("demo-emp-dina", "demo-pos-care", 1, 80, 0),
+        ("demo-emp-yossi", "demo-pos-care", 1, 78, 0),
+        ("demo-emp-tal", "demo-pos-care", 1, 76, 0),
+        ("demo-emp-irina", "demo-pos-care", 1, 74, 0),
+        ("demo-emp-omar", "demo-pos-care", 1, 72, 0),
+        ("demo-emp-gal", "demo-pos-care", 1, 70, 0),
+        ("demo-emp-rachel", "demo-pos-care", 1, 68, 0),
+        ("demo-emp-anna", "demo-pos-nursing", 0, 95, 0),
+        ("demo-emp-maya", "demo-pos-nursing", 0, 90, 0),
+        ("demo-emp-david", "demo-pos-nursing", 0, 88, 0),
         ("demo-emp-roman", "demo-pos-nursing", 0, 76, 0),
-        ("demo-emp-lior", "demo-pos-care", 1, 92, 0),
-        ("demo-emp-noa", "demo-pos-care", 1, 86, 0),
-        ("demo-emp-roman", "demo-pos-care", 0, 70, 0),
-        ("demo-emp-maya", "demo-pos-care", 0, 55, 1),
-        ("demo-emp-noa", "demo-pos-activities", 1, 84, 0),
+        ("demo-emp-irina", "demo-pos-nursing", 0, 74, 0),
+        ("demo-emp-noa", "demo-pos-activities", 0, 84, 0),
         ("demo-emp-lior", "demo-pos-activities", 0, 72, 0),
+        ("demo-emp-tal", "demo-pos-activities", 0, 70, 0),
     ):
         cursor.execute(
             """
@@ -284,7 +306,16 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
             (employee_ids[employee_key], position_ids[position_key], is_primary, priority_score, is_fallback_only),
         )
 
-    night_capable = {"demo-emp-anna", "demo-emp-david", "demo-emp-lior", "demo-emp-roman"}
+    night_capable = {
+        "demo-emp-anna",
+        "demo-emp-david",
+        "demo-emp-lior",
+        "demo-emp-roman",
+        "demo-emp-eli",
+        "demo-emp-yossi",
+        "demo-emp-irina",
+        "demo-emp-omar",
+    }
     for employee_key, *_ in employees:
         cursor.execute(
             """
@@ -334,7 +365,7 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
 
     requirements = {
         "demo-pos-nursing": {"morning": (2, 1, 0), "evening": (2, 1, 0), "night": (1, 0, 0)},
-        "demo-pos-care": {"morning": (1, 0, 0), "evening": (1, 0, 0), "night": (1, 0, 0)},
+        "demo-pos-care": {"morning": (7, 0, 0), "evening": (5, 0, 0), "night": (1, 0, 0)},
         "demo-pos-activities": {"morning": (1, 0, 0), "evening": (1, 0, 0)},
     }
     for position_key, category_requirements in requirements.items():
@@ -450,16 +481,26 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
 
     for index, (employee_key, position_key, day_offset, category) in enumerate(
         (
-            ("demo-emp-anna", "demo-pos-nursing", 0, "morning"),
-            ("demo-emp-maya", "demo-pos-nursing", 0, "evening"),
-            ("demo-emp-david", "demo-pos-nursing", 0, "night"),
-            ("demo-emp-maya", "demo-pos-nursing", 1, "morning"),
-            ("demo-emp-noa", "demo-pos-nursing", 1, "evening"),
-            ("demo-emp-roman", "demo-pos-nursing", 1, "night"),
-            ("demo-emp-anna", "demo-pos-nursing", 2, "morning"),
-            ("demo-emp-roman", "demo-pos-nursing", 2, "evening"),
+            ("demo-emp-anna", "demo-pos-care", 0, "morning"),
+            ("demo-emp-maya", "demo-pos-care", 0, "morning"),
             ("demo-emp-lior", "demo-pos-care", 0, "morning"),
-            ("demo-emp-noa", "demo-pos-care", 1, "morning"),
+            ("demo-emp-noa", "demo-pos-care", 0, "morning"),
+            ("demo-emp-sara", "demo-pos-care", 0, "morning"),
+            ("demo-emp-eli", "demo-pos-care", 0, "morning"),
+            ("demo-emp-dina", "demo-pos-care", 0, "morning"),
+            ("demo-emp-roman", "demo-pos-care", 0, "evening"),
+            ("demo-emp-yossi", "demo-pos-care", 0, "evening"),
+            ("demo-emp-tal", "demo-pos-care", 0, "evening"),
+            ("demo-emp-irina", "demo-pos-care", 0, "evening"),
+            ("demo-emp-gal", "demo-pos-care", 0, "evening"),
+            ("demo-emp-david", "demo-pos-care", 0, "night"),
+            ("demo-emp-anna", "demo-pos-nursing", 1, "morning"),
+            ("demo-emp-maya", "demo-pos-nursing", 1, "evening"),
+            ("demo-emp-david", "demo-pos-nursing", 1, "night"),
+            ("demo-emp-roman", "demo-pos-nursing", 2, "morning"),
+            ("demo-emp-irina", "demo-pos-nursing", 2, "evening"),
+            ("demo-emp-noa", "demo-pos-activities", 2, "morning"),
+            ("demo-emp-tal", "demo-pos-activities", 2, "evening"),
         ),
         start=1,
     ):

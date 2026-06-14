@@ -1,4 +1,6 @@
 param(
+    [ValidateSet("ShiftCare", "Demo")]
+    [string]$Target = "ShiftCare",
     [switch]$InstallInnoSetup
 )
 
@@ -7,8 +9,10 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $pyinstaller = Join-Path $repoRoot ".venv\Scripts\pyinstaller.exe"
-$spec = Join-Path $repoRoot "ShiftCare_0.19.0_beta.spec"
-$installerScript = Join-Path $repoRoot "installer\ScheduleApp.iss"
+$specName = if ($Target -eq "Demo") { "ShiftCare_Demo_0.19.2_beta.spec" } else { "ShiftCare_0.19.2_beta.spec" }
+$installerName = if ($Target -eq "Demo") { "ScheduleAppDemo.iss" } else { "ScheduleApp.iss" }
+$spec = Join-Path $repoRoot $specName
+$installerScript = Join-Path $repoRoot "installer\$installerName"
 $iconScript = Join-Path $repoRoot "tools\create_windows_icon.py"
 
 function Find-InnoCompiler {

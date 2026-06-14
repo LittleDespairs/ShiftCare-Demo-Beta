@@ -125,7 +125,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.19.1_beta"
+APP_VERSION = "0.19.2_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -134,8 +134,8 @@ APP_NAME = "ShiftCare Demo" if APP_DEMO_MODE else "ShiftCare"
 APP_TITLE = f"{APP_NAME} - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
-DEMO_EMPLOYEE_LIMIT = 6
-DEMO_SCHEDULE_ENTRY_LIMIT = 12
+DEMO_EMPLOYEE_LIMIT = 15
+DEMO_SCHEDULE_ENTRY_LIMIT = 20
 DEMO_ACCESS_TOKEN = "shiftcare-demo-session"
 RETRYABLE_CLOUD_STATUS_CODES = {429, 502, 503, 504}
 AUTH_LOGIN_RATE_LIMIT_ATTEMPTS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
@@ -1542,7 +1542,7 @@ def build_license_status_payload(cursor, organization_id: int = 1) -> dict:
             "demo_mode": True,
             "message": "ShiftCare Demo mode",
             "enforcement": {
-                "can_generate_schedule": False,
+                "can_generate_schedule": True,
                 "can_create_schedule": True,
                 "can_create_shift": True,
                 "can_add_employee": not employee_limit_reached,
@@ -9070,7 +9070,6 @@ def auto_generate_schedule(
     request_data: AutoGenerateScheduleRequest,
     _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
 ):
-    require_not_demo("Automatic schedule generation")
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -9089,7 +9088,6 @@ def auto_generate_all_schedules(
     request_data: AutoGenerateAllScheduleRequest,
     _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
 ):
-    require_not_demo("Automatic schedule generation")
     connection = get_connection()
     try:
         organization_id = _access["membership"]["organization_id"] if _access else 1
@@ -9153,7 +9151,6 @@ def export_schedule_excel(
     access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
-    require_not_demo("Schedule export")
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -9215,7 +9212,6 @@ def export_all_schedules_excel(
     access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
-    require_not_demo("Schedule export")
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -9291,7 +9287,6 @@ def export_schedule_word(
     access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
-    require_not_demo("Schedule export")
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -9353,7 +9348,6 @@ def export_all_schedules_word(
     access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
-    require_not_demo("Schedule export")
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:

@@ -1,12 +1,12 @@
-#define MyAppName "ShiftCare"
+#define MyAppName "ShiftCare Demo"
 #define MyAppPublisher "ShiftCare"
 #define MyAppVersion "0.19.2-beta"
-#define MyAppExeName "ShiftCare_0.19.2_beta.exe"
-#define MyAppDistDir "..\dist\ShiftCare_0.19.2_beta"
+#define MyAppExeName "ShiftCare_Demo_0.19.2_beta.exe"
+#define MyAppDistDir "..\dist\ShiftCare_Demo_0.19.2_beta"
 #define MyAppIcon "..\static\icons\app-icon.ico"
 
 [Setup]
-AppId={{89D27E21-2602-4E70-9802-5EC1898373BB}
+AppId={{D9DC7442-BC6C-4A71-83B0-094C2D996601}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
@@ -16,12 +16,12 @@ VersionInfoDescription={#MyAppName} Installer
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion=0.19.2.0
 VersionInfoVersion=0.19.2.0
-DefaultDirName={autopf}\ShiftCare
+DefaultDirName={autopf}\ShiftCare Demo
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
 OutputDir=..\dist\installer
-OutputBaseFilename=ShiftCare_Setup_{#MyAppVersion}
+OutputBaseFilename=ShiftCare_Demo_Setup_{#MyAppVersion}
 SetupIconFile={#MyAppIcon}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
