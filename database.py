@@ -12,14 +12,23 @@ from db_adapter import apply_postgres_schema, connect_postgres, is_postgres_engi
 
 # Base directory / Базовая папка проекта
 BASE_DIR = Path(__file__).resolve().parent
+TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
+
+
+def is_demo_mode_enabled() -> bool:
+    return any(
+        os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
+        for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
+    )
 
 
 def get_windows_app_data_dir() -> Path:
+    app_dir_name = "ShiftCare Demo" if is_demo_mode_enabled() else "Schedule App"
     app_data_root = os.environ.get("LOCALAPPDATA")
     if app_data_root:
-        app_data_dir = Path(app_data_root) / "Schedule App"
+        app_data_dir = Path(app_data_root) / app_dir_name
     else:
-        app_data_dir = Path.home() / "AppData" / "Local" / "Schedule App"
+        app_data_dir = Path.home() / "AppData" / "Local" / app_dir_name
 
     app_data_dir.mkdir(parents=True, exist_ok=True)
     return app_data_dir

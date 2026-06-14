@@ -124,11 +124,18 @@ from update_service import (
 import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
+TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
 APP_VERSION = "0.19.0_beta"
-APP_TITLE = f"ShiftCare - Thoughtful Scheduling for Care Teams {APP_VERSION}"
+APP_DEMO_MODE = any(
+    os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
+    for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
+)
+APP_NAME = "ShiftCare Demo" if APP_DEMO_MODE else "ShiftCare"
+APP_TITLE = f"{APP_NAME} - Thoughtful Scheduling for Care Teams {APP_VERSION}"
 DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
-TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
+DEMO_EMPLOYEE_LIMIT = 6
+DEMO_SCHEDULE_ENTRY_LIMIT = 12
 RETRYABLE_CLOUD_STATUS_CODES = {429, 502, 503, 504}
 AUTH_LOGIN_RATE_LIMIT_ATTEMPTS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
 AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
@@ -197,6 +204,7 @@ init_db()
 app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 templates.env.globals["app_version"] = APP_VERSION
+templates.env.globals["app_name"] = APP_NAME
 
 OPENAPI_BEARER_AUTH_SCHEME = "BearerAuth"
 
@@ -217,8 +225,8 @@ def build_openapi_schema() -> dict:
     security_schemes[OPENAPI_BEARER_AUTH_SCHEME] = {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "ShiftCare session token",
-        "description": "Use the access_token returned by /api/auth/login or your active ShiftCare browser session.",
+        "bearerFormat": f"{APP_NAME} session token",
+        "description": f"Use the access_token returned by /api/auth/login or your active {APP_NAME} browser session.",
     }
 
     for path_item in openapi_schema.get("paths", {}).values():
@@ -339,6 +347,13 @@ def is_developer_mode_enabled() -> bool:
 
 
 templates.env.globals["developer_mode_enabled"] = is_developer_mode_enabled
+
+
+def is_demo_mode_enabled() -> bool:
+    return APP_DEMO_MODE
+
+
+templates.env.globals["demo_mode_enabled"] = is_demo_mode_enabled
 
 
 def is_license_bypass_enabled() -> bool:
@@ -1331,6 +1346,8 @@ def write_auth_audit_event(
     organization_id: int | None = None,
     metadata: dict | None = None,
 ) -> None:
+    if is_demo_mode_enabled():
+        return
     auth_repository.write_auth_audit_event(
         cursor,
         event_type,
@@ -1346,6 +1363,8 @@ def write_auth_audit_event_record(
     organization_id: int | None = None,
     metadata: dict | None = None,
 ) -> None:
+    if is_demo_mode_enabled():
+        return
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -1368,6 +1387,8 @@ def write_license_event(
     license_id: str | None = None,
     metadata: dict | None = None,
 ) -> None:
+    if is_demo_mode_enabled():
+        return
     cursor.execute(
         """
         INSERT INTO license_events (organization_id, license_id, event_type, metadata_json)
@@ -1375,6 +1396,30 @@ def write_license_event(
         """,
         (organization_id, license_id, event_type, json.dumps(metadata or {}, ensure_ascii=False)),
     )
+
+
+def demo_restriction_detail(feature: str) -> dict:
+    return {
+        "message": f"{feature} is disabled in ShiftCare Demo",
+        "demo_mode": True,
+        "employee_limit": DEMO_EMPLOYEE_LIMIT,
+        "schedule_entry_limit": DEMO_SCHEDULE_ENTRY_LIMIT,
+    }
+
+
+def require_not_demo(feature: str) -> None:
+    if is_demo_mode_enabled():
+        raise HTTPException(status_code=403, detail=demo_restriction_detail(feature))
+
+
+def require_demo_schedule_entry_slot(cursor) -> None:
+    if not is_demo_mode_enabled():
+        return
+    current_count = fetch_count(cursor, "SELECT COUNT(*) FROM schedule_entries")
+    if current_count >= DEMO_SCHEDULE_ENTRY_LIMIT:
+        detail = demo_restriction_detail("Manual schedule editing")
+        detail["current_schedule_entries"] = current_count
+        raise HTTPException(status_code=403, detail=detail)
 
 
 def count_organization_employees(cursor, organization_id: int = 1) -> int:
@@ -1425,6 +1470,37 @@ def get_latest_license_certificate(cursor, organization_id: int = 1) -> dict | N
 def build_license_status_payload(cursor, organization_id: int = 1) -> dict:
     organization = get_default_organization_row(cursor, organization_id)
     employee_count = count_organization_employees(cursor, organization_id)
+    if is_demo_mode_enabled():
+        employee_limit_reached = employee_count >= DEMO_EMPLOYEE_LIMIT
+        return {
+            "status": "demo",
+            "source": "demo",
+            "license_id": "shiftcare-demo",
+            "plan_code": "demo",
+            "employee_limit": DEMO_EMPLOYEE_LIMIT,
+            "employee_count": employee_count,
+            "organization_id": organization_id,
+            "organization_public_id": organization["public_id"],
+            "organization_name": organization["name"],
+            "trial_started_at": None,
+            "trial_expires_at": None,
+            "support_cloud_expires_at": None,
+            "grace_ends_at": None,
+            "features": ["desktop", "demo"],
+            "key_id": "demo",
+            "last_verified_at": None,
+            "imported_at": None,
+            "demo_mode": True,
+            "message": "ShiftCare Demo mode",
+            "enforcement": {
+                "can_generate_schedule": False,
+                "can_create_schedule": True,
+                "can_create_shift": True,
+                "can_add_employee": not employee_limit_reached,
+                "employee_limit_reached": employee_limit_reached,
+                "blocking_reason": "demo",
+            },
+        }
     if is_license_bypass_enabled():
         payload = license_runtime.build_developer_bypass_status()
         payload.update(
@@ -1503,7 +1579,7 @@ def require_license_capability(cursor, capability: str, organization_id: int = 1
         "blocking_reason": enforcement.get("blocking_reason"),
         "employee_limit_reached": enforcement.get("employee_limit_reached"),
     }
-    raise HTTPException(status_code=402, detail=detail)
+    raise HTTPException(status_code=403 if is_demo_mode_enabled() else 402, detail=detail)
 
 
 def import_license_certificate(cursor, certificate_data: dict[str, Any], organization_id: int = 1, source: str = "imported") -> dict:
@@ -1592,6 +1668,8 @@ def audit_context_from_user(current_user: dict | None) -> tuple[int | None, int 
 
 
 def create_recovery_backup(label: str) -> str:
+    if is_demo_mode_enabled():
+        return ""
     if not database_module.is_sqlite_runtime():
         return "cloud_sql_managed_backup"
     try:
@@ -2142,6 +2220,10 @@ def request_github_releases() -> list[dict]:
     return update_service.request_github_releases(APP_VERSION)
 
 
+def request_demo_github_releases() -> list[dict]:
+    return update_service.request_github_releases(APP_VERSION, update_service.GITHUB_DEMO_REPO_NAME)
+
+
 def get_update_status() -> dict:
     latest_release = find_latest_installable_release(request_github_releases())
     if latest_release is None:
@@ -2164,6 +2246,16 @@ def get_latest_download_payload() -> dict:
         raise HTTPException(status_code=404, detail="No installable Windows release asset was found.")
     return {
         "product": "ShiftCare",
+        "latest": latest_release,
+    }
+
+
+def get_latest_demo_download_payload() -> dict:
+    latest_release = find_latest_installable_release(request_demo_github_releases())
+    if latest_release is None:
+        raise HTTPException(status_code=404, detail="No installable ShiftCare Demo Windows release asset was found.")
+    return {
+        "product": "ShiftCare Demo",
         "latest": latest_release,
     }
 
@@ -3047,7 +3139,8 @@ def login(request_data: AuthLoginRequest, request: Request):
             raise HTTPException(status_code=401, detail="Invalid login or password")
 
         now = current_utc_timestamp()
-        cursor.execute("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?", (now, now, user_row["id"]))
+        if not is_demo_mode_enabled():
+            cursor.execute("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?", (now, now, user_row["id"]))
         write_auth_audit_event(cursor, "login_success", user_id=user_row["id"])
         auth_response = build_auth_response(connection, user_row["id"])
         if repair_employee_membership_links(cursor, auth_response["user"]):
@@ -3191,6 +3284,7 @@ def import_cloud_session_to_desktop(cloud_base_url: str, cloud_session: dict) ->
 
 @app.post("/api/desktop/cloud-login", tags=["Auth"])
 def desktop_cloud_login(request_data: DesktopCloudLoginRequest):
+    require_not_demo("Cloud login")
     if not is_desktop_sqlite_runtime():
         raise HTTPException(status_code=404, detail="Desktop cloud login is available only in the installed SQLite app")
 
@@ -3206,6 +3300,7 @@ def desktop_cloud_login(request_data: DesktopCloudLoginRequest):
 
 @app.post("/api/desktop/cloud-create-organization", tags=["Auth"])
 def desktop_cloud_create_organization(request_data: AuthOrganizationCreateRequest):
+    require_not_demo("Cloud organization setup")
     if not is_desktop_sqlite_runtime():
         raise HTTPException(status_code=404, detail="Desktop organization setup is available only in the installed SQLite app")
     cloud_base_url = get_desktop_cloud_login_base_url()
@@ -3415,6 +3510,8 @@ _DESKTOP_SYNC_WORKER_STARTED = False
 @app.on_event("startup")
 def start_desktop_sync_worker():
     global _DESKTOP_SYNC_WORKER_STARTED
+    if is_demo_mode_enabled():
+        return
     if _DESKTOP_SYNC_WORKER_STARTED or not should_start_desktop_sync_worker():
         return
     _DESKTOP_SYNC_WORKER_STARTED = True
@@ -3432,6 +3529,8 @@ def auth_status():
         organization_count = cursor.fetchone()["organization_count"]
         return {
             "app_version": APP_VERSION,
+            "app_name": APP_NAME,
+            "demo_mode": is_demo_mode_enabled(),
             "bootstrap_available": user_count == 0,
             "active_user_count": user_count,
             "active_organization_count": organization_count,
@@ -4155,6 +4254,7 @@ def get_organization_invitations(organization_id: int, current_user: dict = Depe
 
 @app.get("/api/organizations/{organization_id}/cloud-export", tags=["Auth"])
 def export_organization_for_cloud(organization_id: int, current_user: dict = Depends(get_current_user)):
+    require_not_demo("Cloud export")
     require_organization_role(current_user, organization_id, DESKTOP_CLOUD_SYNC_ROLES)
     connection = get_connection()
     try:
@@ -4169,6 +4269,7 @@ def import_organization_from_cloud_bundle(
     request_data: CloudOrganizationImportRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    require_not_demo("Cloud import")
     require_organization_role(current_user, organization_id, {"owner", "admin"})
     connection = get_connection()
     try:
@@ -4198,6 +4299,7 @@ def save_organization_cloud_link(
     request_data: CloudOrganizationLinkRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    require_not_demo("Cloud link")
     require_organization_role(current_user, organization_id, {"owner", "admin"})
     cloud_base_url = normalize_public_app_base_url(request_data.cloud_api_base_url)
     if not cloud_base_url:
@@ -4268,6 +4370,7 @@ def get_organization_cloud_link(organization_id: int, current_user: dict = Depen
 
 @app.delete("/api/organizations/{organization_id}/cloud-link", tags=["Auth"])
 def delete_organization_cloud_link(organization_id: int, current_user: dict = Depends(get_current_user)):
+    require_not_demo("Cloud link")
     require_organization_role(current_user, organization_id, {"owner", "admin"})
     connection = get_connection()
     try:
@@ -5114,6 +5217,7 @@ def create_database_backup_endpoint(
     request_data: DatabaseBackupCreateRequest,
     admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
 ):
+    require_not_demo("Database backup")
     if not database_module.is_sqlite_runtime():
         raise HTTPException(
             status_code=409,
@@ -5144,6 +5248,7 @@ def restore_database_backup_endpoint(
     request_data: DatabaseRestoreRequest,
     admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
 ):
+    require_not_demo("Database restore")
     if not database_module.is_sqlite_runtime():
         raise HTTPException(
             status_code=409,
@@ -5172,6 +5277,7 @@ def check_for_updates():
 
 @app.post("/api/updates/install", tags=["Settings"])
 def install_update(request_data: UpdateInstallRequest):
+    require_not_demo("Update installation")
     status = get_update_status()
     latest = status.get("latest")
     if not latest or not status.get("update_available"):
@@ -5210,6 +5316,7 @@ def import_license_file(
     request_data: LicenseImportRequest,
     admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
 ):
+    require_not_demo("License import")
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -5228,6 +5335,7 @@ def activate_license_code(
     request_data: LicenseActivationCodeRequest,
     admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
 ):
+    require_not_demo("License activation")
     activation_hash = hash_session_token(request_data.activation_code)
     connection = get_connection()
     try:
@@ -5277,6 +5385,7 @@ def activate_license_code(
 def refresh_license(
     admin_context: dict | None = Depends(require_database_admin_if_auth_initialized),
 ):
+    require_not_demo("License refresh")
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -5317,9 +5426,24 @@ def latest_download_metadata():
     return get_latest_download_payload()
 
 
+@app.get("/api/download/demo/latest", tags=["Download"])
+def latest_demo_download_metadata():
+    return get_latest_demo_download_payload()
+
+
 @app.get("/download/latest", tags=["Download"])
 def redirect_latest_download():
     payload = get_latest_download_payload()
+    return RedirectResponse(
+        payload["latest"]["download_url"],
+        status_code=302,
+        headers=no_store_headers(),
+    )
+
+
+@app.get("/download/demo/latest", tags=["Download"])
+def redirect_latest_demo_download():
+    payload = get_latest_demo_download_payload()
     return RedirectResponse(
         payload["latest"]["download_url"],
         status_code=302,
@@ -5332,6 +5456,10 @@ def redirect_latest_download():
 @app.get("/download/shiftcare", tags=["Pages"], include_in_schema=False)
 def download_page(request: Request):
     payload = get_latest_download_payload()
+    try:
+        payload["demo_latest"] = get_latest_demo_download_payload()["latest"]
+    except HTTPException:
+        payload["demo_latest"] = None
     return templates.TemplateResponse(
         request=request,
         name="download.html",
@@ -6978,6 +7106,7 @@ def add_schedule_entry(entry: ScheduleEntryCreate, _access: dict | None = Depend
         cursor = connection.cursor()
         organization_id = _access["membership"]["organization_id"] if _access else 1
         require_license_capability(cursor, "can_create_shift", organization_id)
+        require_demo_schedule_entry_slot(cursor)
         cursor.execute(
             """
             INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
@@ -7040,6 +7169,7 @@ def clear_week_schedule(
     request_data: ClearWeekScheduleRequest,
     _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
 ):
+    require_not_demo("Clearing schedules")
     connection = get_connection()
     try:
         week_dates = build_week_dates(request_data.week_start_date)
@@ -7133,6 +7263,7 @@ def clear_all_week_schedules(
     request_data: ClearAllWeekScheduleRequest,
     _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
 ):
+    require_not_demo("Clearing schedules")
     connection = get_connection()
     try:
         week_dates = build_week_dates(request_data.week_start_date)
@@ -8881,6 +9012,7 @@ def auto_generate_schedule(
     request_data: AutoGenerateScheduleRequest,
     _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
 ):
+    require_not_demo("Automatic schedule generation")
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -8899,6 +9031,7 @@ def auto_generate_all_schedules(
     request_data: AutoGenerateAllScheduleRequest,
     _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
 ):
+    require_not_demo("Automatic schedule generation")
     connection = get_connection()
     try:
         organization_id = _access["membership"]["organization_id"] if _access else 1
@@ -8962,6 +9095,7 @@ def export_schedule_excel(
     access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
+    require_not_demo("Schedule export")
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -9023,6 +9157,7 @@ def export_all_schedules_excel(
     access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
+    require_not_demo("Schedule export")
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -9098,6 +9233,7 @@ def export_schedule_word(
     access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
+    require_not_demo("Schedule export")
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:
@@ -9159,6 +9295,7 @@ def export_all_schedules_word(
     access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
     current_user: dict | None = Depends(get_optional_current_user),
 ):
+    require_not_demo("Schedule export")
     connection = get_connection()
     try:
         if lang not in {"en", "ru", "he"}:

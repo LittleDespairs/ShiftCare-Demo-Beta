@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#2563eb">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Settings - ShiftCare</title>
+    <title>Settings - {{ app_name }}</title>
     <link rel="manifest" href="/static/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
 
@@ -876,7 +876,7 @@
     </style>
 </head>
 
-<body class="app-shell ltr" data-app-version="{{ app_version }}">
+<body class="app-shell ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}">
     <div class="app-layout">
         <!--
             SIDEBAR / БОКОВОЕ МЕНЮ
@@ -888,7 +888,7 @@
                 <div class="brand" style="border-bottom:none; padding:0; flex:1;">
                     <div class="brand-logo">SC</div>
                     <div class="brand-text">
-                        <h1 class="brand-title" data-i18n="app_title">ShiftCare</h1>
+                        <h1 class="brand-title" data-i18n="app_title">{{ app_name }}</h1>
                         <p class="brand-subtitle" data-i18n="app_subtitle">Thoughtful scheduling for care teams</p>
                     </div>
                 </div>
@@ -1427,7 +1427,7 @@
                         <div class="settings-panel-card">
                             <div class="settings-section-header">
                                 <div>
-                                    <h3 class="settings-section-title" data-i18n="settings_about_title">About ShiftCare</h3>
+                                    <h3 class="settings-section-title" data-i18n="settings_about_title">About {{ app_name }}</h3>
                                     <p class="settings-section-text" data-i18n="settings_about_text">
                                         Current beta information and links for help.
                                     </p>
@@ -1496,7 +1496,7 @@
             </div>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
-                    ShiftCare v{{ app_version }}
+                    {{ app_name }} v{{ app_version }}
                 </div>
 
                 <div class="footer-right">
@@ -1707,6 +1707,14 @@
         let latestUpdate = null;
         let currentLicenseStatus = null;
 
+        function isDemoMode() {
+            return document.body?.dataset?.demoMode === "1";
+        }
+
+        function demoRestrictionText() {
+            return t("demo_restricted_message", "This feature is disabled in ShiftCare Demo.");
+        }
+
         function t(key, fallback = "") {
             if (typeof translate === "function") {
                 return translate(key);
@@ -1797,6 +1805,11 @@
             `).join("");
 
             tableBody.querySelectorAll(".restore-backup-btn").forEach((button) => {
+                if (isDemoMode()) {
+                    button.disabled = true;
+                    button.title = demoRestrictionText();
+                    return;
+                }
                 button.addEventListener("click", async () => {
                     await restoreBackup(button.dataset.backupName);
                 });
@@ -1850,6 +1863,7 @@
             }
 
             const statusLabels = {
+                demo: t("settings_license_status_demo", "Demo mode"),
                 trial: t("settings_license_status_trial", "Trial active"),
                 active: t("settings_license_status_active", "License active"),
                 payment_due: t("settings_license_status_payment_due", "Payment due"),
@@ -1860,9 +1874,13 @@
             title.textContent = payload.message || statusLabels[status] || status;
             badge.textContent = status;
             const enforcement = payload.enforcement || {};
-            text.textContent = enforcement.can_generate_schedule
-                ? t("settings_license_generation_allowed", "Schedule generation is available.")
-                : t("settings_license_generation_blocked", "Schedule generation is blocked until the license is renewed.");
+            text.textContent = isDemoMode()
+                ? t("settings_license_demo_text", "Demo mode shows the workflow but disables production scheduling features.")
+                : (
+                    enforcement.can_generate_schedule
+                        ? t("settings_license_generation_allowed", "Schedule generation is available.")
+                        : t("settings_license_generation_blocked", "Schedule generation is blocked until the license is renewed.")
+                );
 
             document.getElementById("license-plan").textContent = payload.plan_code || "-";
             document.getElementById("license-employees").textContent = `${payload.employee_count || 0} / ${payload.employee_limit || "-"}`;
@@ -2231,6 +2249,33 @@
             showUpdatesMessage(t("settings_updates_started", "Update installer started. This app will close shortly."), "success");
         }
 
+        function applyDemoModeRestrictions() {
+            if (!isDemoMode()) return;
+
+            [
+                "create-database-backup-btn",
+                "install-update-btn",
+                "refresh-license-btn",
+                "activate-license-btn",
+                "import-license-btn"
+            ].forEach((id) => {
+                const button = document.getElementById(id);
+                if (!button) return;
+                button.disabled = true;
+                button.title = demoRestrictionText();
+            });
+
+            ["license-activation-code", "license-import-json"].forEach((id) => {
+                const input = document.getElementById(id);
+                if (input) {
+                    input.disabled = true;
+                }
+            });
+
+            showDatabaseMessage(demoRestrictionText(), "info");
+            showLicenseMessage(t("settings_license_demo_text", "Demo mode shows the workflow but disables production scheduling features."), "info");
+        }
+
         document.addEventListener("DOMContentLoaded", () => {
             bindSidebarToggle();
             applySidebarState(getSavedSidebarState());
@@ -2256,6 +2301,7 @@
             document.getElementById("activate-license-btn").addEventListener("click", activateLicenseCode);
             document.getElementById("import-license-btn").addEventListener("click", importLicense);
             document.getElementById("copy-license-diagnostics-btn").addEventListener("click", copyLicenseDiagnostics);
+            applyDemoModeRestrictions();
             loadGenerationSettings();
             loadDatabaseBackups();
             loadLicenseStatus({ silent: true });

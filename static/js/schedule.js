@@ -40,6 +40,18 @@
         const LOCAL_COVERAGE_DISPLAY_MODE_PREFIX = "schedule_app_coverage_display_mode";
         const LOCAL_CARD_DISPLAY_MODE_PREFIX = "schedule_app_card_display_mode";
 
+        function isDemoMode() {
+            return document.body?.dataset?.demoMode === "1";
+        }
+
+        function demoRestrictionText() {
+            return t("demo_restricted_message", "This feature is disabled in ShiftCare Demo.");
+        }
+
+        function showDemoRestriction() {
+            showMessage(demoRestrictionText(), "warning");
+        }
+
         /* =========================================================
            PAGE INIT / ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ
            ========================================================= */
@@ -55,6 +67,15 @@
 
             // Apply remembered sidebar state / Применяем сохранённое состояние sidebar
             applySidebarState(getSavedSidebarState());
+            if (isDemoMode()) {
+                showMessage(
+                    t(
+                        "demo_schedule_notice",
+                        "ShiftCare Demo limits scheduling to a small manual sample. Auto-generation, export, cleanup, backup, cloud sync, and license activation are disabled."
+                    ),
+                    "info"
+                );
+            }
 
             // Load initial settings and reference data / Загружаем настройки и справочники
             await Promise.all([
@@ -680,6 +701,10 @@
         }
 
         function openScheduleActionModal(modalId) {
+            if (isDemoMode() && modalId === "danger-actions-modal") {
+                showDemoRestriction();
+                return;
+            }
             if (!canEditSchedule() && ["generation-actions-modal", "danger-actions-modal"].includes(modalId)) {
                 return;
             }
@@ -855,6 +880,28 @@
             outputActionsButton.disabled = !hasPositions || !hasWeek;
             dangerActionsButton.disabled = !hasPositions || !hasWeek;
 
+            if (isDemoMode()) {
+                [
+                    generateButton,
+                    generateAllButton,
+                    clearButton,
+                    clearAllButton,
+                    exportButton,
+                    exportAllButton,
+                    exportWordButton,
+                    exportAllWordButton
+                ].forEach(button => {
+                    if (!button) return;
+                    button.disabled = true;
+                    button.title = demoRestrictionText();
+                });
+                generationActionsButton.disabled = !hasPositions || !hasWeek;
+                outputActionsButton.disabled = !hasPositions || !hasWeek;
+                dangerActionsButton.disabled = true;
+                dangerActionsButton.hidden = true;
+                dangerActionsButton.style.display = "none";
+            }
+
             [
                 generateButton,
                 generateAllButton,
@@ -883,6 +930,27 @@
             generationActionsButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
             outputActionsButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
             dangerActionsButton.title = hasWeek ? "" : t("msg_select_week_start", "Please select a week start date.");
+
+            if (isDemoMode()) {
+                [
+                    generateButton,
+                    generateAllButton,
+                    clearButton,
+                    clearAllButton,
+                    exportButton,
+                    exportAllButton,
+                    exportWordButton,
+                    exportAllWordButton,
+                    dangerActionsButton
+                ].forEach(button => {
+                    if (button) button.title = demoRestrictionText();
+                });
+                generationActionsButton.title = demoRestrictionText();
+                outputActionsButton.title = demoRestrictionText();
+                dangerActionsButton.disabled = true;
+                dangerActionsButton.hidden = true;
+                dangerActionsButton.style.display = "none";
+            }
         }
 
         /* =========================================================

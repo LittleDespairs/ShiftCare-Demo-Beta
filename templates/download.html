@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Cache-Control" content="no-store">
-    <title>Download ShiftCare</title>
+    <title>Download {{ app_name }}</title>
     <style>
         :root {
             color-scheme: light;
@@ -117,6 +117,15 @@
             background: var(--surface);
         }
 
+        .btn-demo {
+            background: #111827;
+            color: #fff;
+        }
+
+        .btn-demo:hover {
+            background: #0f172a;
+        }
+
         .note {
             margin-top: 24px;
             color: var(--muted);
@@ -150,8 +159,8 @@
 <body>
     <main class="page">
         <header>
-            <h1 class="brand">Download ShiftCare</h1>
-            <p class="subtitle">Get the latest Windows installer published in the official ShiftCare release channel.</p>
+            <h1 class="brand">Download {{ app_name }}</h1>
+            <p class="subtitle">Get the latest Windows installer published in the official {{ app_name }} release channel.</p>
         </header>
 
         <section class="download-panel" aria-labelledby="latest-version-title">
@@ -172,8 +181,15 @@
 
             <div class="actions">
                 <a class="btn btn-primary" href="/download/latest">Download latest installer</a>
+                {% if demo_latest %}
+                <a class="btn btn-demo" href="/download/demo/latest">Download demo version</a>
+                {% endif %}
                 <a class="btn btn-secondary" href="{{ latest.html_url }}" rel="noopener" target="_blank">Release notes</a>
             </div>
+
+            {% if demo_latest %}
+            <p class="note">Demo installer: {{ demo_latest.asset_name }}{% if demo_latest.size_bytes %} · {{ "%.1f"|format(demo_latest.size_bytes / 1048576) }} MB{% endif %}</p>
+            {% endif %}
 
             <p class="note">This page is generated from GitHub Releases on every request and is not cached by the application.</p>
         </section>

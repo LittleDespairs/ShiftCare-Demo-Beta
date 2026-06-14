@@ -1,6 +1,6 @@
 {
-  "name": "ShiftCare",
-  "short_name": "ShiftCare",
+  "name": "ShiftCare Demo",
+  "short_name": "ShiftCare Demo",
   "description": "Thoughtful scheduling for care teams",
   "start_url": "/?source=pwa",
   "scope": "/",

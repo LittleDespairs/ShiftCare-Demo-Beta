@@ -10,19 +10,31 @@ import uvicorn
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
-APP_WINDOW_TITLE = "ShiftCare"
+TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
+
+
+def is_demo_mode_enabled() -> bool:
+    return any(
+        os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
+        for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
+    )
+
+
+APP_WINDOW_TITLE = "ShiftCare Demo" if is_demo_mode_enabled() else "ShiftCare"
 APP_WINDOW_WIDTH = 1440
 APP_WINDOW_HEIGHT = 900
 APP_WINDOW_MIN_SIZE = (1100, 720)
 SERVER = None
+LOGGING_ENABLED = not is_demo_mode_enabled()
 
 
 def get_windows_app_data_dir() -> Path:
+    app_dir_name = "ShiftCare Demo" if is_demo_mode_enabled() else "Schedule App"
     app_data_root = os.environ.get("LOCALAPPDATA")
     if app_data_root:
-        app_data_dir = Path(app_data_root) / "Schedule App"
+        app_data_dir = Path(app_data_root) / app_dir_name
     else:
-        app_data_dir = Path.home() / "AppData" / "Local" / "Schedule App"
+        app_data_dir = Path.home() / "AppData" / "Local" / app_dir_name
 
     app_data_dir.mkdir(parents=True, exist_ok=True)
     return app_data_dir
@@ -30,7 +42,7 @@ def get_windows_app_data_dir() -> Path:
 
 def get_log_path() -> Path:
     if getattr(sys, "frozen", False):
-        return get_windows_app_data_dir() / "ScheduleApp.log"
+        return get_windows_app_data_dir() / ("ShiftCareDemo.log" if is_demo_mode_enabled() else "ScheduleApp.log")
     return Path(__file__).resolve().with_suffix(".log")
 
 
@@ -52,6 +64,8 @@ UVICORN_LOG_CONFIG = {
 
 
 def write_log(message: str) -> None:
+    if not LOGGING_ENABLED:
+        return
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with LOG_PATH.open("a", encoding="utf-8") as log_file:
@@ -91,9 +105,14 @@ try:
 except Exception:
     error_text = f"ERROR while importing app from main.py:\n{traceback.format_exc()}"
     write_log(error_text)
+    detail_text = (
+        "Application failed to start."
+        if is_demo_mode_enabled()
+        else f"Application failed to start.\n\nDetails were saved to:\n{LOG_PATH}"
+    )
     show_error(
-        "ShiftCare",
-        f"Application failed to start.\n\nDetails were saved to:\n{LOG_PATH}",
+        APP_WINDOW_TITLE,
+        detail_text,
     )
     sys.exit(1)
 
@@ -192,7 +211,7 @@ def get_runtime_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-if __name__ == "__main__":
+def main() -> int:
     try:
         write_log("Launching application...")
         port = find_available_port(HOST, get_requested_port())
@@ -210,12 +229,22 @@ if __name__ == "__main__":
 
         stop_server()
         server_thread.join(timeout=5)
+        return 0
 
     except Exception:
         stop_server()
         write_log(f"APPLICATION ERROR:\n{traceback.format_exc()}")
-        show_error(
-            "ShiftCare",
-            f"Application failed to start.\n\nDetails were saved to:\n{LOG_PATH}",
+        detail_text = (
+            "Application failed to start."
+            if is_demo_mode_enabled()
+            else f"Application failed to start.\n\nDetails were saved to:\n{LOG_PATH}"
         )
-        sys.exit(1)
+        show_error(
+            APP_WINDOW_TITLE,
+            detail_text,
+        )
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

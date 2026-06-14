@@ -16,9 +16,9 @@ from fastapi import HTTPException
 
 GITHUB_REPO_OWNER = "LittleDespairs"
 GITHUB_REPO_NAME = "Schedule_app_releases"
-GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases"
+GITHUB_DEMO_REPO_NAME = "ShiftCare-Demo-Beta"
 GITHUB_RELEASE_ASSET_PATTERN = re.compile(
-    r"^(?:ScheduleApp|ShiftCare)_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$"
+    r"^(?:ScheduleApp|ShiftCare|ShiftCare_Demo)_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$"
 )
 
 
@@ -44,9 +44,13 @@ def is_newer_version(candidate: str, current: str) -> bool:
     return version_sort_key(candidate) > version_sort_key(current)
 
 
-def request_github_releases(app_version: str) -> list[dict]:
+def github_releases_api_url(repo_name: str = GITHUB_REPO_NAME) -> str:
+    return f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{repo_name}/releases"
+
+
+def request_github_releases(app_version: str, repo_name: str = GITHUB_REPO_NAME) -> list[dict]:
     request = urllib.request.Request(
-        GITHUB_RELEASES_API_URL,
+        github_releases_api_url(repo_name),
         headers={
             "Accept": "application/vnd.github+json",
             "User-Agent": f"ShiftCare/{app_version}",

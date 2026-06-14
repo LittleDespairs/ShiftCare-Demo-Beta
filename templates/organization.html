@@ -5,21 +5,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#2563eb">
-    <title>Organization - ShiftCare</title>
+    <title>Organization - {{ app_name }}</title>
     <link rel="manifest" href="/static/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
     <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}">
 </head>
 
-<body class="app-shell ltr" data-app-version="{{ app_version }}">
+<body class="app-shell ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}">
     <div class="app-layout">
         <aside class="sidebar">
             <div class="sidebar-top-row">
                 <div class="brand">
                     <div class="brand-logo">SC</div>
                     <div class="brand-text">
-                        <h1 class="brand-title" data-i18n="app_title">ShiftCare</h1>
+                        <h1 class="brand-title" data-i18n="app_title">{{ app_name }}</h1>
                         <p class="brand-subtitle" data-i18n="nav_organization">Organization</p>
                     </div>
                 </div>

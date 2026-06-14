@@ -492,8 +492,15 @@
         return localStorage.getItem("scheduleAppLanguage") || document.documentElement.lang || "en";
     }
 
+    function getAppName() {
+        return document.body?.dataset?.appName || "ShiftCare";
+    }
+
     function t(key) {
         const lang = language();
+        if (key === "app_title") {
+            return getAppName();
+        }
         return (translations[lang] || translations.en)[key] || translations.en[key] || key;
     }
 

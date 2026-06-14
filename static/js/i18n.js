@@ -838,8 +838,12 @@ const I18N_TRANSLATIONS = {
         settings_license_status_grace: "Grace period",
         settings_license_status_expired: "License expired",
         settings_license_status_revoked: "License revoked",
+        settings_license_status_demo: "Demo mode",
+        settings_license_demo_text: "Demo mode shows the workflow but disables production scheduling features.",
         settings_license_generation_allowed: "Schedule generation is available.",
         settings_license_generation_blocked: "Schedule generation is blocked until the license is renewed.",
+        demo_restricted_message: "This feature is disabled in ShiftCare Demo.",
+        demo_schedule_notice: "ShiftCare Demo limits scheduling to a small manual sample. Auto-generation, export, cleanup, backup, cloud sync, and license activation are disabled.",
         settings_about_title: "About ShiftCare",
         settings_about_text: "Current beta information and links for help.",
         settings_guide_text: "Open the step-by-step guide for preparing and publishing a schedule.",
@@ -1865,8 +1869,12 @@ const I18N_TRANSLATIONS = {
         settings_license_status_grace: "Grace period",
         settings_license_status_expired: "Лицензия истекла",
         settings_license_status_revoked: "Лицензия отозвана",
+        settings_license_status_demo: "Демо-режим",
+        settings_license_demo_text: "Демо-режим показывает рабочий процесс, но отключает функции для полноценного составления расписаний.",
         settings_license_generation_allowed: "Генерация расписания доступна.",
         settings_license_generation_blocked: "Генерация расписания заблокирована до продления лицензии.",
+        demo_restricted_message: "Эта функция отключена в ShiftCare Demo.",
+        demo_schedule_notice: "ShiftCare Demo ограничивает расписание небольшим ручным примером. Автогенерация, экспорт, очистка, backup, cloud sync и активация лицензии отключены.",
         settings_about_title: "О ShiftCare",
         settings_about_text: "Информация о текущей бета-версии и ссылки на помощь.",
         settings_guide_text: "Открыть пошаговое руководство по подготовке и публикации расписания.",
@@ -2893,8 +2901,12 @@ const I18N_TRANSLATIONS = {
         settings_license_status_grace: "תקופת חסד",
         settings_license_status_expired: "הרישיון פג",
         settings_license_status_revoked: "הרישיון בוטל",
+        settings_license_status_demo: "מצב הדגמה",
+        settings_license_demo_text: "מצב ההדגמה מציג את תהליך העבודה אך משבית יכולות שיבוץ מלאות.",
         settings_license_generation_allowed: "יצירת סידור העבודה זמינה.",
         settings_license_generation_blocked: "יצירת סידור העבודה חסומה עד חידוש הרישיון.",
+        demo_restricted_message: "היכולת הזו מושבתת ב-ShiftCare Demo.",
+        demo_schedule_notice: "ShiftCare Demo מגביל את הסידור לדוגמה ידנית קטנה. יצירה אוטומטית, ייצוא, ניקוי, גיבוי, סנכרון ענן והפעלת רישיון מושבתים.",
         settings_about_title: "אודות ShiftCare",
         settings_about_text: "מידע על גרסת הבטא הנוכחית וקישורי עזרה.",
         settings_guide_text: "פתח מדריך שלב אחר שלב להכנה ופרסום של סידור עבודה.",
@@ -3145,11 +3157,34 @@ function setLanguage(lang) {
 function translate(key, lang = null) {
     const currentLang = lang || localStorage.getItem("scheduleAppLanguage") || "en";
     const dictionary = I18N_TRANSLATIONS[currentLang] || I18N_TRANSLATIONS.en;
-    return interpolateTranslation(dictionary[key] ?? key);
+    return interpolateTranslation(resolveTranslationValue(dictionary, key));
 }
 
 function getAppVersion() {
     return document.body?.dataset?.appVersion || "";
+}
+
+function getAppName() {
+    return document.body?.dataset?.appName || "ShiftCare";
+}
+
+function isDemoMode() {
+    return document.body?.dataset?.demoMode === "1";
+}
+
+function resolveTranslationValue(dictionary, key) {
+    if (key === "app_title") {
+        return getAppName();
+    }
+    if (key === "footer_version") {
+        return `${getAppName()} v{version}`;
+    }
+
+    const value = dictionary[key] ?? key;
+    if (isDemoMode() && ["settings_about_title", "guide_start_text"].includes(key)) {
+        return String(value).replace("ShiftCare", getAppName());
+    }
+    return value;
 }
 
 function interpolateTranslation(value) {
@@ -3161,17 +3196,17 @@ function applyTranslations(lang) {
 
     document.querySelectorAll("[data-i18n]").forEach(element => {
         const key = element.dataset.i18n;
-        element.textContent = interpolateTranslation(dictionary[key] ?? key);
+        element.textContent = interpolateTranslation(resolveTranslationValue(dictionary, key));
     });
 
     document.querySelectorAll("[data-i18n-placeholder]").forEach(element => {
         const key = element.dataset.i18nPlaceholder;
-        element.setAttribute("placeholder", interpolateTranslation(dictionary[key] ?? key));
+        element.setAttribute("placeholder", interpolateTranslation(resolveTranslationValue(dictionary, key)));
     });
 
     document.querySelectorAll("[data-i18n-title]").forEach(element => {
         const key = element.dataset.i18nTitle;
-        element.setAttribute("title", interpolateTranslation(dictionary[key] ?? key));
+        element.setAttribute("title", interpolateTranslation(resolveTranslationValue(dictionary, key)));
     });
 }
 
