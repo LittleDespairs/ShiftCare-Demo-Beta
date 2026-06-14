@@ -47,7 +47,7 @@ from app_settings_service import (
 )
 from app_config import get_app_config, validate_runtime_config
 from cloud_sql import check_postgres_connection
-from database import get_connection, init_db
+from database import DEMO_USER_EMAIL, get_connection, init_db
 from email_service import (
     email_delivery_is_enabled,
     public_email_status,
@@ -125,7 +125,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.19.0_beta"
+APP_VERSION = "0.19.1_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -136,6 +136,7 @@ DEFAULT_CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app"
 DEFAULT_PUBLIC_APP_BASE_URL = "https://portal.shiftcare.co.il"
 DEMO_EMPLOYEE_LIMIT = 6
 DEMO_SCHEDULE_ENTRY_LIMIT = 12
+DEMO_ACCESS_TOKEN = "shiftcare-demo-session"
 RETRYABLE_CLOUD_STATUS_CODES = {429, 502, 503, 504}
 AUTH_LOGIN_RATE_LIMIT_ATTEMPTS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
 AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
@@ -992,7 +993,55 @@ def get_user_context(cursor, user_id: int) -> dict:
     return user
 
 
+def get_demo_user_context() -> dict:
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id FROM users WHERE lower(email) = ?", (DEMO_USER_EMAIL,))
+        user_row = cursor.fetchone()
+        if user_row:
+            return get_user_context(cursor, int(user_row["id"]))
+    finally:
+        connection.close()
+
+    now = current_utc_timestamp()
+    return {
+        "id": 0,
+        "email": DEMO_USER_EMAIL,
+        "full_name": "Demo Administrator",
+        "status": "active",
+        "email_verified": True,
+        "created_at": now,
+        "updated_at": now,
+        "last_login_at": None,
+        "memberships": [
+            {
+                "organization_id": 1,
+                "organization_public_id": "shiftcare-demo-center",
+                "organization_name": "ShiftCare Demo Center",
+                "role": "owner",
+                "status": "active",
+                "employee_id": None,
+            }
+        ],
+    }
+
+
+def build_demo_auth_response() -> dict:
+    expires_at = (
+        datetime.now(UTC) + timedelta(days=3650)
+    ).replace(tzinfo=None).isoformat(timespec="seconds")
+    return {
+        "access_token": DEMO_ACCESS_TOKEN,
+        "token_type": "bearer",
+        "expires_at": expires_at,
+        "user": get_demo_user_context(),
+    }
+
+
 def get_current_user(authorization: str | None = Header(default=None)) -> dict:
+    if is_demo_mode_enabled():
+        return get_demo_user_context()
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = authorization.split(" ", 1)[1].strip()
@@ -3106,6 +3155,9 @@ def bootstrap_first_owner(request_data: AuthBootstrapRequest, request: Request):
 
 @app.post("/api/auth/login", tags=["Auth"])
 def login(request_data: AuthLoginRequest, request: Request):
+    if is_demo_mode_enabled():
+        return build_demo_auth_response()
+
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -3531,10 +3583,11 @@ def auth_status():
             "app_version": APP_VERSION,
             "app_name": APP_NAME,
             "demo_mode": is_demo_mode_enabled(),
-            "bootstrap_available": user_count == 0,
+            "bootstrap_available": False if is_demo_mode_enabled() else user_count == 0,
             "active_user_count": user_count,
             "active_organization_count": organization_count,
             "environment": get_app_config().app_env,
+            "demo_user": get_demo_user_context() if is_demo_mode_enabled() else None,
         }
     finally:
         connection.close()
@@ -4060,6 +4113,9 @@ def get_invitation_preview(token: str):
 
 @app.post("/api/auth/logout", tags=["Auth"])
 def logout(authorization: str | None = Header(default=None), current_user: dict = Depends(get_current_user)):
+    if is_demo_mode_enabled():
+        return {"message": "Demo session kept active", "demo_mode": True}
+
     token = authorization.split(" ", 1)[1].strip() if authorization else ""
     connection = get_connection()
     try:
@@ -5418,6 +5474,8 @@ def home_page(request: Request):
 
 @app.get("/login", tags=["Pages"])
 def login_page(request: Request):
+    if is_demo_mode_enabled():
+        return RedirectResponse("/", status_code=302, headers=no_store_headers())
     return templates.TemplateResponse(request=request, name="login.html", context={})
 
 

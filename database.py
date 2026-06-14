@@ -3,7 +3,7 @@ import sqlite3
 import sys
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -45,7 +45,7 @@ def get_database_path() -> Path:
         runtime_dir = get_windows_app_data_dir()
         runtime_path = runtime_dir / "schedule_app.db"
 
-        if not runtime_path.exists():
+        if not runtime_path.exists() and not is_demo_mode_enabled():
             bundled_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
             bundled_path = bundled_dir / "schedule_app.db"
             if bundled_path.exists():
@@ -81,6 +81,9 @@ DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
 CURRENT_SCHEMA_VERSION = 18
 POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
+DEMO_SEED_VERSION = "2026-06-14-loginless-demo-v1"
+DEMO_ORGANIZATION_PUBLIC_ID = "shiftcare-demo-center"
+DEMO_USER_EMAIL = "demo@shiftcare.local"
 PUBLIC_ID_TABLE_PREFIXES = {
     "employees": "emp",
     "positions": "pos",
@@ -112,6 +115,377 @@ def _table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
 def _add_column_if_missing(cursor: sqlite3.Cursor, table_name: str, column_name: str, definition: str) -> None:
     if column_name not in _table_columns(cursor, table_name):
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def _current_timestamp() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat()
+
+
+def _demo_week_start() -> datetime.date:
+    today = datetime.now().date()
+    return today - timedelta(days=(today.weekday() + 1) % 7)
+
+
+def _upsert_app_setting(cursor: sqlite3.Cursor, key: str, value: str, organization_id: int = 1) -> None:
+    cursor.execute(
+        """
+        INSERT INTO app_settings (organization_id, key, value)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key)
+        DO UPDATE SET organization_id = excluded.organization_id,
+                      value = excluded.value
+        """,
+        (organization_id, key, value),
+    )
+
+
+def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
+    if not is_demo_mode_enabled():
+        return
+
+    cursor.execute("SELECT value FROM app_settings WHERE key = 'shiftcare_demo_seed_version'")
+    seed_row = cursor.fetchone()
+    if seed_row and seed_row["value"] == DEMO_SEED_VERSION:
+        return
+
+    now = _current_timestamp()
+    for table_name in (
+        "auth_sessions",
+        "auth_password_reset_tokens",
+        "auth_email_verification_tokens",
+        "auth_audit_events",
+        "license_activation_attempts",
+        "license_events",
+        "licenses",
+        "desktop_sync_outbox",
+        "organization_invitations",
+        "organization_memberships",
+        "schedule_entries",
+        "employee_day_statuses",
+        "employee_week_preferences",
+        "employee_recurring_preferences",
+        "employee_preferences",
+        "employee_positions",
+        "shift_requirements",
+        "coverage_requirements",
+        "shift_templates",
+        "employees",
+        "positions",
+        "users",
+    ):
+        cursor.execute(f"DELETE FROM {table_name}")
+
+    cursor.execute("DELETE FROM app_settings WHERE organization_id <> 1")
+    cursor.execute(
+        """
+        DELETE FROM app_settings
+        WHERE key IN (
+            'cloud_api_base_url',
+            'cloud_organization_id',
+            'cloud_organization_public_id',
+            'cloud_linked_at',
+            'desktop_cloud_access_token',
+            'desktop_cloud_last_pull_at',
+            'desktop_cloud_last_push_at',
+            'desktop_cloud_last_pull_app_version',
+            'desktop_cloud_last_push_error'
+        )
+        """
+    )
+    cursor.execute("DELETE FROM organizations WHERE id <> 1")
+    cursor.execute(
+        """
+        UPDATE organizations
+        SET public_id = ?, name = 'ShiftCare Demo Center', status = 'active', updated_at = ?
+        WHERE id = 1
+        """,
+        (DEMO_ORGANIZATION_PUBLIC_ID, now),
+    )
+
+    cursor.execute(
+        """
+        INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
+        VALUES (?, 'Demo Administrator', NULL, 'active', 1, ?, ?)
+        """,
+        (DEMO_USER_EMAIL, now, now),
+    )
+    demo_user_id = int(cursor.lastrowid)
+    cursor.execute(
+        """
+        INSERT INTO organization_memberships (organization_id, user_id, role, status, created_at, updated_at)
+        VALUES (1, ?, 'owner', 'active', ?, ?)
+        """,
+        (demo_user_id, now, now),
+    )
+
+    positions = [
+        ("demo-pos-nursing", "Nursing", "#dbeafe", 1, 1, 0),
+        ("demo-pos-care", "Care Assistants", "#dcfce7", 1, 1, 1),
+        ("demo-pos-activities", "Activities", "#fef3c7", 0, 0, 1),
+    ]
+    position_ids: dict[str, int] = {}
+    for public_id, name, color, continuous, minimum_presence, allow_same_day in positions:
+        cursor.execute(
+            """
+            INSERT INTO positions (
+                organization_id, public_id, name, color, requires_continuous_coverage,
+                minimum_staff_presence, allow_same_day_other_positions,
+                max_consecutive_nights, emergency_max_consecutive_nights,
+                max_consecutive_split_days, emergency_max_consecutive_split_days,
+                created_at, updated_at, updated_by
+            )
+            VALUES (1, ?, ?, ?, ?, ?, ?, 2, 3, 2, 3, ?, ?, ?)
+            """,
+            (public_id, name, color, continuous, minimum_presence, allow_same_day, now, now, demo_user_id),
+        )
+        position_ids[public_id] = int(cursor.lastrowid)
+
+    employees = [
+        ("demo-emp-anna", "900000001", "Anna Levin", "female", 2, 4, 5, 1, 1, 1, 1),
+        ("demo-emp-maya", "900000002", "Maya Cohen", "female", 2, 3, 4, 0, 1, 0, 1),
+        ("demo-emp-david", "900000003", "David Bar", "male", 2, 4, 5, 1, 1, 1, 0),
+        ("demo-emp-lior", "900000004", "Lior Kaplan", "male", 1, 3, 4, 1, 1, 1, 1),
+        ("demo-emp-noa", "900000005", "Noa Amir", "female", 1, 3, 4, 0, 1, 0, 1),
+        ("demo-emp-roman", "900000006", "Roman Stein", "male", 2, 4, 5, 1, 1, 1, 0),
+    ]
+    employee_ids: dict[str, int] = {}
+    for employee in employees:
+        cursor.execute(
+            """
+            INSERT INTO employees (
+                organization_id, public_id, id_card, full_name, sex,
+                min_shifts_per_week, target_shifts_per_week, max_shifts_per_week,
+                can_work_night, can_work_weekends, can_work_evenings_after_night,
+                can_work_mornings_and_evenings, created_at, updated_at, updated_by
+            )
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (*employee, now, now, demo_user_id),
+        )
+        employee_ids[employee[0]] = int(cursor.lastrowid)
+
+    for employee_key, position_key, is_primary, priority_score, is_fallback_only in (
+        ("demo-emp-anna", "demo-pos-nursing", 1, 95, 0),
+        ("demo-emp-maya", "demo-pos-nursing", 1, 90, 0),
+        ("demo-emp-david", "demo-pos-nursing", 1, 88, 0),
+        ("demo-emp-roman", "demo-pos-nursing", 0, 76, 0),
+        ("demo-emp-lior", "demo-pos-care", 1, 92, 0),
+        ("demo-emp-noa", "demo-pos-care", 1, 86, 0),
+        ("demo-emp-roman", "demo-pos-care", 0, 70, 0),
+        ("demo-emp-maya", "demo-pos-care", 0, 55, 1),
+        ("demo-emp-noa", "demo-pos-activities", 1, 84, 0),
+        ("demo-emp-lior", "demo-pos-activities", 0, 72, 0),
+    ):
+        cursor.execute(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (employee_ids[employee_key], position_ids[position_key], is_primary, priority_score, is_fallback_only),
+        )
+
+    night_capable = {"demo-emp-anna", "demo-emp-david", "demo-emp-lior", "demo-emp-roman"}
+    for employee_key, *_ in employees:
+        cursor.execute(
+            """
+            INSERT INTO employee_preferences (
+                organization_id, employee_id, allow_morning, allow_evening, allow_night,
+                allow_morning_evening_combo, created_at, updated_at, updated_by
+            )
+            VALUES (1, ?, 1, 1, ?, 1, ?, ?, ?)
+            """,
+            (employee_ids[employee_key], 1 if employee_key in night_capable else 0, now, now, demo_user_id),
+        )
+
+    template_ids: dict[tuple[str, str], int] = {}
+    template_specs = [
+        ("morning", "Morning 07:00-15:00", "07:00", "15:00", 0),
+        ("evening", "Evening 15:00-23:00", "15:00", "23:00", 0),
+        ("night", "Night 23:00-07:00", "23:00", "07:00", 1),
+    ]
+    for position_key, position_id in position_ids.items():
+        for category, name, start_time, end_time, is_overnight in template_specs:
+            if position_key == "demo-pos-activities" and category == "night":
+                continue
+            public_suffix = position_key.removeprefix("demo-pos-")
+            cursor.execute(
+                """
+                INSERT INTO shift_templates (
+                    organization_id, public_id, position_id, category, name, start_time,
+                    end_time, is_overnight, is_active, is_split_only,
+                    created_at, updated_at, updated_by
+                )
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)
+                """,
+                (
+                    f"demo-tpl-{public_suffix}-{category}",
+                    position_id,
+                    category,
+                    name,
+                    start_time,
+                    end_time,
+                    is_overnight,
+                    now,
+                    now,
+                    demo_user_id,
+                ),
+            )
+            template_ids[(position_key, category)] = int(cursor.lastrowid)
+
+    requirements = {
+        "demo-pos-nursing": {"morning": (2, 1, 0), "evening": (2, 1, 0), "night": (1, 0, 0)},
+        "demo-pos-care": {"morning": (1, 0, 0), "evening": (1, 0, 0), "night": (1, 0, 0)},
+        "demo-pos-activities": {"morning": (1, 0, 0), "evening": (1, 0, 0)},
+    }
+    for position_key, category_requirements in requirements.items():
+        position_id = position_ids[position_key]
+        public_suffix = position_key.removeprefix("demo-pos-")
+        for category, (required_total, required_female_min, required_male_min) in category_requirements.items():
+            cursor.execute(
+                """
+                INSERT INTO shift_requirements (
+                    organization_id, public_id, position_id, shift_category,
+                    required_total, required_female_min, required_male_min,
+                    created_at, updated_at, updated_by
+                )
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"demo-shr-{public_suffix}-{category}",
+                    position_id,
+                    category,
+                    required_total,
+                    required_female_min,
+                    required_male_min,
+                    now,
+                    now,
+                    demo_user_id,
+                ),
+            )
+            template = next(item for item in template_specs if item[0] == category)
+            cursor.execute(
+                """
+                INSERT INTO coverage_requirements (
+                    organization_id, public_id, position_id, start_time, end_time,
+                    required_total, required_female_min, required_male_min, is_overnight,
+                    created_at, updated_at, updated_by
+                )
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"demo-cov-{public_suffix}-{category}",
+                    position_id,
+                    template[2],
+                    template[3],
+                    required_total,
+                    required_female_min,
+                    required_male_min,
+                    template[4],
+                    now,
+                    now,
+                    demo_user_id,
+                ),
+            )
+
+    week_start = _demo_week_start()
+    week_dates = [(week_start + timedelta(days=offset)).isoformat() for offset in range(7)]
+    for employee_key, day_offset, request_type, target_category in (
+        ("demo-emp-anna", 1, "request_shift", "morning"),
+        ("demo-emp-maya", 2, "exclude_shift", "night"),
+        ("demo-emp-david", 3, "request_shift", "night"),
+        ("demo-emp-noa", 4, "day_off", None),
+        ("demo-emp-lior", 5, "request_shift", "evening"),
+    ):
+        preference_date = week_dates[day_offset]
+        if request_type == "day_off":
+            preference_type = "off_day"
+        elif request_type == "request_shift":
+            preference_type = f"only_{target_category}"
+        else:
+            preference_type = f"not_{target_category}"
+        cursor.execute(
+            """
+            INSERT INTO employee_week_preferences (
+                organization_id, public_id, employee_id, week_start_date, preference_date,
+                preference_type, request_type, target_category, created_at, updated_at, updated_by
+            )
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"demo-wpr-{employee_key}-{day_offset}",
+                employee_ids[employee_key],
+                week_dates[0],
+                preference_date,
+                preference_type,
+                request_type,
+                target_category,
+                now,
+                now,
+                demo_user_id,
+            ),
+        )
+
+    for employee_key, day_offset, status_type in (
+        ("demo-emp-noa", 4, "day_off"),
+        ("demo-emp-roman", 6, "vacation"),
+    ):
+        cursor.execute(
+            """
+            INSERT INTO employee_day_statuses (
+                organization_id, public_id, employee_id, date, status_type,
+                created_at, updated_at, updated_by
+            )
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"demo-dst-{employee_key}-{day_offset}",
+                employee_ids[employee_key],
+                week_dates[day_offset],
+                status_type,
+                now,
+                now,
+                demo_user_id,
+            ),
+        )
+
+    for index, (employee_key, position_key, day_offset, category) in enumerate(
+        (
+            ("demo-emp-anna", "demo-pos-nursing", 0, "morning"),
+            ("demo-emp-maya", "demo-pos-nursing", 0, "evening"),
+            ("demo-emp-david", "demo-pos-nursing", 0, "night"),
+            ("demo-emp-maya", "demo-pos-nursing", 1, "morning"),
+            ("demo-emp-noa", "demo-pos-nursing", 1, "evening"),
+            ("demo-emp-roman", "demo-pos-nursing", 1, "night"),
+            ("demo-emp-anna", "demo-pos-nursing", 2, "morning"),
+            ("demo-emp-roman", "demo-pos-nursing", 2, "evening"),
+            ("demo-emp-lior", "demo-pos-care", 0, "morning"),
+            ("demo-emp-noa", "demo-pos-care", 1, "morning"),
+        ),
+        start=1,
+    ):
+        cursor.execute(
+            """
+            INSERT INTO schedule_entries (
+                organization_id, public_id, employee_id, position_id, date,
+                shift_template_id, no_show, created_at, updated_at, updated_by
+            )
+            VALUES (1, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+            """,
+            (
+                f"demo-sch-{index:02d}",
+                employee_ids[employee_key],
+                position_ids[position_key],
+                week_dates[day_offset],
+                template_ids[(position_key, category)],
+                now,
+                now,
+                demo_user_id,
+            ),
+        )
+
+    _upsert_app_setting(cursor, "shiftcare_demo_seed_version", DEMO_SEED_VERSION)
+    _upsert_app_setting(cursor, "schedule_coverage_display_mode", "interval")
+    _upsert_app_setting(cursor, "allow_multiple_positions_per_day", "0")
 
 
 def _ensure_postgres_runtime_schema(connection) -> None:
@@ -1411,6 +1785,7 @@ def init_db():
         _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
 
     _seed_licenses_from_bundled_database(cursor)
+    _seed_demo_database(cursor)
 
     connection.commit()
     connection.close()

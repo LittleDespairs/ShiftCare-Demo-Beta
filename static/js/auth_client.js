@@ -6,7 +6,31 @@
     const API_MODE_KEY = "schedule_app_api_mode";
     const CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app";
     const CLOUD_API_FALLBACK_BASE_URL = "https://schedule-app-beta.web.app";
+    const IS_DEMO_MODE = document.body?.dataset?.demoMode === "1";
+    const DEMO_TOKEN = "shiftcare-demo-session";
     const nativeFetch = window.fetch.bind(window);
+    let demoUser = null;
+
+    function getDemoUser() {
+        if (demoUser) return demoUser;
+        return {
+            id: 0,
+            email: "demo@shiftcare.local",
+            full_name: "Demo Administrator",
+            status: "active",
+            email_verified: true,
+            memberships: [
+                {
+                    organization_id: 1,
+                    organization_public_id: "shiftcare-demo-center",
+                    organization_name: "ShiftCare Demo Center",
+                    role: "owner",
+                    status: "active",
+                    employee_id: null,
+                },
+            ],
+        };
+    }
 
     function isHostedCloudOrigin() {
         return window.location.hostname.endsWith(".web.app")
@@ -136,10 +160,12 @@
     };
 
     function getToken() {
+        if (IS_DEMO_MODE) return DEMO_TOKEN;
         return localStorage.getItem(TOKEN_KEY) || "";
     }
 
     function getUser() {
+        if (IS_DEMO_MODE) return getDemoUser();
         const raw = localStorage.getItem(USER_KEY);
         if (!raw) return null;
         try {
@@ -151,11 +177,25 @@
     }
 
     function setSession(payload) {
+        if (IS_DEMO_MODE) {
+            demoUser = payload?.user || demoUser || getDemoUser();
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
+            localStorage.setItem(ACTIVE_ORGANIZATION_KEY, String(getActiveMembership(demoUser)?.organization_id || 1));
+            return;
+        }
         localStorage.setItem(TOKEN_KEY, payload.access_token);
         localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
     }
 
     function clearSession() {
+        if (IS_DEMO_MODE) {
+            demoUser = null;
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
+            localStorage.setItem(ACTIVE_ORGANIZATION_KEY, "1");
+            return;
+        }
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
         localStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
@@ -230,6 +270,8 @@
         requireSession,
         API_BASE_URL_KEY,
         API_MODE_KEY,
+        IS_DEMO_MODE,
+        DEMO_TOKEN,
         CLOUD_API_BASE_URL,
         CLOUD_API_FALLBACK_BASE_URL,
         getApiBaseUrl,
