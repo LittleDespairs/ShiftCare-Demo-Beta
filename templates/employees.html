@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="theme-color" content="#121820">
     <meta name="mobile-web-app-capable" content="yes">
     <title>Employees - {{ app_name }}</title>
     <link rel="manifest" href="/static/manifest.webmanifest">
@@ -15,7 +15,7 @@
         This file is reused across the whole app.
         Этот файл используется во всём приложении.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-operations-ui">
 
     <style>
         /* =========================================================
@@ -782,6 +782,57 @@
                                 </button>
                             </div>
 
+                            <div class="filter-panel">
+                                <div class="filter-field">
+                                    <label class="form-label" for="employee-search-input" data-i18n="common_search_employee">
+                                        Search employee
+                                    </label>
+                                    <input id="employee-search-input" class="input" type="search" autocomplete="off"
+                                        data-i18n-placeholder="common_search_employee" placeholder="Search employee">
+                                </div>
+
+                                <div class="filter-field">
+                                    <label class="form-label" for="employee-sex-filter" data-i18n="employees_table_sex">
+                                        Sex
+                                    </label>
+                                    <select id="employee-sex-filter" class="select">
+                                        <option value="" data-i18n="common_filter_all">All</option>
+                                        <option value="male" data-i18n="employees_sex_male">Male</option>
+                                        <option value="female" data-i18n="employees_sex_female">Female</option>
+                                    </select>
+                                </div>
+
+                                <div class="filter-field">
+                                    <label class="form-label" for="employee-position-filter" data-i18n="assignments_position">
+                                        Position
+                                    </label>
+                                    <select id="employee-position-filter" class="select">
+                                        <option value="" data-i18n="common_filter_all">All</option>
+                                    </select>
+                                </div>
+
+                                <div class="filter-field">
+                                    <label class="form-label" for="employee-capability-filter" data-i18n="employees_rules_title">
+                                        Availability rules
+                                    </label>
+                                    <select id="employee-capability-filter" class="select">
+                                        <option value="" data-i18n="common_filter_all">All</option>
+                                        <option value="can_work_night" data-i18n="employees_can_work_night">Can work night shifts</option>
+                                        <option value="can_work_weekends" data-i18n="employees_can_work_weekends">Can work weekends</option>
+                                        <option value="can_work_evenings_after_night" data-i18n="employees_can_work_evenings_after_night">Can work evening after night</option>
+                                        <option value="can_work_mornings_and_evenings" data-i18n="employees_can_work_mornings_and_evenings">Can work morning and evening on the same day</option>
+                                    </select>
+                                </div>
+
+                                <div class="filter-actions">
+                                    <span id="employees-filter-count" class="filter-results"></span>
+                                    <button id="employees-filter-reset" class="btn btn-secondary" type="button"
+                                        data-i18n="common_reset">
+                                        Reset
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="employees-table-shell">
                                 <table class="employees-table">
                                     <thead>
@@ -1198,7 +1249,7 @@
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
 <script src="/static/js/access_control.js?v={{ app_version }}-directory-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
-<script src="/static/js/employees.js?v={{ app_version }}-appearance-colors"></script>
+<script src="/static/js/employees.js?v={{ app_version }}-employee-position-filter"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

@@ -1,5 +1,13 @@
 let editingEmployeeId = null; // Track editing mode / Отслеживаем режим редактирования
 let currentEmployees = [];
+let currentEmployeePositions = [];
+let currentEmployeePositionOptions = [];
+let currentEmployeeFilters = {
+    search: "",
+    sex: "",
+    positionId: "",
+    capability: "",
+};
 let currentRecurringPreferences = createEmptyRecurringPreferenceState();
 let employeeAppSettings = {};
 let pendingRecurringTarget = null;
@@ -70,6 +78,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (tableBody) {
         tableBody.addEventListener("click", handleEmployeesTableClick);
     }
+    bindEmployeeFilters();
     bindEmployeeModal();
     bindRecurringPreferenceModal();
     await loadEmployeeAppSettings();
@@ -80,11 +89,148 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 document.addEventListener("app-language-changed", () => {
     currentRecurringPreferences = collectRecurringPreferenceState();
-    renderEmployeesTable(currentEmployees);
+    fillEmployeePositionFilter();
+    renderFilteredEmployeesTable();
     renderRecurringPreferenceControls();
     updateEmployeeModalTitle();
     updateSubmitButtonText();
 });
+
+function normalizeEmployeeSearchText(value) {
+    return String(value || "").toLowerCase().trim();
+}
+
+function filterCountText(shown, total) {
+    return employeeText("common_filter_results", "Showing {shown} of {total}")
+        .replace("{shown}", String(shown))
+        .replace("{total}", String(total));
+}
+
+function refreshEmployeeSelect(select) {
+    if (select && typeof refreshSelectTrigger === "function") {
+        refreshSelectTrigger(select);
+    }
+}
+
+function buildEmployeePositionOptions(assignments) {
+    const optionsById = new Map();
+    (assignments || []).forEach(item => {
+        const positionId = Number(item?.position_id || 0);
+        const positionName = item?.position_name || item?.position?.name || "";
+        if (positionId && positionName && !optionsById.has(positionId)) {
+            optionsById.set(positionId, positionName);
+        }
+    });
+
+    return [...optionsById.entries()]
+        .map(([id, name]) => ({ id, name }))
+        .sort((first, second) => first.name.localeCompare(second.name));
+}
+
+function fillEmployeePositionFilter() {
+    const select = document.getElementById("employee-position-filter");
+    if (!select) return;
+
+    const currentValue = currentEmployeeFilters.positionId;
+    select.innerHTML = `
+        <option value="">${employeeText("common_filter_all", "All")}</option>
+        ${currentEmployeePositionOptions.map(position => `
+            <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
+        `).join("")}
+    `;
+
+    if ([...select.options].some(option => option.value === currentValue)) {
+        select.value = currentValue;
+    } else {
+        currentEmployeeFilters.positionId = "";
+    }
+
+    refreshEmployeeSelect(select);
+}
+
+function employeeAssignedToPosition(employeeId, positionId) {
+    if (!positionId) return true;
+    return currentEmployeePositions.some(item =>
+        Number(item?.employee_id) === Number(employeeId)
+        && Number(item?.position_id) === Number(positionId)
+    );
+}
+
+function getEmployeePositionNames(employeeId) {
+    return currentEmployeePositions
+        .filter(item => Number(item?.employee_id) === Number(employeeId))
+        .map(item => item?.position_name || item?.position?.name || "")
+        .filter(Boolean)
+        .join(" ");
+}
+
+function bindEmployeeFilters() {
+    const searchInput = document.getElementById("employee-search-input");
+    const sexFilter = document.getElementById("employee-sex-filter");
+    const positionFilter = document.getElementById("employee-position-filter");
+    const capabilityFilter = document.getElementById("employee-capability-filter");
+    const resetButton = document.getElementById("employees-filter-reset");
+
+    searchInput?.addEventListener("input", () => {
+        currentEmployeeFilters.search = searchInput.value;
+        renderFilteredEmployeesTable();
+    });
+    sexFilter?.addEventListener("change", () => {
+        currentEmployeeFilters.sex = sexFilter.value;
+        renderFilteredEmployeesTable();
+    });
+    positionFilter?.addEventListener("change", () => {
+        currentEmployeeFilters.positionId = positionFilter.value;
+        renderFilteredEmployeesTable();
+    });
+    capabilityFilter?.addEventListener("change", () => {
+        currentEmployeeFilters.capability = capabilityFilter.value;
+        renderFilteredEmployeesTable();
+    });
+    resetButton?.addEventListener("click", () => {
+        currentEmployeeFilters = { search: "", sex: "", positionId: "", capability: "" };
+        if (searchInput) searchInput.value = "";
+        if (sexFilter) sexFilter.value = "";
+        if (positionFilter) positionFilter.value = "";
+        if (capabilityFilter) capabilityFilter.value = "";
+        [sexFilter, positionFilter, capabilityFilter].forEach(refreshEmployeeSelect);
+        renderFilteredEmployeesTable();
+    });
+}
+
+function getFilteredEmployees() {
+    const query = normalizeEmployeeSearchText(currentEmployeeFilters.search);
+    const sex = currentEmployeeFilters.sex;
+    const positionId = Number(currentEmployeeFilters.positionId || 0);
+    const capability = currentEmployeeFilters.capability;
+
+    return currentEmployees.filter(employee => {
+        const haystack = normalizeEmployeeSearchText([
+            employee.id,
+            employee.id_card,
+            employee.full_name,
+            employee.sex,
+            getEmployeePositionNames(employee.id),
+        ].join(" "));
+        if (query && !haystack.includes(query)) return false;
+        if (sex && employee.sex !== sex) return false;
+        if (positionId && !employeeAssignedToPosition(employee.id, positionId)) return false;
+        if (capability && !employee[capability]) return false;
+        return true;
+    });
+}
+
+function updateEmployeeFilterCount(shown, total) {
+    const count = document.getElementById("employees-filter-count");
+    if (!count) return;
+    count.textContent = total ? filterCountText(shown, total) : "";
+}
+
+function renderFilteredEmployeesTable() {
+    const filteredEmployees = getFilteredEmployees();
+    renderEmployeesTable(filteredEmployees);
+    updateEmployeeFilterCount(filteredEmployees.length, currentEmployees.length);
+}
 
 function createEmptyRecurringPreferenceState() {
     return {
@@ -428,16 +574,26 @@ function updateSubmitButtonText() {
 // Load all employees / Загружаем всех сотрудников
 async function loadEmployees() {
     try {
-        const response = await fetch("/api/employees");
+        const [employeesResponse, positionsResponse] = await Promise.all([
+            fetch("/api/employees"),
+            fetch("/api/employee-positions"),
+        ]);
 
-        if (!response.ok) {
+        if (!employeesResponse.ok) {
             showMessage(employeeText("msg_failed_load_employees", "Failed to load employees."), "danger");
             return;
         }
 
-        const employees = await response.json();
-        currentEmployees = employees;
-        renderEmployeesTable(employees);
+        currentEmployees = await employeesResponse.json();
+        if (positionsResponse.ok) {
+            currentEmployeePositions = await positionsResponse.json();
+        } else {
+            currentEmployeePositions = [];
+            showMessage(employeeText("msg_failed_load_positions", "Failed to load positions."), "warning");
+        }
+        currentEmployeePositionOptions = buildEmployeePositionOptions(currentEmployeePositions);
+        fillEmployeePositionFilter();
+        renderFilteredEmployeesTable();
     } catch (error) {
         console.error("Load employees error:", error);
         showMessage(employeeText("msg_server_error_load_employees", "Server error while loading employees."), "danger");
@@ -670,13 +826,18 @@ function renderEmployeesTable(employees) {
     }
 
     if (employees.length === 0) {
+        const hasStoredEmployees = currentEmployees.length > 0;
         tableBody.innerHTML = `
             <tr>
                 <td colspan="10" class="employee-meta-cell">
                     ${typeof renderEmptyState === "function"
                         ? renderEmptyState({
-                            title: employeeText("employees_empty_state_title", "No employees yet"),
-                            text: employeeText("employees_empty_state_text", "Add employees to start building schedules.")
+                            title: hasStoredEmployees
+                                ? employeeText("common_filter_no_matches", "No matching records")
+                                : employeeText("employees_empty_state_title", "No employees yet"),
+                            text: hasStoredEmployees
+                                ? employeeText("common_search_employee", "Search employee")
+                                : employeeText("employees_empty_state_text", "Add employees to start building schedules.")
                         })
                         : employeeText("employees_empty_list", "No employees yet")}
                 </td>

@@ -2,6 +2,29 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.20.0_beta - 2026-06-15
+
+## Release Focus
+
+Make large employee rosters easier to work with by adding search and filters, then refresh the scheduling workspace around a denser weekly board and a clearer week picker.
+
+## Changed
+
+- Added employee search and filtering controls to staff-heavy pages, including position filtering on Employees and Weekly Preferences.
+- Reworked the main-app Weekly Preferences tab into an all-employee table so employees no longer need to be selected one by one before entering requests.
+- Kept the employee portal wish flow separate while applying the shared filtering/search behavior to the main and demo applications.
+- Redesigned the Schedule page around a broad weekly table, always-visible coverage status, retained shift/status creation actions, and a right-side operational panel.
+- Replaced plain date-field week selection with a more deliberate week picker on pages that choose a week.
+- Updated runtime, service worker cache keys, Android metadata, PyInstaller specs, installer metadata, build docs, and release notes to `0.20.0_beta`.
+- Archived the previous root release note and `0.19.2_beta` PyInstaller specs, then added the active `0.20.0_beta` specs.
+
+## Verification
+
+- Browser smoke checks passed locally for the redesigned schedule page and demo workflow.
+- JavaScript syntax checks passed for the changed frontend scripts.
+- Windows installer outputs for this build are `dist\installer\ShiftCare_Setup_0.20.0-beta.exe` and `dist\installer\ShiftCare_Demo_Setup_0.20.0-beta.exe`.
+- Installer SHA256: `190E7BAE538A292A4132AD726214530B38CE3F67544937F7EAA35BD7102C7B55` for main and `874ABA80BA0E1ADF8D4E202C3B4FCC947E89E4FE6AD3DC927E05259CAC983F35` for demo.
+
 # 0.19.0_beta - 2026-06-05
 
 ## Release Focus

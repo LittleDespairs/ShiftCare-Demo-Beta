@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="theme-color" content="#121820">
     <meta name="mobile-web-app-capable" content="yes">
     <title>Weekly Preferences - {{ app_name }}</title>
     <link rel="manifest" href="/static/manifest.webmanifest">
@@ -15,7 +15,7 @@
         Reused across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-operations-ui-week-picker">
 
     <style>
         /* =========================================================
@@ -38,11 +38,11 @@
         }
 
         .toolbar-field {
-            grid-column: span 4;
+            grid-column: span 3;
         }
 
         .toolbar-actions {
-            grid-column: span 4;
+            grid-column: span 12;
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
@@ -64,7 +64,7 @@
         .preferences-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 760px;
+            min-width: 1180px;
         }
 
         .preferences-table th,
@@ -106,6 +106,23 @@
         .date-text {
             color: var(--muted);
             font-size: 0.88rem;
+        }
+
+        .employee-preference-cell {
+            min-width: 190px;
+        }
+
+        .employee-preference-name {
+            font-weight: 850;
+            color: var(--text);
+            line-height: 1.25;
+        }
+
+        .employee-preference-meta {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 0.82rem;
+            line-height: 1.35;
         }
 
         /* Preference select / Селект пожелания */
@@ -410,12 +427,17 @@
                 padding: 0;
             }
 
-            .preferences-table td:nth-child(1) {
-                font-size: 1rem;
+            .preferences-table td:first-child {
+                margin-bottom: 8px;
             }
 
-            .preferences-table td:nth-child(2) {
-                margin-bottom: 8px;
+            .preferences-table td:not(:first-child)::before {
+                content: attr(data-cell-label);
+                display: block;
+                margin-bottom: 6px;
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 850;
             }
 
             .request-stack > .btn {
@@ -666,25 +688,47 @@
                         <div class="toolbar-field">
                             <label class="form-label" for="week_start" data-i18n="preferences_week_start">Week
                                 start</label>
-                            <input type="date" id="week_start" class="input">
+                            <input type="date" id="week_start" class="input" data-week-picker="true">
                         </div>
 
                         <div class="toolbar-field">
-                            <label class="form-label" for="employee_select"
-                                data-i18n="preferences_employee">Employee</label>
-                            <select id="employee_select" class="select">
-                                <option value="" data-i18n="preferences_select_employee">Select employee</option>
+                            <label class="form-label" for="preferences_employee_search" data-i18n="common_search_employee">
+                                Search employee
+                            </label>
+                            <input id="preferences_employee_search" class="input" type="search" autocomplete="off"
+                                data-i18n-placeholder="common_search_employee" placeholder="Search employee">
+                        </div>
+
+                        <div class="toolbar-field">
+                            <label class="form-label" for="preferences_position_filter" data-i18n="assignments_position">
+                                Position
+                            </label>
+                            <select id="preferences_position_filter" class="select">
+                                <option value="" data-i18n="common_filter_all">All</option>
+                            </select>
+                        </div>
+
+                        <div class="toolbar-field">
+                            <label class="form-label" for="preferences_request_filter" data-i18n="preferences_request_filter">
+                                Request filter
+                            </label>
+                            <select id="preferences_request_filter" class="select">
+                                <option value="" data-i18n="common_filter_all">All</option>
+                                <option value="with_requests" data-i18n="preferences_filter_with_requests">With requests</option>
+                                <option value="without_requests" data-i18n="preferences_filter_without_requests">Without requests</option>
                             </select>
                         </div>
 
                         <div class="toolbar-actions">
+                            <span id="preferences-filter-count" class="filter-results"></span>
                             <button id="load-btn" class="btn btn-primary" type="button"
                                 data-i18n="preferences_load_btn">
                                 Load
                             </button>
 
-                            <button id="save-btn" class="btn btn-soft" type="button" data-i18n="preferences_save_btn">
-                                Save
+                            <button id="preferences-filter-reset" class="btn btn-secondary" type="button"
+                                data-i18n="common_reset">
+                                Reset
                             </button>
                         </div>
                     </div>
@@ -704,7 +748,7 @@
                             <tbody id="tbody">
                                 <tr>
                                     <td data-i18n="preferences_initial_hint">
-                                        Select a week and an employee, then click Load.
+                                        Select a week, then click Load.
                                     </td>
                                 </tr>
                             </tbody>
@@ -886,10 +930,18 @@
         ];
 
         let employees = [];
+        let employeePositionAssignments = [];
+        let preferencePositionOptions = [];
         let weekDates = [];
         let preferencesMap = {};
         let pendingRequestTarget = null;
         let appSettings = {};
+        let preferencesLoaded = false;
+        let preferenceFilters = {
+            search: "",
+            positionId: "",
+            mode: "",
+        };
 
         /* =========================================================
            HELPERS / ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -934,6 +986,7 @@
             const day = today.getDay(); // Sunday = 0
             today.setDate(today.getDate() - day);
             input.value = formatDate(today);
+            window.refreshWeekPicker?.(input);
         }
 
         function getWeekdayName(index) {
@@ -951,6 +1004,123 @@
         function getShiftCategoryLabel(category) {
             const [key, fallback] = SHIFT_CATEGORY_LABELS[category] || [category, category];
             return t(key, fallback);
+        }
+
+        function getEmployeeSexLabel(sex) {
+            if (sex === "male") return t("employees_sex_male", "Male");
+            if (sex === "female") return t("employees_sex_female", "Female");
+            return sex || "";
+        }
+
+        function preferenceKey(employeeId, date) {
+            return `${Number(employeeId)}|${date}`;
+        }
+
+        function normalizePreferenceFilterText(value) {
+            return String(value || "").toLowerCase().trim();
+        }
+
+        function preferenceFilterCountText(shown, total) {
+            return t("common_filter_results", "Showing {shown} of {total}")
+                .replace("{shown}", String(shown))
+                .replace("{total}", String(total));
+        }
+
+        function buildPreferencePositionOptions(assignments) {
+            const optionsById = new Map();
+            (assignments || []).forEach(item => {
+                const positionId = Number(item?.position_id || 0);
+                const positionName = item?.position_name || item?.position?.name || "";
+                if (positionId && positionName && !optionsById.has(positionId)) {
+                    optionsById.set(positionId, positionName);
+                }
+            });
+
+            return [...optionsById.entries()]
+                .map(([id, name]) => ({ id, name }))
+                .sort((first, second) => first.name.localeCompare(second.name));
+        }
+
+        function refreshPreferenceSelect(select) {
+            if (select && typeof refreshSelectTrigger === "function") {
+                refreshSelectTrigger(select);
+            }
+        }
+
+        function fillPreferencesPositionFilter() {
+            const select = document.getElementById("preferences_position_filter");
+            if (!select) return;
+
+            const currentValue = preferenceFilters.positionId;
+            select.innerHTML = `
+                <option value="">${t("common_filter_all", "All")}</option>
+                ${preferencePositionOptions.map(position => `
+                    <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
+                `).join("")}
+            `;
+
+            if ([...select.options].some(option => option.value === currentValue)) {
+                select.value = currentValue;
+            } else {
+                preferenceFilters.positionId = "";
+            }
+
+            refreshPreferenceSelect(select);
+        }
+
+        function preferenceEmployeeAssignedToPosition(employeeId, positionId) {
+            if (!positionId) return true;
+            return employeePositionAssignments.some(item =>
+                Number(item?.employee_id) === Number(employeeId)
+                && Number(item?.position_id) === Number(positionId)
+            );
+        }
+
+        function getPreferenceEmployeePositionNames(employeeId) {
+            return employeePositionAssignments
+                .filter(item => Number(item?.employee_id) === Number(employeeId))
+                .map(item => item?.position_name || item?.position?.name || "")
+                .filter(Boolean)
+                .join(" ");
+        }
+
+        function employeeHasWeekRequests(employeeId) {
+            return weekDates.some(date => (preferencesMap[preferenceKey(employeeId, date)] || []).length > 0);
+        }
+
+        function getFilteredPreferenceEmployees() {
+            const query = normalizePreferenceFilterText(preferenceFilters.search);
+            const positionId = Number(preferenceFilters.positionId || 0);
+            const mode = preferenceFilters.mode;
+
+            return employees.filter(employee => {
+                const haystack = normalizePreferenceFilterText([
+                    employee.id,
+                    employee.id_card,
+                    employee.full_name,
+                    employee.sex,
+                    getPreferenceEmployeePositionNames(employee.id),
+                ].join(" "));
+                if (query && !haystack.includes(query)) return false;
+                if (positionId && !preferenceEmployeeAssignedToPosition(employee.id, positionId)) return false;
+
+                const hasRequests = employeeHasWeekRequests(employee.id);
+                if (mode === "with_requests" && !hasRequests) return false;
+                if (mode === "without_requests" && hasRequests) return false;
+                return true;
+            });
+        }
+
+        function updatePreferenceFilterCount(shown, total) {
+            const count = document.getElementById("preferences-filter-count");
+            if (!count) return;
+            count.textContent = total ? preferenceFilterCountText(shown, total) : "";
+        }
+
+        function clearPreferenceFilterCount() {
+            const count = document.getElementById("preferences-filter-count");
+            if (!count) return;
+            count.textContent = "";
         }
 
         function normalizeRequest(item) {
@@ -1028,7 +1198,7 @@
         }
 
         function renderDayRequests(employeeId, date) {
-            const requests = preferencesMap[date] || [];
+            const requests = preferencesMap[preferenceKey(employeeId, date)] || [];
             const list = requests.length
                 ? requests.map(renderRequestChip).join("")
                 : `<div class="request-empty">${t("preference_no_preference", "No preference")}</div>`;
@@ -1065,13 +1235,38 @@
                     </td>
                 </tr>
             `;
+            clearPreferenceFilterCount();
+        }
+
+        function renderPreferencesInitialState() {
+            renderPreferencesEmptyState(
+                "preferences_empty_initial_title",
+                "No week loaded",
+                "preferences_empty_initial_text",
+                "Select a week to review or update weekly preferences for all employees."
+            );
+        }
+
+        function resetPreferenceFilters() {
+            preferenceFilters = { search: "", positionId: "", mode: "" };
+            const searchInput = document.getElementById("preferences_employee_search");
+            const positionFilter = document.getElementById("preferences_position_filter");
+            const requestFilter = document.getElementById("preferences_request_filter");
+            if (searchInput) searchInput.value = "";
+            if (positionFilter) {
+                positionFilter.value = "";
+                refreshPreferenceSelect(positionFilter);
+            }
+            if (requestFilter) {
+                requestFilter.value = "";
+                refreshPreferenceSelect(requestFilter);
+            }
+            renderTable();
         }
 
         function updatePreferencesControlsAvailability() {
             const hasEmployees = employees.length > 0;
-            document.getElementById("employee_select").disabled = !hasEmployees;
             document.getElementById("load-btn").disabled = !hasEmployees;
-            document.getElementById("save-btn").disabled = !hasEmployees;
         }
 
         /* =========================================================
@@ -1089,9 +1284,20 @@
             await loadEmployees();
 
             document.getElementById("load-btn").addEventListener("click", loadWeekPreferences);
-            document.getElementById("save-btn").hidden = true;
-            document.getElementById("employee_select").addEventListener("change", handleEmployeeSelectionChanged);
-            document.getElementById("week_start").addEventListener("change", handleEmployeeSelectionChanged);
+            document.getElementById("preferences_employee_search").addEventListener("input", event => {
+                preferenceFilters.search = event.target.value;
+                renderTable();
+            });
+            document.getElementById("preferences_position_filter").addEventListener("change", event => {
+                preferenceFilters.positionId = event.target.value;
+                renderTable();
+            });
+            document.getElementById("preferences_request_filter").addEventListener("change", event => {
+                preferenceFilters.mode = event.target.value;
+                renderTable();
+            });
+            document.getElementById("preferences-filter-reset").addEventListener("click", resetPreferenceFilters);
+            document.getElementById("week_start").addEventListener("change", handlePreferencesContextChanged);
             document.getElementById("tbody").addEventListener("click", handlePreferencesTableClick);
             document.getElementById("request_type_select").addEventListener("change", updateRequestModalFields);
             document.querySelectorAll("[data-request-type]").forEach(button => {
@@ -1108,9 +1314,11 @@
         });
 
         document.addEventListener("app-language-changed", () => {
-            const employeeId = Number(document.getElementById("employee_select").value);
-            if (weekDates.length > 0 && employeeId) {
-                renderTable(employeeId);
+            fillPreferencesPositionFilter();
+            if (preferencesLoaded && weekDates.length > 0) {
+                renderTable();
+            } else {
+                renderPreferencesInitialState();
             }
         });
 
@@ -1133,23 +1341,20 @@
 
         async function loadEmployees() {
             try {
-                employees = await window.scheduleAuth.request("/api/employees");
+                let assignmentsLoadFailed = false;
+                const [loadedEmployees, loadedAssignments] = await Promise.all([
+                    window.scheduleAuth.request("/api/employees"),
+                    window.scheduleAuth.request("/api/employee-positions").catch(error => {
+                        assignmentsLoadFailed = true;
+                        console.error(error);
+                        return [];
+                    }),
+                ]);
 
-                const employeeSelect = document.getElementById("employee_select");
-                employeeSelect.innerHTML = `
-                    <option value="">${t("preferences_select_employee", "Select employee")}</option>
-                    ${employees.map(employee => `
-                        <option value="${Number(employee.id)}">${escapeHtml(employee.full_name)}</option>
-                    `).join("")}
-                `;
-
-                const membership = window.scheduleAuth.getActiveMembership();
-                if (membership?.role === "employee" && membership.employee_id) {
-                    employeeSelect.value = String(membership.employee_id);
-                    employeeSelect.disabled = true;
-                } else if (employees.length === 1) {
-                    employeeSelect.value = String(employees[0].id);
-                }
+                employees = loadedEmployees;
+                employeePositionAssignments = Array.isArray(loadedAssignments) ? loadedAssignments : [];
+                preferencePositionOptions = buildPreferencePositionOptions(employeePositionAssignments);
+                fillPreferencesPositionFilter();
 
                 updatePreferencesControlsAvailability();
 
@@ -1164,12 +1369,11 @@
                     return;
                 }
 
-                renderPreferencesEmptyState(
-                    "preferences_empty_initial_title",
-                    "No week loaded",
-                    "preferences_empty_initial_text",
-                    "Select a week and an employee to review or update weekly preferences."
-                );
+                if (assignmentsLoadFailed) {
+                    showMessage(t("msg_failed_load_positions", "Failed to load positions."), "warning");
+                }
+
+                renderPreferencesInitialState();
             } catch (error) {
                 console.error(error);
                 const detail = error.message || t("msg_server_error_load_employees", "Server error while loading employees.");
@@ -1183,15 +1387,9 @@
 
         async function loadWeekPreferences() {
             const weekStart = document.getElementById("week_start").value;
-            const employeeId = Number(document.getElementById("employee_select").value);
 
             if (!weekStart) {
                 showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
-                return;
-            }
-
-            if (!employeeId) {
-                showMessage(t("msg_select_employee", "Please select an employee."), "warning");
                 return;
             }
 
@@ -1201,17 +1399,17 @@
                 const preferences = await window.scheduleAuth.request(`/api/employee-week-preferences?week_start_date=${encodeURIComponent(weekStart)}`);
 
                 preferencesMap = {};
-                preferences
-                    .filter(item => item.employee_id === employeeId)
-                    .forEach(item => {
-                        const normalized = normalizeRequest(item);
-                        if (!preferencesMap[normalized.preference_date]) {
-                            preferencesMap[normalized.preference_date] = [];
-                        }
-                        preferencesMap[normalized.preference_date].push(normalized);
-                    });
+                preferences.forEach(item => {
+                    const normalized = normalizeRequest(item);
+                    const key = preferenceKey(normalized.employee_id, normalized.preference_date);
+                    if (!preferencesMap[key]) {
+                        preferencesMap[key] = [];
+                    }
+                    preferencesMap[key].push(normalized);
+                });
 
-                renderTable(employeeId);
+                preferencesLoaded = true;
+                renderTable();
                 showMessage(t("msg_preferences_loaded", "Preferences loaded successfully."), "success");
             } catch (error) {
                 console.error(error);
@@ -1219,53 +1417,71 @@
             }
         }
 
-        function handleEmployeeSelectionChanged() {
+        function handlePreferencesContextChanged() {
             weekDates = [];
             preferencesMap = {};
-            renderPreferencesEmptyState(
-                "preferences_empty_initial_title",
-                "No week loaded",
-                "preferences_empty_initial_text",
-                "Select a week and an employee to review or update weekly preferences."
-            );
+            preferencesLoaded = false;
+            renderPreferencesInitialState();
         }
 
         /* =========================================================
            TABLE RENDER / ОТРИСОВКА ТАБЛИЦЫ
            ========================================================= */
 
-        function renderTable(employeeId) {
+        function renderTable() {
             const thead = document.getElementById("thead");
             const tbody = document.getElementById("tbody");
 
-            const employee = employees.find(item => item.id === employeeId);
-
-            if (!employee) {
-                renderPreferencesEmptyState(
-                    "preferences_empty_initial_title",
-                    "Employee not found",
-                    "preferences_empty_initial_text",
-                    "Select a week and an employee to review or update weekly preferences."
-                );
+            if (!preferencesLoaded || weekDates.length === 0) {
+                renderPreferencesInitialState();
                 return;
             }
 
+            const filteredEmployees = getFilteredPreferenceEmployees();
+            updatePreferenceFilterCount(filteredEmployees.length, employees.length);
+
             thead.innerHTML = `
                 <tr>
-                    <th data-i18n="preferences_day_column">${t("preferences_day_column", "Day")}</th>
-                    <th data-i18n="preferences_date_column">${t("preferences_date_column", "Date")}</th>
-                    <th data-i18n="preferences_value_column">${t("preferences_value_column", "Requests")}</th>
+                    <th data-i18n="preferences_employee">${t("preferences_employee", "Employee")}</th>
+                    ${weekDates.map((date, index) => `
+                        <th>
+                            <div class="day-name">${escapeHtml(getWeekdayName(index))}</div>
+                            <div class="date-text">${escapeHtml(date)}</div>
+                        </th>
+                    `).join("")}
                 </tr>
             `;
 
-            tbody.innerHTML = weekDates.map((date, index) => {
+            if (filteredEmployees.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8">
+                            ${typeof renderEmptyState === "function"
+                                ? renderEmptyState({
+                                    title: t("common_filter_no_matches", "No matching records"),
+                                    text: t("common_search_employee", "Search employee")
+                                })
+                                : t("common_filter_no_matches", "No matching records")}
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filteredEmployees.map(employee => {
                 return `
                     <tr>
-                        <td class="day-name">${escapeHtml(getWeekdayName(index))}</td>
-                        <td class="date-text">${escapeHtml(date)}</td>
-                        <td>
-                            ${renderDayRequests(employeeId, date)}
+                        <td class="employee-preference-cell">
+                            <div class="employee-preference-name">${escapeHtml(employee.full_name)}</div>
+                            <div class="employee-preference-meta">
+                                ${employee.id_card ? `${escapeHtml(employee.id_card)} · ` : ""}${escapeHtml(getEmployeeSexLabel(employee.sex))}
+                            </div>
                         </td>
+                        ${weekDates.map((date, index) => `
+                            <td data-cell-label="${escapeHtml(`${getWeekdayName(index)} ${date}`)}">
+                                ${renderDayRequests(employee.id, date)}
+                            </td>
+                        `).join("")}
                     </tr>
                 `;
             }).join("");
@@ -1352,60 +1568,6 @@
             }
         }
 
-        /* =========================================================
-           SAVE PREFERENCES / СОХРАНЕНИЕ ПОЖЕЛАНИЙ
-           ========================================================= */
-
-        async function savePreferences() {
-            const weekStart = document.getElementById("week_start").value;
-            const employeeId = Number(document.getElementById("employee_select").value);
-            const selects = document.querySelectorAll(".preference-select-field");
-
-            if (!weekStart) {
-                showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
-                return;
-            }
-
-            if (!employeeId) {
-                showMessage(t("msg_select_employee", "Please select an employee."), "warning");
-                return;
-            }
-
-            if (selects.length === 0) {
-                showMessage(t("msg_nothing_to_save", "Nothing to save."), "warning");
-                return;
-            }
-
-            try {
-                const responses = await Promise.all(
-                    Array.from(selects).map(select => {
-                        const rowEmployeeId = Number(select.dataset.employeeId);
-                        if (select.value === "no_preference") {
-                            return window.scheduleAuth.request(
-                                `/api/employee-week-preferences?employee_id=${rowEmployeeId}&preference_date=${encodeURIComponent(select.dataset.date)}`,
-                                { method: "DELETE" }
-                            );
-                        }
-                        return window.scheduleAuth.request("/api/employee-week-preferences", {
-                            method: "POST",
-                            body: JSON.stringify({
-                                employee_id: rowEmployeeId,
-                                week_start_date: weekStart,
-                                preference_date: select.dataset.date,
-                                preference_type: select.value
-                            })
-                        });
-                    })
-                );
-
-                showMessage(t("msg_preferences_saved", "Preferences saved successfully."), "success");
-                await loadWeekPreferences();
-            } catch (error) {
-                console.error(error);
-                showMessage(t("msg_server_error_save_preferences", "Server error while saving preferences."), "danger");
-            }
-        }
-
         async function deletePreference(employeeId, preferenceDate, preferenceId = null) {
             try {
                 const idParam = preferenceId ? `&preference_id=${preferenceId}` : "";
@@ -1414,12 +1576,13 @@
                     { method: "DELETE" }
                 );
 
-                if (preferenceId && preferencesMap[preferenceDate]) {
-                    preferencesMap[preferenceDate] = preferencesMap[preferenceDate].filter(item => Number(item.id) !== Number(preferenceId));
+                const key = preferenceKey(employeeId, preferenceDate);
+                if (preferenceId && preferencesMap[key]) {
+                    preferencesMap[key] = preferencesMap[key].filter(item => Number(item.id) !== Number(preferenceId));
                 } else {
-                    delete preferencesMap[preferenceDate];
+                    delete preferencesMap[key];
                 }
-                renderTable(employeeId);
+                renderTable();
                 showMessage(t("msg_preference_deleted", "Preference cleared successfully."), "success");
             } catch (error) {
                 console.error(error);
@@ -1437,7 +1600,7 @@
                     <a href="/guide" data-i18n="footer_guide">Guide</a>
                 </div>
             </footer>
-<script src="/static/js/i18n.js?v={{ app_version }}-auth-i18n-fix"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-week-picker"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
 <script src="/static/js/access_control.js?v={{ app_version }}-directory-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>

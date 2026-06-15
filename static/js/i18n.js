@@ -201,14 +201,39 @@ const I18N_TRANSLATIONS = {
         schedule_export_all_word_btn: "Export all Word",
         schedule_clear_message_btn: "Clear message",
         schedule_toolbar_generate: "Generate",
-        schedule_toolbar_output: "Output",
-        schedule_toolbar_danger: "Danger zone",
+        schedule_toolbar_output: "Export",
+        schedule_toolbar_danger: "Clear",
+        schedule_generation_mode: "Generation",
+        schedule_generation_balanced: "Balanced",
+        schedule_generation_coverage_first: "Coverage first",
+        schedule_generation_requests_first: "Requests first",
+        schedule_board_label: "Schedule board",
+        schedule_board_empty_range: "No week selected",
+        schedule_rule_ledger_title: "Rule ledger",
+        schedule_generation_check: "Generation check",
+        schedule_run_log_title: "Run log",
+        schedule_last_activity: "Last activity",
+        schedule_waiting_log: "Load a week to see schedule activity.",
+        schedule_loaded_log: "Loaded schedule data",
+        schedule_no_generation_log: "No generation run yet",
+        schedule_generation_created_log: "Created shifts",
+        schedule_generation_clean: "No blocking issues",
+        schedule_generation_blockers: "Review required",
+        schedule_publish_status: "Publish",
+        schedule_publish_ready: "Ready",
+        schedule_publish_blocked: "Blocked",
+        schedule_status_coverage: "Coverage",
+        schedule_status_entries: "Entries",
+        schedule_status_no_data: "Not loaded",
         schedule_status_legend: "Status",
         schedule_status_week: "Week",
         schedule_status_position: "Position",
         schedule_status_staff: "Staff",
         schedule_status_shifts: "Shifts",
         schedule_status_gaps: "gaps",
+        schedule_employee_filter_mode: "Employee filter",
+        schedule_filter_with_shifts: "With shifts",
+        schedule_filter_without_shifts: "Without shifts",
 
         schedule_initial_hint: "Select a week and a position, then load the schedule.",
 
@@ -258,6 +283,13 @@ const I18N_TRANSLATIONS = {
         weekday_thursday: "Thursday",
         weekday_friday: "Friday",
         weekday_saturday: "Saturday",
+        week_picker_previous: "Previous week",
+        week_picker_next: "Next week",
+        week_picker_this_week: "This week",
+        week_picker_select_title: "Select week",
+        week_picker_selected: "Selected week",
+        week_picker_week_start: "Week starts",
+        week_picker_open: "Open week selector",
 
         msg_failed_load_positions: "Failed to load positions.",
         msg_server_error_load_positions: "Server error while loading positions.",
@@ -529,7 +561,7 @@ const I18N_TRANSLATIONS = {
         coverage_missing_positions_title: "Coverage requirements need positions",
         coverage_missing_positions_text: "Create at least one position before adding staffing requirements.",
         preferences_empty_initial_title: "No week loaded",
-        preferences_empty_initial_text: "Select a week and an employee to review or update weekly preferences.",
+        preferences_empty_initial_text: "Select a week to review or update weekly preferences for all employees.",
         preferences_empty_no_employees_title: "No employees available",
         preferences_empty_no_employees_text: "Add employees before collecting weekly preferences.",
         common_open_employees: "Open employees",
@@ -556,11 +588,14 @@ const I18N_TRANSLATIONS = {
         preferences_load_btn: "Load",
         preferences_save_btn: "Save",
 
-        preferences_initial_hint: "Select a week and an employee, then click Load.",
+        preferences_initial_hint: "Select a week, then click Load.",
 
         preferences_day_column: "Day",
         preferences_date_column: "Date",
         preferences_value_column: "Requests",
+        preferences_request_filter: "Request filter",
+        preferences_filter_with_requests: "With requests",
+        preferences_filter_without_requests: "Without requests",
         preferences_clear_button: "Clear",
         preferences_add_request: "Add request",
         preferences_save_request: "Save request",
@@ -1006,6 +1041,13 @@ const I18N_TRANSLATIONS = {
         common_cancel: "Cancel",
         common_confirm: "Confirm",
         common_select: "Select",
+        common_search: "Search",
+        common_search_employee: "Search employee",
+        common_search_options: "Search options",
+        common_no_results: "No results",
+        common_filter_all: "All",
+        common_filter_results: "Showing {shown} of {total}",
+        common_filter_no_matches: "No matching records",
         common_recovery_backup: "Recovery backup",
 
         coverage_page_title: "Coverage requirements",
@@ -1246,7 +1288,7 @@ const I18N_TRANSLATIONS = {
         coverage_missing_positions_title: "Для требований покрытия нужны должности",
         coverage_missing_positions_text: "Создайте хотя бы одну должность перед добавлением требований по персоналу.",
         preferences_empty_initial_title: "Неделя не загружена",
-        preferences_empty_initial_text: "Выберите неделю и сотрудника, чтобы просмотреть или обновить недельные пожелания.",
+        preferences_empty_initial_text: "Выберите неделю, чтобы просмотреть или обновить недельные пожелания всех сотрудников.",
         preferences_empty_no_employees_title: "Нет доступных сотрудников",
         preferences_empty_no_employees_text: "Добавьте сотрудников перед сбором недельных пожеланий.",
         common_open_employees: "Открыть сотрудников",
@@ -1289,14 +1331,39 @@ const I18N_TRANSLATIONS = {
         schedule_export_all_word_btn: "Экспорт всех в Word",
         schedule_clear_message_btn: "Очистить сообщение",
         schedule_toolbar_generate: "Генерация",
-        schedule_toolbar_output: "Вывод",
-        schedule_toolbar_danger: "Опасные действия",
+        schedule_toolbar_output: "Экспорт",
+        schedule_toolbar_danger: "Очистить",
+        schedule_generation_mode: "Генерация",
+        schedule_generation_balanced: "Баланс",
+        schedule_generation_coverage_first: "Сначала покрытие",
+        schedule_generation_requests_first: "Сначала пожелания",
+        schedule_board_label: "Таблица расписания",
+        schedule_board_empty_range: "Неделя не выбрана",
+        schedule_rule_ledger_title: "Журнал правил",
+        schedule_generation_check: "Проверка генерации",
+        schedule_run_log_title: "Журнал запуска",
+        schedule_last_activity: "Последняя активность",
+        schedule_waiting_log: "Загрузите неделю, чтобы увидеть активность расписания.",
+        schedule_loaded_log: "Данные расписания загружены",
+        schedule_no_generation_log: "Генерация ещё не запускалась",
+        schedule_generation_created_log: "Создано смен",
+        schedule_generation_clean: "Блокирующих проблем нет",
+        schedule_generation_blockers: "Нужна проверка",
+        schedule_publish_status: "Публикация",
+        schedule_publish_ready: "Готово",
+        schedule_publish_blocked: "Заблокировано",
+        schedule_status_coverage: "Покрытие",
+        schedule_status_entries: "Записи",
+        schedule_status_no_data: "Не загружено",
         schedule_status_legend: "Статус",
         schedule_status_week: "Неделя",
         schedule_status_position: "Должность",
         schedule_status_staff: "Сотрудники",
         schedule_status_shifts: "Смены",
         schedule_status_gaps: "пробелов",
+        schedule_employee_filter_mode: "Фильтр сотрудников",
+        schedule_filter_with_shifts: "Со сменами",
+        schedule_filter_without_shifts: "Без смен",
 
         schedule_initial_hint: "Выберите неделю и должность, затем загрузите расписание.",
 
@@ -1346,6 +1413,13 @@ const I18N_TRANSLATIONS = {
         weekday_thursday: "Четверг",
         weekday_friday: "Пятница",
         weekday_saturday: "Суббота",
+        week_picker_previous: "Предыдущая неделя",
+        week_picker_next: "Следующая неделя",
+        week_picker_this_week: "Эта неделя",
+        week_picker_select_title: "Выбор недели",
+        week_picker_selected: "Выбранная неделя",
+        week_picker_week_start: "Начало недели",
+        week_picker_open: "Открыть выбор недели",
 
         msg_failed_load_positions: "Не удалось загрузить должности.",
         msg_server_error_load_positions: "Ошибка сервера при загрузке должностей.",
@@ -1591,11 +1665,14 @@ const I18N_TRANSLATIONS = {
         preferences_load_btn: "Загрузить",
         preferences_save_btn: "Сохранить",
 
-        preferences_initial_hint: "Выберите неделю и сотрудника, затем нажмите Загрузить.",
+        preferences_initial_hint: "Выберите неделю, затем нажмите Загрузить.",
 
         preferences_day_column: "День",
         preferences_date_column: "Дата",
         preferences_value_column: "Просьбы",
+        preferences_request_filter: "Фильтр просьб",
+        preferences_filter_with_requests: "С просьбами",
+        preferences_filter_without_requests: "Без просьб",
         preferences_clear_button: "Очистить",
         preferences_add_request: "Добавить просьбу",
         preferences_save_request: "Сохранить просьбу",
@@ -2038,6 +2115,13 @@ const I18N_TRANSLATIONS = {
         common_cancel: "Отмена",
         common_confirm: "Подтвердить",
         common_select: "Выбор",
+        common_search: "Поиск",
+        common_search_employee: "Поиск сотрудника",
+        common_search_options: "Поиск по списку",
+        common_no_results: "Нет результатов",
+        common_filter_all: "Все",
+        common_filter_results: "Показано {shown} из {total}",
+        common_filter_no_matches: "Нет подходящих записей",
         common_recovery_backup: "Резервная копия для восстановления",
 
         coverage_page_title: "Требования покрытия",
@@ -2273,14 +2357,39 @@ const I18N_TRANSLATIONS = {
         schedule_export_all_word_btn: "ייצוא כללי לוורד",
         schedule_clear_message_btn: "נקה הודעה",
         schedule_toolbar_generate: "יצירה",
-        schedule_toolbar_output: "פלט",
-        schedule_toolbar_danger: "פעולות מסוכנות",
+        schedule_toolbar_output: "ייצוא",
+        schedule_toolbar_danger: "ניקוי",
+        schedule_generation_mode: "יצירה",
+        schedule_generation_balanced: "מאוזן",
+        schedule_generation_coverage_first: "כיסוי קודם",
+        schedule_generation_requests_first: "בקשות קודם",
+        schedule_board_label: "לוח סידור",
+        schedule_board_empty_range: "לא נבחר שבוע",
+        schedule_rule_ledger_title: "יומן כללים",
+        schedule_generation_check: "בדיקת יצירה",
+        schedule_run_log_title: "יומן הרצה",
+        schedule_last_activity: "פעילות אחרונה",
+        schedule_waiting_log: "טען שבוע כדי לראות פעילות בסידור.",
+        schedule_loaded_log: "נתוני סידור נטענו",
+        schedule_no_generation_log: "עדיין לא בוצעה יצירה",
+        schedule_generation_created_log: "משמרות שנוצרו",
+        schedule_generation_clean: "אין בעיות חוסמות",
+        schedule_generation_blockers: "נדרשת בדיקה",
+        schedule_publish_status: "פרסום",
+        schedule_publish_ready: "מוכן",
+        schedule_publish_blocked: "חסום",
+        schedule_status_coverage: "כיסוי",
+        schedule_status_entries: "רשומות",
+        schedule_status_no_data: "לא נטען",
         schedule_status_legend: "סטטוס",
         schedule_status_week: "שבוע",
         schedule_status_position: "תפקיד",
         schedule_status_staff: "עובדים",
         schedule_status_shifts: "משמרות",
         schedule_status_gaps: "פערים",
+        schedule_employee_filter_mode: "מסנן עובדים",
+        schedule_filter_with_shifts: "עם משמרות",
+        schedule_filter_without_shifts: "בלי משמרות",
 
         schedule_initial_hint: "בחר שבוע ותפקיד, ואז טען את סידור העבודה.",
 
@@ -2330,6 +2439,13 @@ const I18N_TRANSLATIONS = {
         weekday_thursday: "יום חמישי",
         weekday_friday: "יום שישי",
         weekday_saturday: "שבת",
+        week_picker_previous: "שבוע קודם",
+        week_picker_next: "שבוע הבא",
+        week_picker_this_week: "השבוע הזה",
+        week_picker_select_title: "בחירת שבוע",
+        week_picker_selected: "שבוע נבחר",
+        week_picker_week_start: "תחילת שבוע",
+        week_picker_open: "פתח בחירת שבוע",
 
         msg_failed_load_positions: "טעינת התפקידים נכשלה.",
         msg_server_error_load_positions: "שגיאת שרת בזמן טעינת התפקידים.",
@@ -2575,7 +2691,7 @@ const I18N_TRANSLATIONS = {
         coverage_missing_positions_title: "לדרישות הכיסוי נדרשים תפקידים",
         coverage_missing_positions_text: "צור לפחות תפקיד אחד לפני הוספת דרישות כוח אדם.",
         preferences_empty_initial_title: "עדיין לא נטען שבוע",
-        preferences_empty_initial_text: "בחר שבוע ועובד כדי לעיין או לעדכן העדפות שבועיות.",
+        preferences_empty_initial_text: "בחר שבוע כדי לעיין או לעדכן העדפות שבועיות לכל העובדים.",
         preferences_empty_no_employees_title: "אין עובדים זמינים",
         preferences_empty_no_employees_text: "הוסף עובדים לפני איסוף העדפות שבועיות.",
         common_open_employees: "פתח עובדים",
@@ -2623,11 +2739,14 @@ const I18N_TRANSLATIONS = {
         preferences_load_btn: "טען",
         preferences_save_btn: "שמור",
 
-        preferences_initial_hint: "בחר שבוע ועובד, ואז לחץ על טען.",
+        preferences_initial_hint: "בחר שבוע, ואז לחץ על טען.",
 
         preferences_day_column: "יום",
         preferences_date_column: "תאריך",
         preferences_value_column: "בקשות",
+        preferences_request_filter: "מסנן בקשות",
+        preferences_filter_with_requests: "עם בקשות",
+        preferences_filter_without_requests: "בלי בקשות",
         preferences_clear_button: "נקה",
         preferences_add_request: "הוסף בקשה",
         preferences_save_request: "שמור בקשה",
@@ -3070,6 +3189,13 @@ const I18N_TRANSLATIONS = {
         common_cancel: "ביטול",
         common_confirm: "אישור",
         common_select: "בחירה",
+        common_search: "חיפוש",
+        common_search_employee: "חיפוש עובד",
+        common_search_options: "חיפוש ברשימה",
+        common_no_results: "אין תוצאות",
+        common_filter_all: "הכל",
+        common_filter_results: "מוצגים {shown} מתוך {total}",
+        common_filter_no_matches: "אין רשומות מתאימות",
         common_recovery_backup: "גיבוי שחזור",
 
         coverage_page_title: "דרישות כיסוי",
@@ -3256,7 +3382,9 @@ function ensureSelectModal() {
                 <button class="app-modal-close" type="button" data-select-close aria-label="Close">×</button>
             </div>
             <div class="app-modal-body">
+                <input id="app-select-search" class="input app-select-search" type="search" autocomplete="off">
                 <div id="app-select-options" class="app-select-options"></div>
+                <div id="app-select-empty" class="app-select-empty" hidden></div>
             </div>
         </div>
     `;
@@ -3272,6 +3400,10 @@ function getSelectDisplayText(select) {
     }
     const option = select.options[select.selectedIndex];
     return option ? option.textContent.trim() : "";
+}
+
+function normalizeSelectSearchText(value) {
+    return String(value || "").toLowerCase().trim();
 }
 
 function refreshSelectTrigger(select) {
@@ -3290,14 +3422,21 @@ function openSelectModal(select) {
 
     const modal = ensureSelectModal();
     const title = modal.querySelector("#app-select-title");
+    const searchInput = modal.querySelector("#app-select-search");
     const optionsBox = modal.querySelector("#app-select-options");
+    const emptyBox = modal.querySelector("#app-select-empty");
     title.textContent = getSelectLabel(select);
+    searchInput.placeholder = translate("common_search_options");
+    searchInput.value = "";
+    emptyBox.textContent = translate("common_no_results");
+    emptyBox.hidden = true;
 
     optionsBox.innerHTML = Array.from(select.options).map((option, index) => `
         <button
             class="btn btn-secondary app-select-option ${option.selected ? "is-selected" : ""}"
             type="button"
             data-select-option-index="${index}"
+            data-option-text="${escapeHtml(option.textContent.trim())}"
             ${option.disabled ? "disabled" : ""}
         >
             ${escapeHtml(option.textContent.trim())}
@@ -3307,16 +3446,27 @@ function openSelectModal(select) {
     modal.classList.add("is-open");
     modal.setAttribute("aria-hidden", "false");
 
-    const selectedButton = optionsBox.querySelector(".app-select-option.is-selected");
-    const firstButton = selectedButton || optionsBox.querySelector(".app-select-option:not([disabled])");
-    if (firstButton) {
-        firstButton.focus();
-    }
+    const updateOptionFilter = () => {
+        const query = normalizeSelectSearchText(searchInput.value);
+        let visibleCount = 0;
+        optionsBox.querySelectorAll(".app-select-option").forEach(button => {
+            const optionText = normalizeSelectSearchText(button.dataset.optionText);
+            const isVisible = !query || optionText.includes(query);
+            button.hidden = !isVisible;
+            if (isVisible) {
+                visibleCount += 1;
+            }
+        });
+        emptyBox.hidden = visibleCount > 0;
+    };
+    searchInput.addEventListener("input", updateOptionFilter);
+    searchInput.focus();
 
     const finish = () => {
         modal.classList.remove("is-open");
         modal.setAttribute("aria-hidden", "true");
         modal.removeEventListener("click", onModalClick);
+        searchInput.removeEventListener("input", updateOptionFilter);
         document.removeEventListener("keydown", onKeyDown);
     };
 
@@ -3329,6 +3479,7 @@ function openSelectModal(select) {
 
         const optionButton = event.target.closest("[data-select-option-index]");
         if (!optionButton) return;
+        if (optionButton.hidden) return;
         const option = select.options[Number(optionButton.dataset.selectOptionIndex)];
         if (!option || option.disabled) return;
 
@@ -3341,6 +3492,13 @@ function openSelectModal(select) {
     const onKeyDown = event => {
         if (event.key === "Escape") {
             finish();
+            return;
+        }
+        if (event.key === "Enter" && document.activeElement === searchInput) {
+            const firstVisible = optionsBox.querySelector(".app-select-option:not([hidden]):not([disabled])");
+            if (firstVisible) {
+                firstVisible.click();
+            }
         }
     };
 
@@ -3402,6 +3560,249 @@ function bindModalSelects() {
     document.addEventListener("app-language-changed", () => {
         document.querySelectorAll("select[data-app-select-enhanced='1']").forEach(refreshSelectTrigger);
     });
+}
+
+function translateWithFallback(key, fallback = "") {
+    const translated = translate(key);
+    return translated === key ? (fallback || key) : translated;
+}
+
+function parseLocalDate(value) {
+    const parts = String(value || "").split("-").map(Number);
+    if (parts.length !== 3 || parts.some(part => !Number.isFinite(part))) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+
+function formatLocalDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function addLocalDays(date, days) {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+}
+
+function getCurrentWeekStartDate() {
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    start.setDate(start.getDate() - start.getDay());
+    return start;
+}
+
+function getWeekPickerLocale() {
+    const lang = localStorage.getItem("scheduleAppLanguage") || document.documentElement.lang || "en";
+    if (lang === "he") return "he-IL";
+    if (lang === "ru") return "ru-RU";
+    return "en-US";
+}
+
+function formatWeekPickerDate(date, options = {}) {
+    return new Intl.DateTimeFormat(getWeekPickerLocale(), {
+        day: "2-digit",
+        month: "short",
+        ...(options.year ? { year: "numeric" } : {})
+    }).format(date);
+}
+
+function formatWeekPickerRange(value) {
+    const start = parseLocalDate(value);
+    if (!start) return translateWithFallback("schedule_board_empty_range", "No week selected");
+    const end = addLocalDays(start, 6);
+    const sameYear = start.getFullYear() === end.getFullYear();
+    return `${formatWeekPickerDate(start, { year: !sameYear })} - ${formatWeekPickerDate(end, { year: true })}`;
+}
+
+function setWeekPickerValue(input, value, dispatchChange = true) {
+    if (!input || !value) return;
+    input.value = value;
+    refreshWeekPicker(input);
+    if (dispatchChange) {
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+}
+
+function getWeekPickerLabel(input) {
+    if (!input) return translateWithFallback("week_picker_select_title", "Select week");
+    if (input.getAttribute("aria-label")) return input.getAttribute("aria-label");
+    if (input.id) {
+        const label = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+        if (label) return label.textContent.trim();
+    }
+    return translateWithFallback("week_picker_select_title", "Select week");
+}
+
+function refreshWeekPicker(input) {
+    const control = input?.nextElementSibling;
+    if (!control || !control.classList.contains("app-week-picker")) return;
+    const range = control.querySelector("[data-week-picker-range]");
+    const detail = control.querySelector("[data-week-picker-detail]");
+    const mainButton = control.querySelector("[data-week-picker-open]");
+    const start = parseLocalDate(input.value);
+
+    if (range) {
+        range.textContent = formatWeekPickerRange(input.value);
+    }
+    if (detail) {
+        detail.textContent = start
+            ? `${translateWithFallback("week_picker_week_start", "Week starts")}: ${formatWeekPickerDate(start, { year: true })}`
+            : translateWithFallback("week_picker_select_title", "Select week");
+    }
+    if (mainButton) {
+        mainButton.title = translateWithFallback("week_picker_open", "Open week selector");
+    }
+    const previousButton = control.querySelector('[data-week-picker-step="-7"]');
+    const nextButton = control.querySelector('[data-week-picker-step="7"]');
+    const todayButton = control.querySelector("[data-week-picker-today]");
+    if (previousButton) {
+        previousButton.setAttribute("aria-label", translateWithFallback("week_picker_previous", "Previous week"));
+    }
+    if (nextButton) {
+        nextButton.setAttribute("aria-label", translateWithFallback("week_picker_next", "Next week"));
+    }
+    if (todayButton) {
+        todayButton.textContent = translateWithFallback("week_picker_this_week", "This week");
+    }
+    control.querySelectorAll("button").forEach(button => {
+        button.disabled = input.disabled;
+    });
+}
+
+function ensureWeekPickerModal() {
+    let modal = document.getElementById("app-week-picker-modal");
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+    modal.id = "app-week-picker-modal";
+    modal.className = "app-modal-overlay";
+    modal.setAttribute("aria-hidden", "true");
+    modal.innerHTML = `
+        <div class="app-modal app-week-picker-modal" role="dialog" aria-modal="true" aria-labelledby="app-week-picker-title">
+            <div class="app-modal-header">
+                <h2 id="app-week-picker-title" class="app-modal-title"></h2>
+                <button class="app-modal-close" type="button" data-week-picker-close aria-label="Close">×</button>
+            </div>
+            <div class="app-modal-body">
+                <div id="app-week-picker-options" class="app-week-picker-options"></div>
+            </div>
+            <div class="app-modal-actions">
+                <button id="app-week-picker-today" class="btn btn-secondary" type="button"></button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function closeWeekPickerModal() {
+    const modal = document.getElementById("app-week-picker-modal");
+    if (!modal) return;
+    modal.classList.remove("is-open");
+    modal.setAttribute("aria-hidden", "true");
+}
+
+function openWeekPicker(input) {
+    if (!input || input.disabled) return;
+
+    const modal = ensureWeekPickerModal();
+    const title = modal.querySelector("#app-week-picker-title");
+    const optionsBox = modal.querySelector("#app-week-picker-options");
+    const todayButton = modal.querySelector("#app-week-picker-today");
+    const selectedStart = parseLocalDate(input.value) || getCurrentWeekStartDate();
+    const selectedValue = input.value || formatLocalDate(selectedStart);
+
+    title.textContent = getWeekPickerLabel(input);
+    todayButton.textContent = translateWithFallback("week_picker_this_week", "This week");
+
+    const weeks = [];
+    for (let offset = -6; offset <= 8; offset += 1) {
+        const date = addLocalDays(selectedStart, offset * 7);
+        weeks.push({
+            value: formatLocalDate(date),
+            start: date,
+            end: addLocalDays(date, 6)
+        });
+    }
+
+    optionsBox.innerHTML = weeks.map(week => `
+        <button class="app-week-option ${week.value === selectedValue ? "is-selected" : ""}" type="button" data-week-value="${week.value}">
+            <span class="app-week-option-kicker">
+                ${week.value === selectedValue
+                    ? escapeHtml(translateWithFallback("week_picker_selected", "Selected week"))
+                    : escapeHtml(translateWithFallback("week_picker_week_start", "Week starts"))}
+            </span>
+            <strong>${escapeHtml(formatWeekPickerRange(week.value))}</strong>
+            <span>${escapeHtml(formatWeekPickerDate(week.start, { year: true }))}</span>
+        </button>
+    `).join("");
+
+    optionsBox.onclick = event => {
+        const option = event.target.closest("[data-week-value]");
+        if (!option) return;
+        setWeekPickerValue(input, option.dataset.weekValue);
+        closeWeekPickerModal();
+    };
+    todayButton.onclick = () => {
+        setWeekPickerValue(input, formatLocalDate(getCurrentWeekStartDate()));
+        closeWeekPickerModal();
+    };
+    modal.onclick = event => {
+        if (event.target === modal || event.target.closest("[data-week-picker-close]")) {
+            closeWeekPickerModal();
+        }
+    };
+
+    modal.classList.add("is-open");
+    modal.setAttribute("aria-hidden", "false");
+    const selectedButton = optionsBox.querySelector(".is-selected") || optionsBox.querySelector(".app-week-option");
+    selectedButton?.focus();
+}
+
+function enhanceWeekPicker(input) {
+    if (!input || input.dataset.weekPickerEnhanced === "1") return;
+    input.dataset.weekPickerEnhanced = "1";
+    input.classList.add("app-week-native-input");
+
+    const control = document.createElement("div");
+    control.className = "app-week-picker";
+    control.innerHTML = `
+        <button class="app-week-nav" type="button" data-week-picker-step="-7" aria-label="${escapeHtml(translateWithFallback("week_picker_previous", "Previous week"))}">‹</button>
+        <button class="app-week-main" type="button" data-week-picker-open>
+            <span class="app-week-range" data-week-picker-range></span>
+            <span class="app-week-detail" data-week-picker-detail></span>
+        </button>
+        <button class="app-week-nav" type="button" data-week-picker-step="7" aria-label="${escapeHtml(translateWithFallback("week_picker_next", "Next week"))}">›</button>
+        <button class="app-week-today" type="button" data-week-picker-today>${escapeHtml(translateWithFallback("week_picker_this_week", "This week"))}</button>
+    `;
+    input.insertAdjacentElement("afterend", control);
+
+    control.addEventListener("click", event => {
+        const stepButton = event.target.closest("[data-week-picker-step]");
+        if (stepButton) {
+            const base = parseLocalDate(input.value) || getCurrentWeekStartDate();
+            setWeekPickerValue(input, formatLocalDate(addLocalDays(base, Number(stepButton.dataset.weekPickerStep))));
+            return;
+        }
+        if (event.target.closest("[data-week-picker-today]")) {
+            setWeekPickerValue(input, formatLocalDate(getCurrentWeekStartDate()));
+            return;
+        }
+        if (event.target.closest("[data-week-picker-open]")) {
+            openWeekPicker(input);
+        }
+    });
+    input.addEventListener("input", () => refreshWeekPicker(input));
+    input.addEventListener("change", () => refreshWeekPicker(input));
+    refreshWeekPicker(input);
+    window.setTimeout(() => refreshWeekPicker(input), 0);
+}
+
+function enhanceWeekPickers(root = document) {
+    root.querySelectorAll('input[type="date"][data-week-picker="true"], input[type="date"]#week_start').forEach(enhanceWeekPicker);
 }
 
 function ensureConfirmModal() {
@@ -3504,6 +3905,8 @@ function renderEmptyState(options = {}) {
 window.appConfirm = appConfirm;
 window.renderPageMessage = renderPageMessage;
 window.renderEmptyState = renderEmptyState;
+window.refreshWeekPicker = refreshWeekPicker;
+window.enhanceWeekPickers = enhanceWeekPickers;
 
 function isEmbeddedAdminMode() {
     try {
@@ -3562,6 +3965,10 @@ document.addEventListener("DOMContentLoaded", () => {
     bindLanguageSwitcher();
     setLanguage(getSavedLanguage());
     bindModalSelects();
+    enhanceWeekPickers();
+    document.addEventListener("app-language-changed", () => {
+        document.querySelectorAll('input[type="date"][data-week-picker-enhanced="1"]').forEach(refreshWeekPicker);
+    });
     bindSidebarToggle();
     applySidebarState(getSavedSidebarState());
 });

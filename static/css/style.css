@@ -1144,6 +1144,63 @@ body.rtl .empty-state {
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
 }
 
+.filter-panel {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(160px, 0.7fr)) auto;
+    gap: 12px;
+    align-items: end;
+    margin-bottom: 16px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel-soft);
+}
+
+.filter-panel.compact {
+    grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.5fr) auto;
+}
+
+.filter-field {
+    min-width: 0;
+}
+
+.filter-results {
+    color: var(--muted);
+    font-size: 0.84rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.filter-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+body.rtl .filter-actions {
+    justify-content: flex-start;
+}
+
+@media (max-width: 920px) {
+    .filter-panel,
+    .filter-panel.compact {
+        grid-template-columns: 1fr;
+    }
+
+    .filter-actions,
+    body.rtl .filter-actions {
+        justify-content: stretch;
+    }
+
+    .filter-actions .btn {
+        width: 100%;
+    }
+
+    .filter-results {
+        white-space: normal;
+    }
+}
+
 .table-shell {
     overflow: auto;
     border: 1px solid var(--border);
@@ -1596,6 +1653,11 @@ body.rtl .app-footer {
     width: min(520px, 100%);
 }
 
+.app-select-search {
+    width: 100%;
+    margin-bottom: 12px;
+}
+
 .app-select-options {
     display: grid;
     gap: 8px;
@@ -1614,9 +1676,173 @@ body.rtl .app-footer {
     color: var(--primary);
 }
 
+.app-select-empty {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    color: var(--muted);
+    background: var(--panel-soft);
+    text-align: center;
+    font-size: 0.88rem;
+}
+
+.app-week-native-input {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.app-week-picker {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) 38px auto;
+    gap: 6px;
+    align-items: stretch;
+    width: 100%;
+}
+
+.app-week-nav,
+.app-week-main,
+.app-week-today,
+.app-week-option {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: #ffffff;
+    color: var(--text);
+    font: inherit;
+    font-weight: 850;
+    cursor: pointer;
+    transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+.app-week-nav {
+    display: grid;
+    place-items: center;
+    min-height: 38px;
+    padding: 0;
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.app-week-main {
+    min-width: 0;
+    min-height: 38px;
+    padding: 6px 10px;
+    text-align: start;
+}
+
+.app-week-range,
+.app-week-detail {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-week-range {
+    color: var(--text);
+    font-size: 0.86rem;
+    line-height: 1.2;
+}
+
+.app-week-detail {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.68rem;
+    line-height: 1.15;
+}
+
+.app-week-today {
+    min-height: 38px;
+    padding: 0 10px;
+    color: var(--primary);
+}
+
+.app-week-nav:hover,
+.app-week-main:hover,
+.app-week-today:hover,
+.app-week-option:hover {
+    border-color: var(--border-strong);
+    background: var(--panel-soft);
+}
+
+.app-week-nav:focus-visible,
+.app-week-main:focus-visible,
+.app-week-today:focus-visible,
+.app-week-option:focus-visible {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(13, 118, 109, 0.14);
+}
+
+.app-week-picker-modal {
+    width: min(560px, 100%);
+}
+
+.app-week-picker-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.app-week-option {
+    display: grid;
+    gap: 4px;
+    min-height: 78px;
+    padding: 10px;
+    text-align: start;
+}
+
+.app-week-option-kicker,
+.app-week-option span:last-child {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.app-week-option strong {
+    overflow: hidden;
+    color: var(--text);
+    font-size: 0.9rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-week-option.is-selected {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    box-shadow: 0 0 0 2px rgba(13, 118, 109, 0.12);
+}
+
 body.rtl .app-select-trigger,
-body.rtl .app-select-option {
+body.rtl .app-select-option,
+body.rtl .app-week-main,
+body.rtl .app-week-option {
     text-align: right;
+}
+
+body.rtl .app-week-picker {
+    direction: rtl;
+}
+
+@media (max-width: 560px) {
+    .app-week-picker {
+        grid-template-columns: 36px minmax(0, 1fr) 36px;
+    }
+
+    .app-week-today {
+        grid-column: 1 / -1;
+    }
+
+    .app-week-picker-options {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* Beta 0.12.1: shared mobile/RTL hardening for data-heavy pages. */
@@ -1697,5 +1923,597 @@ body.rtl input[type="date"] {
 
     .empty-state-actions .btn {
         width: 100%;
+    }
+}
+
+/* ShiftCare operations visual layer */
+:root {
+    --bg: #e9edf1;
+    --panel: #ffffff;
+    --panel-soft: #f3f6f8;
+    --border: #c8d0da;
+    --border-strong: #9ba7b5;
+    --text: #151b22;
+    --muted: #647080;
+    --muted-strong: #475569;
+    --primary: #0d766d;
+    --primary-hover: #095d56;
+    --primary-soft: #dff3ef;
+    --success: #1d7a4b;
+    --success-soft: #e6f4eb;
+    --warning: #a76705;
+    --warning-soft: #fff3d9;
+    --danger: #ad3027;
+    --danger-soft: #fff0ee;
+    --night: #dfe7f8;
+    --evening: #f7e3c4;
+    --morning: #dff3ef;
+    --rail: #121820;
+    --rail-2: #1a222d;
+    --shadow: 0 1px 0 rgba(18, 24, 32, 0.05);
+    --shadow-sm: 0 1px 0 rgba(18, 24, 32, 0.06);
+    --radius-xl: 6px;
+    --radius-lg: 6px;
+    --radius-md: 5px;
+    --radius-sm: 4px;
+    --sidebar-width: 258px;
+    --transition: 0.16s ease;
+}
+
+html {
+    background: var(--bg);
+}
+
+body.app-shell {
+    min-width: 320px;
+    background:
+        repeating-linear-gradient(0deg, rgba(18, 24, 32, 0.024) 0 1px, transparent 1px 34px),
+        repeating-linear-gradient(90deg, rgba(18, 24, 32, 0.018) 0 1px, transparent 1px 34px),
+        var(--bg);
+    letter-spacing: 0;
+}
+
+body.app-shell .sidebar {
+    width: var(--sidebar-width);
+    padding: 16px;
+    gap: 16px;
+    background: var(--rail);
+    border-inline-end: 1px solid #020617;
+    color: #edf2f7;
+    box-shadow: none;
+}
+
+body.rtl.app-shell .sidebar {
+    border-inline-end: none;
+    border-inline-start: 1px solid #020617;
+}
+
+body.app-shell .sidebar-top-row {
+    align-items: center;
+    gap: 10px;
+}
+
+body.app-shell .brand {
+    gap: 10px;
+    padding: 0 0 14px !important;
+    border-bottom: 1px solid #2c3745 !important;
+}
+
+body.app-shell .brand-logo {
+    width: 42px;
+    height: 42px;
+    border-radius: 5px;
+    background: #f8fafc;
+    color: var(--primary-hover);
+    box-shadow: none;
+    font-size: 1rem;
+    font-weight: 950;
+}
+
+body.app-shell .brand-title {
+    color: #f8fafc;
+    font-size: 0.98rem;
+    font-weight: 850;
+}
+
+body.app-shell .brand-subtitle,
+body.app-shell .sidebar-footer-text {
+    color: #94a3b8;
+}
+
+body.app-shell .sidebar-section-title {
+    padding-inline: 2px;
+    color: #7d8b9d;
+    font-size: 0.69rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+}
+
+body.app-shell .nav-list {
+    gap: 6px;
+}
+
+body.app-shell .nav-item {
+    min-height: 42px;
+    padding: 10px;
+    border-color: #243142;
+    border-radius: 5px;
+    color: #cbd5e1;
+    font-weight: 850;
+}
+
+body.app-shell .nav-item:hover {
+    background: var(--rail-2);
+    border-color: #334155;
+    color: #ffffff;
+    box-shadow: none;
+}
+
+body.app-shell .nav-item.active {
+    background: #f8fafc;
+    border-color: #f8fafc;
+    color: var(--rail);
+    box-shadow: none;
+}
+
+body.app-shell .nav-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 0.95rem;
+}
+
+body.app-shell .nav-item.active .nav-icon {
+    background: var(--primary-soft);
+    color: var(--primary-hover);
+}
+
+body.app-shell .sidebar-footer {
+    border-color: #2c3745;
+    border-radius: 5px;
+    background: var(--rail-2);
+    box-shadow: none;
+}
+
+body.app-shell .sidebar-footer-title {
+    color: #f8fafc;
+}
+
+body.app-shell .main-area {
+    padding: 16px;
+}
+
+body.app-shell .topbar {
+    min-height: 72px;
+    margin-bottom: 12px;
+    padding: 0 2px 8px;
+    border-bottom: 1px solid rgba(155, 167, 181, 0.55);
+}
+
+body.app-shell .page-title {
+    color: var(--text);
+    font-size: clamp(1.45rem, 1.7vw, 1.95rem);
+    font-weight: 900;
+    letter-spacing: 0;
+}
+
+body.app-shell .page-subtitle {
+    max-width: 760px;
+    color: var(--muted);
+    font-size: 0.94rem;
+}
+
+body.app-shell .lang-switcher {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    min-width: min(340px, 100%);
+    padding: 5px;
+    border-color: var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    box-shadow: none;
+}
+
+body.app-shell .lang-btn {
+    min-height: 30px;
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 900;
+}
+
+body.app-shell .lang-btn:hover {
+    border-color: var(--border);
+    background: var(--panel-soft);
+    color: var(--text);
+}
+
+body.app-shell .lang-btn.active {
+    border-color: var(--rail);
+    background: var(--rail);
+    color: #ffffff;
+}
+
+body.app-shell .panel,
+body.app-shell .home-section,
+body.app-shell .page-card,
+body.app-shell .settings-card,
+body.app-shell .settings-panel-card,
+body.app-shell .settings-notes,
+body.app-shell .rules-box,
+body.app-shell .preview-schedule-card,
+body.app-shell .organization-panel,
+body.app-shell .list-card {
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--panel);
+    box-shadow: none;
+}
+
+body.app-shell .panel-body {
+    padding: 16px;
+}
+
+body.app-shell .hero-card {
+    background:
+        linear-gradient(90deg, rgba(13, 118, 109, 0.08), transparent 44%),
+        #ffffff;
+}
+
+body.app-shell .home-section,
+body.app-shell .settings-card,
+body.app-shell .settings-panel-card,
+body.app-shell .rules-box,
+body.app-shell .settings-notes {
+    padding: 14px;
+}
+
+body.app-shell .home-next-section {
+    border-color: var(--border-strong);
+    border-inline-start: 4px solid var(--primary);
+}
+
+body.app-shell .home-section-kicker,
+body.app-shell .section-note,
+body.app-shell .form-label,
+body.app-shell .toolbar-group-label,
+body.app-shell .schedule-status-label {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+body.app-shell .home-section-title,
+body.app-shell .home-next-title,
+body.app-shell .section-title,
+body.app-shell .subsection-title,
+body.app-shell .settings-card-title,
+body.app-shell .settings-module-title,
+body.app-shell .empty-state-title {
+    color: var(--text);
+    font-weight: 900;
+    letter-spacing: 0;
+}
+
+body.app-shell .home-week-grid,
+body.app-shell .table-shell,
+body.app-shell .preferences-table-shell,
+body.app-shell .empty-state {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #ffffff;
+    box-shadow: none;
+}
+
+body.app-shell .home-metric,
+body.app-shell .stat-card,
+body.app-shell .quick-action,
+body.app-shell .home-action-row,
+body.app-shell .home-readiness-item,
+body.app-shell .home-info-row,
+body.app-shell .recurring-preference-card,
+body.app-shell .request-choice-card,
+body.app-shell .recurring-choice-card {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: #ffffff;
+    box-shadow: none;
+}
+
+body.app-shell .home-metric {
+    background: var(--panel-soft);
+}
+
+body.app-shell .home-action-row:hover,
+body.app-shell .quick-action:hover,
+body.app-shell .settings-card:hover,
+body.app-shell .request-choice-card:hover,
+body.app-shell .recurring-choice-card:hover {
+    transform: none;
+    border-color: var(--border-strong);
+    background: var(--panel-soft);
+    box-shadow: none;
+}
+
+body.app-shell .request-choice-card.is-selected,
+body.app-shell .recurring-choice-card.is-selected {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    box-shadow: 0 0 0 3px rgba(13, 118, 109, 0.12);
+}
+
+body.app-shell .home-action-index,
+body.app-shell .settings-card-icon,
+body.app-shell .footer-right a,
+body.app-shell .home-section-kicker {
+    color: var(--primary);
+}
+
+body.app-shell .settings-card-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 5px;
+    background: var(--primary-soft);
+}
+
+body.app-shell .btn,
+body.app-shell .table-btn,
+body.app-shell .cell-btn,
+body.app-shell .shift-picker-option,
+body.app-shell .app-select-option {
+    border-radius: 5px !important;
+    box-shadow: none !important;
+    font-weight: 850 !important;
+    letter-spacing: 0;
+}
+
+body.app-shell .btn {
+    min-height: 38px;
+    padding: 9px 13px;
+    border: 1px solid transparent;
+    transform: none;
+}
+
+body.app-shell .btn:hover,
+body.app-shell .table-btn:hover,
+body.app-shell .cell-btn:hover {
+    transform: none;
+}
+
+body.app-shell .btn-primary {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #ffffff;
+}
+
+body.app-shell .btn-primary:hover {
+    border-color: var(--primary-hover);
+    background: var(--primary-hover);
+}
+
+body.app-shell .btn-secondary,
+body.app-shell .table-btn {
+    border-color: var(--border) !important;
+    background: #ffffff !important;
+    color: var(--text) !important;
+}
+
+body.app-shell .btn-secondary:hover,
+body.app-shell .table-btn:hover {
+    border-color: var(--border-strong) !important;
+    background: var(--panel-soft) !important;
+}
+
+body.app-shell .btn-soft {
+    border-color: #b9d8d3;
+    background: var(--primary-soft);
+    color: var(--primary-hover);
+}
+
+body.app-shell .btn-soft:hover {
+    background: #cde9e4;
+}
+
+body.app-shell .btn-danger,
+body.app-shell .table-btn.delete {
+    border-color: #e1b5b0 !important;
+    background: var(--danger-soft) !important;
+    color: var(--danger) !important;
+}
+
+body.app-shell .btn-danger:hover,
+body.app-shell .table-btn.delete:hover {
+    background: #f8d8d5 !important;
+}
+
+body.app-shell .table-btn.edit {
+    border-color: #b9d8d3 !important;
+    background: var(--primary-soft) !important;
+    color: var(--primary-hover) !important;
+}
+
+body.app-shell .input,
+body.app-shell .select,
+body.app-shell .textarea,
+body.app-shell .small-control,
+body.app-shell .app-select-trigger {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: #ffffff;
+    color: var(--text);
+    box-shadow: none;
+}
+
+body.app-shell .input:focus,
+body.app-shell .select:focus,
+body.app-shell .textarea:focus,
+body.app-shell .small-control:focus,
+body.app-shell .app-select-trigger:focus,
+body.app-shell .app-select-trigger:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(13, 118, 109, 0.13);
+    outline: none;
+}
+
+body.app-shell .btn:focus-visible,
+body.app-shell .lang-btn:focus-visible,
+body.app-shell .nav-item:focus-visible,
+body.app-shell .sidebar-toggle:focus-visible,
+body.app-shell .input:focus-visible,
+body.app-shell .select:focus-visible,
+body.app-shell .textarea:focus-visible {
+    outline: 3px solid rgba(13, 118, 109, 0.18);
+    outline-offset: 2px;
+}
+
+body.app-shell .table-clean th,
+body.app-shell .preferences-table th {
+    background: var(--panel-soft);
+    color: var(--muted);
+    font-weight: 900;
+}
+
+body.app-shell .table-clean th,
+body.app-shell .table-clean td,
+body.app-shell .preferences-table th,
+body.app-shell .preferences-table td {
+    border-bottom-color: var(--border);
+}
+
+body.app-shell .home-status-pill,
+body.app-shell .day-header-flag,
+body.app-shell .coverage-pill,
+body.app-shell .online-status-indicator {
+    border-radius: 999px;
+    box-shadow: none;
+    font-weight: 900;
+}
+
+body.app-shell .home-status-pill.ready,
+body.app-shell .home-readiness-item.ready,
+body.app-shell .page-message.success {
+    border-color: #b8d9c5;
+    background: var(--success-soft);
+    color: var(--success);
+}
+
+body.app-shell .home-status-pill.attention,
+body.app-shell .home-readiness-item.attention,
+body.app-shell .page-message.warning {
+    border-color: #e6c47f;
+    background: var(--warning-soft);
+    color: var(--warning);
+}
+
+body.app-shell .page-message,
+body.app-shell .generation-summary-panel {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel-soft);
+    box-shadow: none;
+}
+
+body.app-shell .page-message.error,
+body.app-shell .page-message.danger {
+    border-color: #e1b5b0;
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+body.app-shell .app-modal {
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    box-shadow: 0 20px 60px rgba(18, 24, 32, 0.28);
+}
+
+body.app-shell .app-modal-header,
+body.app-shell .shift-picker-header {
+    border-bottom-color: var(--border);
+    background: var(--panel-soft);
+}
+
+body.app-shell .app-modal-close,
+body.app-shell .shift-picker-close,
+body.app-shell .sidebar-toggle {
+    border: 1px solid var(--border) !important;
+    border-radius: 5px !important;
+    background: #ffffff !important;
+    color: var(--text) !important;
+    box-shadow: none !important;
+}
+
+body.app-shell .sidebar-toggle {
+    width: 40px !important;
+    height: 40px !important;
+    margin: 0 !important;
+}
+
+body.app-shell .sidebar-toggle:hover,
+body.app-shell .app-modal-close:hover,
+body.app-shell .shift-picker-close:hover {
+    border-color: var(--border-strong) !important;
+    background: var(--panel-soft) !important;
+    transform: none;
+}
+
+body.sidebar-collapsed.app-shell {
+    --sidebar-width: 84px;
+}
+
+body.sidebar-collapsed.app-shell .brand {
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+}
+
+@media (max-width: 920px) {
+    body.app-shell .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        padding: 12px;
+        border-inline-end: none !important;
+        border-inline-start: none !important;
+        border-bottom: 1px solid #020617;
+        border-radius: 0;
+    }
+
+    body.app-shell .main-area {
+        padding: 12px;
+    }
+
+    body.app-shell .topbar {
+        min-height: 0;
+        gap: 12px;
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+    }
+
+    body.sidebar-collapsed.app-shell {
+        --sidebar-width: 100%;
+    }
+}
+
+@media (max-width: 560px) {
+    body.app-shell .panel-body {
+        padding: 12px;
+    }
+
+    body.app-shell .home-section,
+    body.app-shell .settings-card,
+    body.app-shell .settings-panel-card,
+    body.app-shell .rules-box,
+    body.app-shell .settings-notes {
+        padding: 12px;
+    }
+
+    body.app-shell .lang-switcher {
+        width: 100%;
+        min-width: 0;
     }
 }

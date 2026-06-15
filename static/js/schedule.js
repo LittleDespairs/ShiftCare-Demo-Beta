@@ -37,6 +37,10 @@
         let pendingStatusTarget = null;
         let lastGenerationSummary = null;
         let scheduleDataLoaded = false;
+        let scheduleEmployeeFilters = {
+            search: "",
+            mode: "",
+        };
         const LOCAL_COVERAGE_DISPLAY_MODE_PREFIX = "schedule_app_coverage_display_mode";
         const LOCAL_CARD_DISPLAY_MODE_PREFIX = "schedule_app_card_display_mode";
 
@@ -64,6 +68,7 @@
             bindSidebarToggle();
             bindScheduleActionModals();
             bindScheduleFloatingHeader();
+            bindScheduleEmployeeFilters();
 
             // Apply remembered sidebar state / Применяем сохранённое состояние sidebar
             applySidebarState(getSavedSidebarState());
@@ -98,6 +103,8 @@
             if (lastGenerationSummary) {
                 renderGenerationSummary(lastGenerationSummary);
             }
+            updateScheduleBoardRange();
+            updateScheduleInspector();
             updateScheduleActionAvailability();
             syncScheduleFloatingHeader();
         });
@@ -213,6 +220,7 @@
             const day = today.getDay(); // Sunday = 0
             today.setDate(today.getDate() - day);
             input.value = formatDate(today);
+            window.refreshWeekPicker?.(input);
         }
 
         function capitalizeFirstLetter(text) {
@@ -392,6 +400,42 @@
             return t(key, ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][index]);
         }
 
+        function getScheduleLocale() {
+            const lang = localStorage.getItem("scheduleAppLanguage") || document.documentElement.lang || "en";
+            if (lang === "he") return "he-IL";
+            if (lang === "ru") return "ru-RU";
+            return "en-US";
+        }
+
+        function formatBoardDate(value, options = {}) {
+            const date = new Date(`${value}T00:00:00`);
+            return new Intl.DateTimeFormat(getScheduleLocale(), {
+                day: "2-digit",
+                month: "short",
+                ...(options.year ? { year: "numeric" } : {})
+            }).format(date);
+        }
+
+        function getBoardWeekDates() {
+            if (weekDates.length > 0) return weekDates;
+            const weekStart = document.getElementById("week_start")?.value;
+            return weekStart ? buildWeekDates(weekStart) : [];
+        }
+
+        function updateScheduleBoardRange() {
+            const title = document.getElementById("schedule-board-range");
+            if (!title) return;
+            const dates = getBoardWeekDates();
+            if (dates.length === 0) {
+                title.textContent = t("schedule_board_empty_range", "No week selected");
+                return;
+            }
+            const start = dates[0];
+            const end = dates[dates.length - 1];
+            const sameYear = start.slice(0, 4) === end.slice(0, 4);
+            title.textContent = `${formatBoardDate(start, { year: !sameYear })} - ${formatBoardDate(end, { year: true })}`;
+        }
+
         /* =========================================================
            MESSAGE UI / СООБЩЕНИЯ НА СТРАНИЦЕ
            ========================================================= */
@@ -417,6 +461,7 @@
                 section.hidden = true;
             }
             lastGenerationSummary = null;
+            updateScheduleInspector();
         }
 
         function bindScheduleFloatingHeader() {
@@ -640,6 +685,7 @@
                 </div>
             `;
             section.hidden = false;
+            updateScheduleInspector();
         }
 
         /* =========================================================
@@ -663,8 +709,65 @@
             document.getElementById("schedule_coverage_display_mode").addEventListener("change", saveScheduleDisplayMode);
             document.getElementById("schedule_card_display_mode").addEventListener("change", saveScheduleCardDisplayMode);
             document.getElementById("generation-summary-clear-btn").addEventListener("click", clearGenerationSummary);
-            document.getElementById("week_start").addEventListener("change", updateScheduleActionAvailability);
-            document.getElementById("position_select").addEventListener("change", updateScheduleActionAvailability);
+            document.getElementById("week_start").addEventListener("change", handleScheduleContextChanged);
+            document.getElementById("position_select").addEventListener("change", handleScheduleContextChanged);
+            document.querySelectorAll("[data-generation-view]").forEach(button => {
+                button.addEventListener("click", () => {
+                    document.querySelectorAll("[data-generation-view]").forEach(item => {
+                        item.classList.toggle("is-active", item === button);
+                    });
+                });
+            });
+        }
+
+        function handleScheduleContextChanged() {
+            weekDates = [];
+            scheduleDataLoaded = false;
+            clearGenerationSummary();
+            renderScheduleInitialState();
+        }
+
+        function normalizeScheduleFilterText(value) {
+            return String(value || "").toLowerCase().trim();
+        }
+
+        function scheduleFilterCountText(shown, total) {
+            return t("common_filter_results", "Showing {shown} of {total}")
+                .replace("{shown}", String(shown))
+                .replace("{total}", String(total));
+        }
+
+        function bindScheduleEmployeeFilters() {
+            const searchInput = document.getElementById("schedule_employee_search");
+            const modeSelect = document.getElementById("schedule_employee_filter_mode");
+            const resetButton = document.getElementById("schedule-filter-reset");
+
+            searchInput?.addEventListener("input", () => {
+                scheduleEmployeeFilters.search = searchInput.value;
+                rerenderScheduleIfLoaded();
+            });
+            modeSelect?.addEventListener("change", () => {
+                scheduleEmployeeFilters.mode = modeSelect.value;
+                rerenderScheduleIfLoaded();
+            });
+            resetButton?.addEventListener("click", () => {
+                scheduleEmployeeFilters = { search: "", mode: "" };
+                if (searchInput) searchInput.value = "";
+                if (modeSelect) {
+                    modeSelect.value = "";
+                    if (typeof refreshSelectTrigger === "function") {
+                        refreshSelectTrigger(modeSelect);
+                    }
+                }
+                rerenderScheduleIfLoaded();
+            });
+        }
+
+        function rerenderScheduleIfLoaded() {
+            const positionId = Number(document.getElementById("position_select").value);
+            if (scheduleDataLoaded && weekDates.length > 0 && positionId) {
+                renderScheduleTable(positionId);
+            }
         }
 
         function bindScheduleActionModals() {
@@ -752,7 +855,10 @@
                 </tr>
             `;
             updateScheduleActionAvailability();
+            updateScheduleBoardRange();
             updateScheduleStatusStrip();
+            updateScheduleInspector();
+            updateScheduleFilterCount(0, 0);
             syncScheduleFloatingHeader();
         }
 
@@ -763,6 +869,36 @@
                 weekDateSet.has(entry.date) &&
                 !entry.no_show
             );
+        }
+
+        function employeeHasVisibleWeekShift(employeeId, positionId) {
+            return getVisibleScheduleEntries(positionId).some(entry => entry.employee_id === employeeId);
+        }
+
+        function getFilteredScheduleEmployees(employeesForPosition, positionId) {
+            const query = normalizeScheduleFilterText(scheduleEmployeeFilters.search);
+            const mode = scheduleEmployeeFilters.mode;
+
+            return employeesForPosition.filter(employee => {
+                const haystack = normalizeScheduleFilterText([
+                    employee.id,
+                    employee.id_card,
+                    employee.full_name,
+                    employee.sex,
+                ].join(" "));
+                if (query && !haystack.includes(query)) return false;
+
+                const hasShift = employeeHasVisibleWeekShift(employee.id, positionId);
+                if (mode === "with_shifts" && !hasShift) return false;
+                if (mode === "without_shifts" && hasShift) return false;
+                return true;
+            });
+        }
+
+        function updateScheduleFilterCount(shown, total) {
+            const count = document.getElementById("schedule-filter-count");
+            if (!count) return;
+            count.textContent = total ? scheduleFilterCountText(shown, total) : "";
         }
 
         function countVisibleCoverageGaps(positionId) {
@@ -798,39 +934,38 @@
             if (!strip) return;
 
             const positionId = Number(document.getElementById("position_select").value);
-            if (!scheduleDataLoaded || !positionId || weekDates.length === 0) {
-                strip.classList.remove("is-visible");
-                strip.innerHTML = "";
-                return;
-            }
-
             const selectedPosition = allPositions.find(item => item.id === positionId);
-            const employeesForPosition = getEmployeesForPosition(positionId);
-            const visibleEntries = getVisibleScheduleEntries(positionId);
             const coverageMode = appSettings.schedule_coverage_display_mode === "category"
                 ? t("coverage_display_category", "By shift categories")
                 : t("coverage_display_interval", "By time intervals");
-            const gapCount = countVisibleCoverageGaps(positionId);
-            const shiftsValue = shouldShowCoverageInSchedule()
-                ? `${visibleEntries.length} · ${coverageMode} · ${gapCount} ${t("schedule_status_gaps", "gaps")}`
-                : String(visibleEntries.length);
+            const gapCount = scheduleDataLoaded && positionId && weekDates.length > 0
+                ? countVisibleCoverageGaps(positionId)
+                : 0;
+            const coverageValue = !scheduleDataLoaded || !positionId || weekDates.length === 0
+                ? t("schedule_status_no_data", "Not loaded")
+                : gapCount > 0
+                    ? `${gapCount} ${t("schedule_status_gaps", "gaps")}`
+                    : "OK";
+            const publishBlocked = scheduleDataLoaded && gapCount > 0;
 
             const items = [
                 {
                     label: t("schedule_status_week", "Week"),
-                    value: `${weekDates[0]} - ${weekDates[6]}`
+                    value: getBoardWeekDates().length ? `${getBoardWeekDates()[0]} - ${getBoardWeekDates()[6]}` : "-"
                 },
                 {
                     label: t("schedule_status_position", "Position"),
                     value: selectedPosition ? selectedPosition.name : "-"
                 },
                 {
-                    label: t("schedule_status_staff", "Staff"),
-                    value: String(employeesForPosition.length)
+                    label: t("schedule_status_coverage", "Coverage"),
+                    value: shouldShowCoverageInSchedule() ? `${coverageValue} · ${coverageMode}` : coverageValue
                 },
                 {
-                    label: t("schedule_status_shifts", "Shifts"),
-                    value: shiftsValue
+                    label: t("schedule_publish_status", "Publish"),
+                    value: publishBlocked
+                        ? t("schedule_publish_blocked", "Blocked")
+                        : (scheduleDataLoaded ? t("schedule_publish_ready", "Ready") : t("schedule_status_no_data", "Not loaded"))
                 }
             ];
 
@@ -841,6 +976,84 @@
                 </div>
             `).join("");
             strip.classList.add("is-visible");
+        }
+
+        function renderInspectorRow(label, value, state = "neutral") {
+            return `
+                <div class="schedule-ledger-row ${state}">
+                    <span>${escapeHtml(label)}</span>
+                    <strong>${escapeHtml(value)}</strong>
+                </div>
+            `;
+        }
+
+        function updateScheduleInspector() {
+            const ledger = document.getElementById("schedule-rule-ledger");
+            const runLog = document.getElementById("schedule-run-log");
+            if (!ledger || !runLog) return;
+
+            const positionId = Number(document.getElementById("position_select").value);
+            const selectedPosition = allPositions.find(item => item.id === positionId);
+            const dates = getBoardWeekDates();
+
+            if (!scheduleDataLoaded || !positionId || weekDates.length === 0) {
+                ledger.innerHTML = renderInspectorRow(
+                    t("schedule_status_coverage", "Coverage"),
+                    t("schedule_status_no_data", "Not loaded"),
+                    "neutral"
+                );
+                runLog.innerHTML = `
+                    <div class="schedule-log-line">
+                        <strong>${escapeHtml(t("schedule_waiting_log", "Load a week to see schedule activity."))}</strong>
+                        <span>${escapeHtml(dates.length ? `${dates[0]} - ${dates[6]}` : "-")}</span>
+                    </div>
+                `;
+                return;
+            }
+
+            const gapCount = countVisibleCoverageGaps(positionId);
+            const hardCount = (lastGenerationSummary?.result?.feasibility_report?.hard_constraints || []).length;
+            const softCount = (lastGenerationSummary?.result?.feasibility_report?.soft_constraints || []).length;
+            const unfilledCount = (lastGenerationSummary?.result?.unfilled_reports || []).length;
+            const visibleEntries = getVisibleScheduleEntries(positionId);
+
+            ledger.innerHTML = [
+                renderInspectorRow(
+                    t("schedule_status_coverage", "Coverage"),
+                    gapCount > 0 ? `${gapCount} ${t("schedule_status_gaps", "gaps")}` : "OK",
+                    gapCount > 0 ? "critical" : "ok"
+                ),
+                renderInspectorRow(
+                    t("generation_hard_constraints", "Hard constraints"),
+                    hardCount > 0 ? String(hardCount) : "OK",
+                    hardCount > 0 ? "critical" : "ok"
+                ),
+                renderInspectorRow(
+                    t("generation_soft_constraints", "Soft constraints"),
+                    softCount > 0 ? String(softCount) : "OK",
+                    softCount > 0 ? "warning" : "ok"
+                ),
+                renderInspectorRow(
+                    t("generation_unfilled_count", "Unfilled requirements"),
+                    unfilledCount > 0 ? String(unfilledCount) : "OK",
+                    unfilledCount > 0 ? "warning" : "ok"
+                )
+            ].join("");
+
+            const generationLine = lastGenerationSummary
+                ? `${t("schedule_generation_created_log", "Created shifts")}: ${Number(lastGenerationSummary.result?.created_count || 0)}`
+                : t("schedule_no_generation_log", "No generation run yet");
+
+            runLog.innerHTML = `
+                <div class="schedule-log-line">
+                    <strong>${escapeHtml(t("schedule_loaded_log", "Loaded schedule data"))}</strong>
+                    <span>${escapeHtml(selectedPosition ? selectedPosition.name : "-")} · ${escapeHtml(dates[0])} - ${escapeHtml(dates[6])}</span>
+                </div>
+                <div class="schedule-log-line">
+                    <strong>${escapeHtml(t("schedule_status_entries", "Entries"))}: ${Number(visibleEntries.length)}</strong>
+                    <span>${escapeHtml(generationLine)}</span>
+                </div>
+            `;
         }
 
         function updateScheduleActionAvailability() {
@@ -2322,6 +2535,7 @@
             ` : "";
 
             const employeesForPosition = getEmployeesForPosition(positionId);
+            const filteredEmployees = getFilteredScheduleEmployees(employeesForPosition, positionId);
             const selectedPosition = allPositions.find(item => item.id === positionId);
 
             thead.innerHTML = `
@@ -2355,6 +2569,9 @@
                 shell.style.setProperty("--schedule-date-header-height", `${firstHeaderRow.offsetHeight}px`);
             }
             updateScheduleStatusStrip();
+            updateScheduleBoardRange();
+            updateScheduleInspector();
+            updateScheduleFilterCount(filteredEmployees.length, employeesForPosition.length);
 
             if (employeesForPosition.length === 0) {
                 const actionHtml = [
@@ -2378,7 +2595,23 @@
                 return;
             }
 
-            tbody.innerHTML = employeesForPosition.map(employee => `
+            if (filteredEmployees.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="padding:24px;">
+                            ${renderScheduleWorkspaceEmptyState({
+                                title: t("common_filter_no_matches", "No matching records"),
+                                text: t("common_search_employee", "Search employee")
+                            })}
+                        </td>
+                    </tr>
+                `;
+                updateScheduleActionAvailability();
+                syncScheduleFloatingHeader();
+                return;
+            }
+
+            tbody.innerHTML = filteredEmployees.map(employee => `
                 <tr>
                     <td class="employee-column">
                         <div class="employee-cell">
@@ -2396,6 +2629,7 @@
 
             bindScheduleActions();
             updateScheduleActionAvailability();
+            updateScheduleInspector();
             syncScheduleFloatingHeader();
         }
 

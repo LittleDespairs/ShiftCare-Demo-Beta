@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="theme-color" content="#121820">
     <meta name="mobile-web-app-capable" content="yes">
     <title>Assignments - {{ app_name }}</title>
     <link rel="manifest" href="/static/manifest.webmanifest">
@@ -15,7 +15,7 @@
         Reused across the redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-operations-ui">
 
     <style>
         /* =========================================================
@@ -508,6 +508,31 @@
                                 </button>
                             </div>
 
+                            <div class="filter-panel compact">
+                                <div class="filter-field">
+                                    <label class="form-label" for="assignment-search-input" data-i18n="common_search_employee">
+                                        Search employee
+                                    </label>
+                                    <input id="assignment-search-input" class="input" type="search" autocomplete="off"
+                                        data-i18n-placeholder="common_search_employee" placeholder="Search employee">
+                                </div>
+                                <div class="filter-field">
+                                    <label class="form-label" for="assignment-position-filter" data-i18n="assignments_position">
+                                        Position
+                                    </label>
+                                    <select id="assignment-position-filter" class="select">
+                                        <option value="" data-i18n="common_filter_all">All</option>
+                                    </select>
+                                </div>
+                                <div class="filter-actions">
+                                    <span id="assignments-filter-count" class="filter-results"></span>
+                                    <button id="assignments-filter-reset" class="btn btn-secondary" type="button"
+                                        data-i18n="common_reset">
+                                        Reset
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="assignments-table-shell">
                                 <table class="assignments-table">
                                     <thead>
@@ -556,6 +581,10 @@
         let allEmployees = [];
         let allPositions = [];
         let cachedAssignments = [];
+        let assignmentFilters = {
+            search: "",
+            positionId: "",
+        };
         let editingAssignmentKey = null;
 
         function getSavedSidebarState() {
@@ -631,6 +660,91 @@
                 : `<span class="mini-badge no">${noText}</span>`;
         }
 
+        function normalizeAssignmentFilterText(value) {
+            return String(value || "").toLowerCase().trim();
+        }
+
+        function assignmentFilterCountText(shown, total) {
+            return t("common_filter_results", "Showing {shown} of {total}")
+                .replace("{shown}", String(shown))
+                .replace("{total}", String(total));
+        }
+
+        function bindAssignmentFilters() {
+            const searchInput = document.getElementById("assignment-search-input");
+            const positionFilter = document.getElementById("assignment-position-filter");
+            const resetButton = document.getElementById("assignments-filter-reset");
+
+            searchInput?.addEventListener("input", () => {
+                assignmentFilters.search = searchInput.value;
+                renderFilteredAssignmentsTable();
+            });
+            positionFilter?.addEventListener("change", () => {
+                assignmentFilters.positionId = positionFilter.value;
+                renderFilteredAssignmentsTable();
+            });
+            resetButton?.addEventListener("click", () => {
+                assignmentFilters = { search: "", positionId: "" };
+                if (searchInput) searchInput.value = "";
+                if (positionFilter) {
+                    positionFilter.value = "";
+                    if (typeof refreshSelectTrigger === "function") {
+                        refreshSelectTrigger(positionFilter);
+                    }
+                }
+                renderFilteredAssignmentsTable();
+            });
+        }
+
+        function fillAssignmentPositionFilter() {
+            const select = document.getElementById("assignment-position-filter");
+            if (!select) return;
+            const currentValue = assignmentFilters.positionId;
+            select.innerHTML = `
+                <option value="">${t("common_filter_all", "All")}</option>
+                ${allPositions.map(position => `
+                    <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
+                `).join("")}
+            `;
+            if ([...select.options].some(option => option.value === currentValue)) {
+                select.value = currentValue;
+            } else {
+                assignmentFilters.positionId = "";
+            }
+            if (typeof refreshSelectTrigger === "function") {
+                refreshSelectTrigger(select);
+            }
+        }
+
+        function getFilteredAssignments() {
+            const query = normalizeAssignmentFilterText(assignmentFilters.search);
+            const positionId = Number(assignmentFilters.positionId || 0);
+
+            return cachedAssignments.filter(item => {
+                const haystack = normalizeAssignmentFilterText([
+                    item.employee_name,
+                    item.position_name,
+                    item.employee_id,
+                    item.position_id,
+                ].join(" "));
+                if (query && !haystack.includes(query)) return false;
+                if (positionId && Number(item.position_id) !== positionId) return false;
+                return true;
+            });
+        }
+
+        function updateAssignmentFilterCount(shown, total) {
+            const count = document.getElementById("assignments-filter-count");
+            if (!count) return;
+            count.textContent = total ? assignmentFilterCountText(shown, total) : "";
+        }
+
+        function renderFilteredAssignmentsTable() {
+            const filteredAssignments = getFilteredAssignments();
+            renderAssignmentsTable(filteredAssignments);
+            updateAssignmentFilterCount(filteredAssignments.length, cachedAssignments.length);
+        }
+
         document.addEventListener("DOMContentLoaded", async () => {
             bindSidebarToggle();
             applySidebarState(getSavedSidebarState());
@@ -639,6 +753,7 @@
             document.getElementById("reload-btn").addEventListener("click", loadAssignmentsPageData);
             document.getElementById("reset-assignment-form-btn").addEventListener("click", resetAssignmentForm);
             document.getElementById("assignments-table-body").addEventListener("click", handleAssignmentsTableClick);
+            bindAssignmentFilters();
 
             await loadAssignmentsPageData();
         });
@@ -667,11 +782,12 @@
 
                 fillEmployeeSelect();
                 fillPositionSelect();
+                fillAssignmentPositionFilter();
                 updateAssignmentFormAvailability();
                 if (allEmployees.length === 0 || allPositions.length === 0) {
                     showMessage(t("assignments_missing_prereq_text", "Create employees and positions first, then return here to link them."), "info");
                 }
-                renderAssignmentsTable(assignments);
+                renderFilteredAssignmentsTable();
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_load_assignment_data", "Server error while loading assignment data."), "danger");
@@ -860,6 +976,7 @@
 
             if (assignments.length === 0) {
                 const missingPrereq = allEmployees.length === 0 || allPositions.length === 0;
+                const hasStoredAssignments = cachedAssignments.length > 0;
                 const actionParts = [];
 
                 if (allEmployees.length === 0) {
@@ -875,16 +992,24 @@
                             ${typeof renderEmptyState === "function"
                                 ? renderEmptyState({
                                     title: t(
-                                        missingPrereq ? "assignments_missing_prereq_title" : "assignments_empty_state_title",
-                                        missingPrereq ? "Assignments need employees and positions" : "No assignments yet"
+                                        hasStoredAssignments
+                                            ? "common_filter_no_matches"
+                                            : missingPrereq ? "assignments_missing_prereq_title" : "assignments_empty_state_title",
+                                        hasStoredAssignments
+                                            ? "No matching records"
+                                            : missingPrereq ? "Assignments need employees and positions" : "No assignments yet"
                                     ),
                                     text: t(
-                                        missingPrereq ? "assignments_missing_prereq_text" : "assignments_empty_state_text",
-                                        missingPrereq
+                                        hasStoredAssignments
+                                            ? "common_search_employee"
+                                            : missingPrereq ? "assignments_missing_prereq_text" : "assignments_empty_state_text",
+                                        hasStoredAssignments
+                                            ? "Search employee"
+                                            : missingPrereq
                                             ? "Create employees and positions first, then return here to link them."
                                             : "Link employees to positions so they can appear in the schedule."
                                     ),
-                                    actionHtml: actionParts.join("")
+                                    actionHtml: hasStoredAssignments ? "" : actionParts.join("")
                                 })
                                 : t("assignments_empty_list", "No assignments yet")}
                         </td>
