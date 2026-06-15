@@ -36,6 +36,7 @@
         let pendingShiftTarget = null;
         let pendingStatusTarget = null;
         let lastGenerationSummary = null;
+        let selectedGenerationMode = "balanced";
         let scheduleDataLoaded = false;
         let scheduleEmployeeFilters = {
             search: "",
@@ -610,6 +611,8 @@
                         <br>
                         ${escapeHtml(t("generation_summary_position", "Position"))}: ${escapeHtml(selectedPosition ? selectedPosition.name : String(summary.positionId))}
                         <br>
+                        ${escapeHtml(t("schedule_generation_mode", "Generation"))}: ${escapeHtml(getGenerationModeLabel(summary.generationMode || result.generation_mode))}
+                        <br>
                         ${escapeHtml(t("generation_summary_status", "Feasibility status"))}: ${escapeHtml(getLocalizedFeasibilityStatus(result.feasibility_report && result.feasibility_report.status))}
                     </div>
                 </div>
@@ -713,11 +716,33 @@
             document.getElementById("position_select").addEventListener("change", handleScheduleContextChanged);
             document.querySelectorAll("[data-generation-view]").forEach(button => {
                 button.addEventListener("click", () => {
+                    selectedGenerationMode = getGenerationModeFromButton(button);
                     document.querySelectorAll("[data-generation-view]").forEach(item => {
                         item.classList.toggle("is-active", item === button);
                     });
                 });
             });
+        }
+
+        function getGenerationModeFromButton(button) {
+            const mode = button?.dataset?.generationView || "balanced";
+            return ["balanced", "coverage", "requests"].includes(mode) ? mode : "balanced";
+        }
+
+        function getSelectedGenerationMode() {
+            const activeButton = document.querySelector("[data-generation-view].is-active");
+            selectedGenerationMode = getGenerationModeFromButton(activeButton);
+            return selectedGenerationMode;
+        }
+
+        function getGenerationModeLabel(mode) {
+            if (mode === "coverage") {
+                return t("schedule_generation_coverage_first", "Coverage first");
+            }
+            if (mode === "requests") {
+                return t("schedule_generation_requests_first", "Requests first");
+            }
+            return t("schedule_generation_balanced", "Balanced");
         }
 
         function handleScheduleContextChanged() {
@@ -1526,6 +1551,7 @@
             // Trigger backend auto-generation / Запускаем backend-автогенерацию
             const weekStart = document.getElementById("week_start").value;
             const positionId = Number(document.getElementById("position_select").value);
+            const generationMode = getSelectedGenerationMode();
             const button = document.getElementById("auto-generate-btn");
 
             if (!weekStart) {
@@ -1549,7 +1575,8 @@
                     },
                     body: JSON.stringify({
                         position_id: positionId,
-                        week_start_date: weekStart
+                        week_start_date: weekStart,
+                        generation_mode: generationMode
                     })
                 });
 
@@ -1586,6 +1613,7 @@
                 lastGenerationSummary = {
                     weekStart,
                     positionId,
+                    generationMode,
                     result
                 };
                 renderGenerationSummary(lastGenerationSummary);
@@ -1609,6 +1637,7 @@
         async function autoGenerateAllSchedules() {
             const weekStart = document.getElementById("week_start").value;
             const positionId = Number(document.getElementById("position_select").value);
+            const generationMode = getSelectedGenerationMode();
             const button = document.getElementById("auto-generate-all-btn");
 
             if (!weekStart) {
@@ -1626,7 +1655,8 @@
                         "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
-                        week_start_date: weekStart
+                        week_start_date: weekStart,
+                        generation_mode: generationMode
                     })
                 });
 

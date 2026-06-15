@@ -336,6 +336,7 @@ class ScheduleEntryStatusUpdate(BaseModel):
 class AutoGenerateScheduleRequest(BaseModel):
     position_id: int
     week_start_date: str
+    generation_mode: Literal["balanced", "coverage", "requests"] = "balanced"
 
     @model_validator(mode="after")
     def validate_week_start_date(self):
@@ -345,6 +346,7 @@ class AutoGenerateScheduleRequest(BaseModel):
 
 class AutoGenerateAllScheduleRequest(BaseModel):
     week_start_date: str
+    generation_mode: Literal["balanced", "coverage", "requests"] = "balanced"
 
     @model_validator(mode="after")
     def validate_week_start_date(self):

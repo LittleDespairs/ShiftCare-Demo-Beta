@@ -188,7 +188,7 @@ body.ltr .app-layout {
 }
 
 body.rtl .app-layout {
-    flex-direction: row-reverse;
+    flex-direction: row;
 }
 
 .sidebar {

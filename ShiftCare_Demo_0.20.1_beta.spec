@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['launcher.py'],
+    ['demo_launcher.py'],
     pathex=[],
     binaries=[],
     datas=[('templates', 'templates'), ('static', 'static'), ('schedule_app.db', '.')],
@@ -27,7 +27,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='ShiftCare_0.20.0_beta',
+    name='ShiftCare_Demo_0.20.1_beta',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -39,7 +39,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='static/icons/app-icon.ico',
-    version='version_info.txt',
+    version='version_info_demo.txt',
 )
 coll = COLLECT(
     exe,
@@ -48,5 +48,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='ShiftCare_0.20.0_beta',
+    name='ShiftCare_Demo_0.20.1_beta',
 )

@@ -2,6 +2,22 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.20.1_beta - 2026-06-15
+
+## Release Focus
+
+Small bug fixes were completed.
+
+## Changed
+
+- Small bug fixes were completed.
+- Updated runtime, service worker cache keys, Android metadata, PyInstaller specs, installer metadata, build docs, and release notes to `0.20.1_beta`.
+
+## Verification
+
+- Automated regression tests passed locally.
+- Browser smoke checks passed locally for the schedule page and RTL layout.
+
 # 0.20.0_beta - 2026-06-15
 
 ## Release Focus

@@ -16,12 +16,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'ShiftCare'),
           StringStruct('FileDescription', 'ShiftCare Demo Desktop'),
-          StringStruct('FileVersion', '0.20.0.0'),
+          StringStruct('FileVersion', '0.20.1.0'),
           StringStruct('InternalName', 'ShiftCare Demo'),
           StringStruct('LegalCopyright', 'Copyright (C) 2026 ShiftCare'),
-          StringStruct('OriginalFilename', 'ShiftCare_Demo_0.20.0_beta.exe'),
+          StringStruct('OriginalFilename', 'ShiftCare_Demo_0.20.1_beta.exe'),
           StringStruct('ProductName', 'ShiftCare Demo'),
-          StringStruct('ProductVersion', '0.20.0-beta')
+          StringStruct('ProductVersion', '0.20.1-beta')
         ]
       )
     ]),

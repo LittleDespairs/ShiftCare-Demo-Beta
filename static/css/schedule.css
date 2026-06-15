@@ -1849,18 +1849,33 @@
 
         body.schedule-board-page .schedule-toolbar {
             display: grid;
-            grid-template-columns: minmax(260px, 0.95fr) minmax(260px, 1.1fr) auto minmax(430px, 1.2fr) auto;
+            grid-template-columns: minmax(300px, 0.95fr) minmax(320px, 1.1fr) minmax(86px, auto) minmax(520px, 1.25fr) max-content;
             gap: 8px;
             align-items: end;
         }
 
         body.schedule-board-page .toolbar-field {
             min-width: 0;
+            display: grid;
+            grid-template-rows: 16px minmax(38px, auto);
+            gap: 4px;
+        }
+
+        body.schedule-board-page .schedule-toolbar .app-select-trigger,
+        body.schedule-board-page .schedule-filter-panel .app-select-trigger,
+        body.schedule-board-page .schedule-display-field .app-select-trigger,
+        body.schedule-board-page .schedule-toolbar .input,
+        body.schedule-board-page .schedule-filter-panel .input {
+            min-height: 38px;
+            padding-block: 7px;
+            border-radius: 5px;
         }
 
         body.schedule-board-page .schedule-load-btn {
             min-width: 86px;
             min-height: 38px;
+            height: 38px;
+            align-self: end;
         }
 
         body.schedule-board-page .schedule-generation-mode {
@@ -1868,6 +1883,8 @@
             grid-template-columns: auto repeat(3, minmax(0, 1fr));
             align-items: stretch;
             min-height: 38px;
+            height: 38px;
+            align-self: end;
             overflow: hidden;
             border: 1px solid var(--border);
             border-radius: 5px;
@@ -1893,6 +1910,7 @@
 
         body.schedule-board-page .schedule-generation-mode button {
             min-width: 0;
+            min-height: 36px;
             border: 0;
             border-inline-end: 1px solid var(--border);
             background: #ffffff;
@@ -1921,11 +1939,13 @@
             align-items: stretch;
             justify-content: flex-end;
             gap: 6px;
+            align-self: end;
         }
 
         body.schedule-board-page .toolbar-modal-btn {
             width: auto;
             min-height: 38px;
+            height: 38px;
             min-width: 72px;
             padding-inline: 12px;
             white-space: nowrap;
@@ -2008,16 +2028,31 @@
 
         body.schedule-board-page .schedule-display-control {
             gap: 8px;
+            align-items: end;
         }
 
         body.schedule-board-page .schedule-display-field {
             width: min(210px, 100%);
+            display: grid;
+            grid-template-rows: 28px minmax(38px, auto);
+            gap: 4px;
         }
 
         body.schedule-board-page .schedule-filter-panel {
             margin-bottom: 8px;
             padding: 10px;
             border-radius: 6px;
+            align-items: end;
+        }
+
+        body.schedule-board-page .schedule-filter-panel .filter-field {
+            display: grid;
+            grid-template-rows: 16px minmax(38px, auto);
+            gap: 4px;
+        }
+
+        body.schedule-board-page .schedule-filter-panel .filter-actions {
+            align-self: end;
         }
 
         body.schedule-board-page .schedule-shell {
@@ -2235,6 +2270,10 @@
             body.schedule-board-page .schedule-generation-mode,
             body.schedule-board-page .toolbar-actions {
                 grid-column: auto;
+            }
+
+            body.schedule-board-page .schedule-generation-mode {
+                height: auto;
             }
 
             body.schedule-board-page .segment-title,

@@ -125,7 +125,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.20.0_beta"
+APP_VERSION = "0.20.1_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -159,6 +159,14 @@ PERSISTED_RECURRING_PREFERENCE_TYPES = tuple(value for value in WEEKLY_PREFERENC
 SOFT_PREFERENCE_PENALTY = 350
 SOFT_DAY_OFF_PENALTY = 1200
 SOFT_COMBO_PENALTY = 500
+GENERATION_MODE_BALANCED = "balanced"
+GENERATION_MODE_COVERAGE = "coverage"
+GENERATION_MODE_REQUESTS = "requests"
+GENERATION_MODES = {
+    GENERATION_MODE_BALANCED,
+    GENERATION_MODE_COVERAGE,
+    GENERATION_MODE_REQUESTS,
+}
 
 tags_metadata = [
     {"name": "Auth", "description": "Authorization and organization access / Авторизация и доступ к организации"},
@@ -2481,6 +2489,172 @@ def get_break_minutes_between_same_day_categories(
 def get_template_work_minutes(template: dict) -> int:
     interval = build_interval(template["start_time"], template["end_time"], bool(template["is_overnight"]))
     return interval.end - interval.start
+
+
+def normalize_generation_mode(generation_mode: str | None) -> str:
+    if generation_mode in GENERATION_MODES:
+        return generation_mode
+    return GENERATION_MODE_BALANCED
+
+
+def scale_int(value: int, numerator: int, denominator: int = 100) -> int:
+    return int(round(value * numerator / denominator))
+
+
+def apply_generation_mode_settings(settings: dict, generation_mode: str | None) -> dict:
+    mode = normalize_generation_mode(generation_mode)
+    effective = dict(settings)
+    if mode == GENERATION_MODE_COVERAGE:
+        effective["coverage_shortage_gain_weight"] = scale_int(effective["coverage_shortage_gain_weight"], 180)
+        effective["coverage_overage_penalty_weight"] = scale_int(effective["coverage_overage_penalty_weight"], 70)
+        for key in (
+            "balance_missing_min_weight",
+            "balance_target_distance_weight",
+            "balance_over_target_weight",
+            "balance_worked_day_weight",
+            "balance_night_weight",
+            "balance_split_weight",
+            "balance_consecutive_night_weight",
+            "balance_consecutive_split_weight",
+        ):
+            effective[key] = scale_int(effective[key], 45)
+    elif mode == GENERATION_MODE_REQUESTS:
+        effective["coverage_shortage_gain_weight"] = max(1, scale_int(effective["coverage_shortage_gain_weight"], 85))
+        for key in (
+            "balance_missing_min_weight",
+            "balance_target_distance_weight",
+            "balance_over_target_weight",
+            "balance_worked_day_weight",
+            "balance_night_weight",
+            "balance_split_weight",
+            "balance_consecutive_night_weight",
+            "balance_consecutive_split_weight",
+        ):
+            effective[key] = scale_int(effective[key], 60)
+    return effective
+
+
+def get_generation_app_settings(connection, position_id: int, generation_mode: str | None) -> dict:
+    return apply_generation_mode_settings(
+        get_position_app_settings(connection, position_id),
+        generation_mode,
+    )
+
+
+def generation_preference_penalty(penalty: int, generation_mode: str | None) -> int:
+    mode = normalize_generation_mode(generation_mode)
+    if mode == GENERATION_MODE_COVERAGE:
+        return scale_int(penalty, 35)
+    if mode == GENERATION_MODE_REQUESTS:
+        return penalty * 3
+    return penalty
+
+
+def interval_generation_sort_key(
+    generation_mode: str | None,
+    target_shortage_gain: int,
+    score: int,
+    overage_cost: int,
+    soft_preference_penalty: int,
+    fatigue_penalty: int,
+    projected_same_category_count: int,
+    projected_same_category_streak: int,
+    projected_night_count: int,
+    projected_split_count: int,
+    projected_balance: int,
+    priority: tuple,
+):
+    mode = normalize_generation_mode(generation_mode)
+    shortage_priority = -target_shortage_gain if target_shortage_gain else -score
+    preference_priority = generation_preference_penalty(soft_preference_penalty, mode)
+    if mode == GENERATION_MODE_COVERAGE:
+        return (
+            shortage_priority,
+            -score,
+            overage_cost,
+            fatigue_penalty,
+            projected_balance,
+            preference_priority,
+            projected_same_category_count,
+            projected_same_category_streak,
+            projected_night_count,
+            projected_split_count,
+            priority,
+        )
+    if mode == GENERATION_MODE_REQUESTS:
+        return (
+            preference_priority,
+            shortage_priority,
+            fatigue_penalty,
+            -score,
+            overage_cost,
+            projected_balance,
+            projected_same_category_count,
+            projected_same_category_streak,
+            projected_night_count,
+            projected_split_count,
+            priority,
+        )
+    return (
+        shortage_priority,
+        preference_priority,
+        -score,
+        overage_cost,
+        fatigue_penalty,
+        projected_same_category_count,
+        projected_same_category_streak,
+        projected_night_count,
+        projected_split_count,
+        projected_balance,
+        priority,
+    )
+
+
+def legacy_generation_sort_key(
+    generation_mode: str | None,
+    soft_preference_penalty: int,
+    fatigue_penalty: int,
+    projected_same_category_count: int,
+    projected_same_category_streak: int,
+    projected_night_count: int,
+    projected_split_count: int,
+    projected_balance: int,
+    priority: tuple,
+):
+    mode = normalize_generation_mode(generation_mode)
+    preference_priority = generation_preference_penalty(soft_preference_penalty, mode)
+    if mode == GENERATION_MODE_COVERAGE:
+        return (
+            fatigue_penalty,
+            projected_balance,
+            preference_priority,
+            projected_same_category_count,
+            projected_same_category_streak,
+            projected_night_count,
+            projected_split_count,
+            priority,
+        )
+    if mode == GENERATION_MODE_REQUESTS:
+        return (
+            preference_priority,
+            fatigue_penalty,
+            projected_balance,
+            projected_same_category_count,
+            projected_same_category_streak,
+            projected_night_count,
+            projected_split_count,
+            priority,
+        )
+    return (
+        preference_priority,
+        fatigue_penalty,
+        projected_same_category_count,
+        projected_same_category_streak,
+        projected_night_count,
+        projected_split_count,
+        projected_balance,
+        priority,
+    )
 
 
 def get_projected_day_work_minutes(existing_entries: list[dict], template: dict) -> int:
@@ -7650,8 +7824,9 @@ def choose_best_interval_candidate(
     slots: list[dict],
     fatigue_relaxation: int = 0,
     target_slot: dict | None = None,
+    generation_mode: str = GENERATION_MODE_BALANCED,
 ):
-    app_settings = get_position_app_settings(connection, position_id)
+    app_settings = get_generation_app_settings(connection, position_id, generation_mode)
     baseline_shortage = coverage_shortage(current_entries, slots)
     baseline_overage = coverage_overage(current_entries, slots)
     baseline_target_shortage = slot_shortage_score(current_entries, target_slot) if target_slot is not None else 0
@@ -7748,11 +7923,12 @@ def choose_best_interval_candidate(
                     app_settings,
                 )
                 candidates.append((
-                    (
-                        -target_shortage_gain if target_slot is not None else -score,
-                        soft_preference_penalty,
-                        -score,
+                    interval_generation_sort_key(
+                        generation_mode,
+                        target_shortage_gain,
+                        score,
                         overage_cost,
+                        soft_preference_penalty,
                         fatigue_penalty,
                         projected_same_category_count,
                         projected_same_category_streak,
@@ -8307,6 +8483,7 @@ def fill_week_by_interval_coverage(
     created_entries: list[dict],
     errors: list[str],
     unfilled_reports: list[dict],
+    generation_mode: str = GENERATION_MODE_BALANCED,
 ):
     slots = build_atomic_slots(requirements, templates)
     if not slots:
@@ -8343,6 +8520,7 @@ def fill_week_by_interval_coverage(
                     slots=slots,
                     fatigue_relaxation=fatigue_relaxation,
                     target_slot=shortage["slot"],
+                    generation_mode=generation_mode,
                 )
                 if candidate is None:
                     continue
@@ -8403,6 +8581,7 @@ def fill_day_by_interval_coverage(
     created_entries: list[dict],
     errors: list[str],
     unfilled_reports: list[dict],
+    generation_mode: str = GENERATION_MODE_BALANCED,
 ):
     slots = build_atomic_slots(requirements, templates)
     if not slots:
@@ -8427,6 +8606,7 @@ def fill_day_by_interval_coverage(
                 current_entries=current_entries,
                 slots=slots,
                 fatigue_relaxation=fatigue_relaxation,
+                generation_mode=generation_mode,
             )
             if candidate is not None:
                 if fatigue_relaxation == 1:
@@ -8481,8 +8661,9 @@ def fill_day_by_legacy_categories(
     created_entries: list[dict],
     errors: list[str],
     unfilled_reports: list[dict],
+    generation_mode: str = GENERATION_MODE_BALANCED,
 ):
-    app_settings = get_position_app_settings(connection, position_id)
+    app_settings = get_generation_app_settings(connection, position_id, generation_mode)
     for requirement in requirements:
         category = requirement["shift_category"]
         category_templates = [template for template in templates if template["category"] == category]
@@ -8559,14 +8740,17 @@ def fill_day_by_legacy_categories(
                                 app_settings,
                             )
                             candidates.append((
-                                soft_preference_penalty,
-                                fatigue_penalty,
-                                projected_same_category_count,
-                                projected_same_category_streak,
-                                projected_night_count,
-                                projected_split_count,
-                                projected_balance,
-                                candidate_priority(connection, employee, date_string, week_start_date),
+                                legacy_generation_sort_key(
+                                    generation_mode,
+                                    soft_preference_penalty,
+                                    fatigue_penalty,
+                                    projected_same_category_count,
+                                    projected_same_category_streak,
+                                    projected_night_count,
+                                    projected_split_count,
+                                    projected_balance,
+                                    candidate_priority(connection, employee, date_string, week_start_date),
+                                ),
                                 employee,
                                 template,
                             ))
@@ -8596,7 +8780,7 @@ def fill_day_by_legacy_categories(
                 )
                 break
             candidates.sort()
-            _, _, _, _, _, _, _, _, employee, template = candidates[0]
+            _, employee, template = candidates[0]
             insert_generated_entry(cursor, employee, position_id, date_string, template, created_entries)
 
 
@@ -8881,8 +9065,12 @@ def post_optimize_generated_schedule(
     week_dates: list[str],
     created_entries: list[dict],
     errors: list[str],
+    generation_mode: str = GENERATION_MODE_BALANCED,
 ) -> int:
-    app_settings = get_position_app_settings(connection, position_id)
+    if normalize_generation_mode(generation_mode) != GENERATION_MODE_BALANCED:
+        return 0
+
+    app_settings = get_generation_app_settings(connection, position_id, generation_mode)
     employee_by_id = {employee["id"]: employee for employee in employees}
     groups = build_generated_assignment_groups(connection, created_entries, position_id)
     moved_count = 0
@@ -8971,7 +9159,13 @@ def post_optimize_generated_schedule(
     return moved_count
 
 
-def run_auto_generate_for_position(connection, position_id: int, week_start_date: str) -> dict:
+def run_auto_generate_for_position(
+    connection,
+    position_id: int,
+    week_start_date: str,
+    generation_mode: str = GENERATION_MODE_BALANCED,
+) -> dict:
+    generation_mode = normalize_generation_mode(generation_mode)
     cursor = connection.cursor()
     position_row = fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (position_id,), "Position not found")
     position = row_to_position_dict(position_row)
@@ -9018,6 +9212,7 @@ def run_auto_generate_for_position(connection, position_id: int, week_start_date
             created_entries,
             errors,
             unfilled_reports,
+            generation_mode=generation_mode,
         )
     else:
         for date_string in week_dates:
@@ -9033,6 +9228,7 @@ def run_auto_generate_for_position(connection, position_id: int, week_start_date
                 created_entries,
                 errors,
                 unfilled_reports,
+                generation_mode=generation_mode,
             )
 
     optimization_moved_count = post_optimize_generated_schedule(
@@ -9044,6 +9240,7 @@ def run_auto_generate_for_position(connection, position_id: int, week_start_date
         week_dates,
         created_entries,
         errors,
+        generation_mode=generation_mode,
     )
 
     append_fatigue_summary_warnings(connection, employees, position_id, week_dates, week_start_date, errors)
@@ -9057,6 +9254,7 @@ def run_auto_generate_for_position(connection, position_id: int, week_start_date
 
     return {
         "message": "Auto-generation finished",
+        "generation_mode": generation_mode,
         "position_id": position_id,
         "position_name": position["name"],
         "created_count": len(created_entries),
@@ -9080,7 +9278,12 @@ def auto_generate_schedule(
         organization_id = _access["membership"]["organization_id"] if _access else 1
         require_license_capability(cursor, "can_generate_schedule", organization_id)
         pull_cloud_preferences_for_desktop_generation(connection)
-        result = run_auto_generate_for_position(connection, request_data.position_id, request_data.week_start_date)
+        result = run_auto_generate_for_position(
+            connection,
+            request_data.position_id,
+            request_data.week_start_date,
+            request_data.generation_mode,
+        )
         connection.commit()
         return result
     finally:
@@ -9113,7 +9316,12 @@ def auto_generate_all_schedules(
             savepoint_name = f"auto_generate_position_{position['id']}"
             cursor.execute(f"SAVEPOINT {savepoint_name}")
             try:
-                result = run_auto_generate_for_position(connection, position["id"], request_data.week_start_date)
+                result = run_auto_generate_for_position(
+                    connection,
+                    position["id"],
+                    request_data.week_start_date,
+                    request_data.generation_mode,
+                )
             except HTTPException as exc:
                 cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
                 cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
@@ -9135,6 +9343,7 @@ def auto_generate_all_schedules(
         return {
             "message": "Auto-generation for all positions finished",
             "week_start_date": request_data.week_start_date,
+            "generation_mode": normalize_generation_mode(request_data.generation_mode),
             "generated_positions": len(results),
             "failed_positions": len(failures),
             "total_created_count": total_created_count,

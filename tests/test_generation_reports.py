@@ -1424,6 +1424,143 @@ class GenerationReportTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(reports, [])
 
+    def test_generation_mode_changes_legacy_candidate_priority(self):
+        cursor = self.connection.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (?, ?, 'female', 0, ?, 6, 1, 1, 1, 1)
+            """,
+            [(1, "Coverage Match", 1), (2, "Requested Match", 0)],
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.executemany(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (?, 1, 1, 100, 0)
+            """,
+            [(1,), (2,)],
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (
+                id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only
+            )
+            VALUES (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO employee_week_preferences (
+                employee_id, week_start_date, preference_date, preference_type, request_type, target_category
+            )
+            VALUES (2, ?, ?, 'only_morning', 'request_shift', 'morning')
+            """,
+            (WEEK_START_DATE, WEEK_DATES[0]),
+        )
+        self.connection.commit()
+
+        employees = [
+            {
+                "id": 1,
+                "full_name": "Coverage Match",
+                "sex": "female",
+                "min_shifts_per_week": 0,
+                "target_shifts_per_week": 1,
+                "max_shifts_per_week": 6,
+                "can_work_night": True,
+                "can_work_weekends": True,
+                "can_work_evenings_after_night": True,
+                "can_work_mornings_and_evenings": True,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+            {
+                "id": 2,
+                "full_name": "Requested Match",
+                "sex": "female",
+                "min_shifts_per_week": 0,
+                "target_shifts_per_week": 0,
+                "max_shifts_per_week": 6,
+                "can_work_night": True,
+                "can_work_weekends": True,
+                "can_work_evenings_after_night": True,
+                "can_work_mornings_and_evenings": True,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        ]
+        templates = [
+            {
+                "id": 1,
+                "name": "Morning",
+                "category": "morning",
+                "start_time": "06:00",
+                "end_time": "14:00",
+                "is_overnight": False,
+                "is_active": True,
+                "is_split_only": False,
+            }
+        ]
+        requirements = [
+            {
+                "shift_category": "morning",
+                "required_total": 1,
+                "required_female_min": 0,
+                "required_male_min": 0,
+            }
+        ]
+
+        main.fill_day_by_legacy_categories(
+            self.connection,
+            cursor,
+            employees,
+            templates,
+            requirements,
+            1,
+            WEEK_START_DATE,
+            WEEK_DATES[0],
+            [],
+            [],
+            [],
+            generation_mode=main.GENERATION_MODE_COVERAGE,
+        )
+        cursor.execute("SELECT employee_id FROM schedule_entries")
+        self.assertEqual(cursor.fetchone()["employee_id"], 1)
+
+        cursor.execute("DELETE FROM schedule_entries")
+        self.connection.commit()
+
+        main.fill_day_by_legacy_categories(
+            self.connection,
+            cursor,
+            employees,
+            templates,
+            requirements,
+            1,
+            WEEK_START_DATE,
+            WEEK_DATES[0],
+            [],
+            [],
+            [],
+            generation_mode=main.GENERATION_MODE_REQUESTS,
+        )
+        cursor.execute("SELECT employee_id FROM schedule_entries")
+        self.assertEqual(cursor.fetchone()["employee_id"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
