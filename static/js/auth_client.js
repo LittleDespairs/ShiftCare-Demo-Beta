@@ -40,6 +40,10 @@
             || window.location.hostname.endsWith(".shiftcare.co.il");
     }
 
+    function isEmployeePortalMode() {
+        return document.body?.dataset?.employeePortalMode === "1" || isHostedCloudOrigin();
+    }
+
     function isDesktopLocalOrigin() {
         return ["127.0.0.1", "localhost", "::1"].includes(window.location.hostname);
     }
@@ -280,6 +284,7 @@
         useCloudApi,
         getApiModePreference,
         isHostedCloudOrigin,
+        isEmployeePortalMode,
         isDesktopLocalOrigin,
         isApiRequest,
         nativeFetch,

@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}-portal-entry-operations-ui">
 </head>
 
-<body class="app-shell ltr auth-page{% if cloud_employee_portal_mode() %} auth-employee-portal-page{% endif %}" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}">
+<body class="app-shell ltr auth-page{% if cloud_employee_portal_mode() %} auth-employee-portal-page{% endif %}" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}" data-employee-portal-mode="{{ '1' if cloud_employee_portal_mode() else '0' }}">
     <div class="auth-topbar">
         <div class="lang-switcher" aria-label="Language">
             <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
@@ -150,8 +150,8 @@
 
     <script src="/static/js/i18n.js?v={{ app_version }}-auth-i18n-fix"></script>
     <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-    <script src="/static/js/auth_i18n.js?v={{ app_version }}-role-management-refresh"></script>
-    <script src="/static/js/auth.js?v={{ app_version }}-portal-entry"></script>
+    <script src="/static/js/auth_i18n.js?v={{ app_version }}-role-management-portal-mode"></script>
+    <script src="/static/js/auth.js?v={{ app_version }}-portal-entry-employee-mode"></script>
     <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

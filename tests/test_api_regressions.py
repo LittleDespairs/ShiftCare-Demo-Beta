@@ -842,6 +842,16 @@ class ApiRegressionTests(unittest.TestCase):
                             "employee_id": 7,
                             "employee_public_id": "emp_cloud",
                             "employee_name": "Imported Employee",
+                        },
+                        {
+                            "user_id": 78,
+                            "email": "former@example.com",
+                            "full_name": "Former Employee",
+                            "role": "employee",
+                            "membership_status": "disabled",
+                            "employee_id": None,
+                            "employee_public_id": None,
+                            "employee_name": None,
                         }
                     ]
                 }
@@ -983,7 +993,9 @@ class ApiRegressionTests(unittest.TestCase):
             revoke_response = self.client.delete("/api/organizations/1/invitations/88", headers=headers)
 
         self.assertEqual(members_response.status_code, 200)
+        self.assertEqual(len(members_response.json()["members"]), 1)
         self.assertEqual(members_response.json()["members"][0]["employee_public_id"], "emp_cloud")
+        self.assertNotIn("former@example.com", [member["email"] for member in members_response.json()["members"]])
         self.assertEqual(invitations_response.status_code, 200)
         self.assertEqual(invitations_response.json()["invitations"][0]["employee_public_id"], "emp_cloud")
         self.assertEqual(remove_member_response.status_code, 200)
@@ -1557,27 +1569,19 @@ class ApiRegressionTests(unittest.TestCase):
             [
                 member["email"]
                 for member in members_after_remove_response.json()["members"]
-                if member["membership_status"] == "active"
             ],
         )
-        disabled_members = [
-            member
-            for member in members_after_remove_response.json()["members"]
-            if member["email"] == "employee@example.com"
-        ]
-        self.assertEqual(disabled_members[0]["membership_status"], "disabled")
         connection = database.get_connection()
         try:
             cursor = connection.cursor()
             cursor.execute(
                 """
-                SELECT status
-                FROM organization_memberships
-                WHERE organization_id = 1 AND user_id = ?
+                SELECT COUNT(*) AS account_count
+                FROM users
+                WHERE lower(email) = 'employee@example.com'
                 """,
-                (employee_user_id,),
             )
-            self.assertEqual(cursor.fetchone()["status"], "disabled")
+            self.assertEqual(cursor.fetchone()["account_count"], 0)
         finally:
             connection.close()
 
@@ -1601,6 +1605,7 @@ class ApiRegressionTests(unittest.TestCase):
             },
         )
         self.assertEqual(reaccept_response.status_code, 200)
+        self.assertNotEqual(reaccept_response.json()["user"]["id"], employee_user_id)
         reaccepted_membership = reaccept_response.json()["user"]["memberships"][0]
         self.assertEqual(reaccepted_membership["status"], "active")
         self.assertEqual(reaccepted_membership["employee_id"], employee_record_id)
@@ -1653,6 +1658,94 @@ class ApiRegressionTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {owner_token}"},
         )
         self.assertEqual(regenerate_revoked_response.status_code, 409)
+
+    def test_reinvite_purges_legacy_disabled_account_email(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_user_id = owner_response.json()["user"]["id"]
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        employee_record_id = self._create_employee(headers=owner_headers, full_name="Rehired Employee")
+
+        cursor = self.connection.cursor()
+        now = main.current_utc_timestamp()
+        cursor.execute(
+            """
+            INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
+            VALUES ('rehire@example.com', 'Former Employee', ?, 'active', 0, ?, ?)
+            """,
+            (main.hash_password("OldEmployeePass123"), now, now),
+        )
+        stale_user_id = cursor.lastrowid
+        cursor.execute(
+            """
+            INSERT INTO organization_memberships (organization_id, user_id, role, status, employee_id, created_at, updated_at)
+            VALUES (1, ?, 'employee', 'disabled', NULL, ?, ?)
+            """,
+            (stale_user_id, now, now),
+        )
+        cursor.execute(
+            """
+            INSERT INTO organization_invitations (
+                organization_id, email, employee_id, role, token_hash, status,
+                expires_at, accepted_at, created_by_user_id, created_at
+            )
+            VALUES (1, 'rehire@example.com', ?, 'employee', ?, 'accepted', ?, ?, ?, ?)
+            """,
+            (
+                employee_record_id,
+                main.hash_session_token("legacy-rehire-token"),
+                now,
+                now,
+                owner_user_id,
+                now,
+            ),
+        )
+        self.connection.commit()
+
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={
+                "email": "rehire@example.com",
+                "employee_id": employee_record_id,
+                "role": "employee",
+                "expires_in_days": 7,
+            },
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        cursor.execute("SELECT COUNT(*) AS account_count FROM users WHERE id = ?", (stale_user_id,))
+        self.assertEqual(cursor.fetchone()["account_count"], 0)
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS historical_invitation_count
+            FROM organization_invitations
+            WHERE lower(email) = 'rehire@example.com'
+              AND status != 'pending'
+            """
+        )
+        self.assertEqual(cursor.fetchone()["historical_invitation_count"], 0)
+
+        accept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "password": "NewEmployeePass123",
+                "confirm_password": "NewEmployeePass123",
+            },
+        )
+        self.assertEqual(accept_response.status_code, 200)
+        self.assertNotEqual(accept_response.json()["user"]["id"], stale_user_id)
+        membership = accept_response.json()["user"]["memberships"][0]
+        self.assertEqual(membership["status"], "active")
+        self.assertEqual(membership["employee_id"], employee_record_id)
 
     def test_recurring_preferences_require_admin_or_owner_after_auth_bootstrap(self):
         owner_response = self.client.post(
@@ -1897,11 +1990,14 @@ class ApiRegressionTests(unittest.TestCase):
     def test_login_frontend_uses_desktop_cloud_login_without_workspace_switch(self):
         auth_js = Path("static/js/auth.js").read_text(encoding="utf-8")
         auth_client_js = Path("static/js/auth_client.js").read_text(encoding="utf-8")
+        auth_i18n_js = Path("static/js/auth_i18n.js").read_text(encoding="utf-8")
         self.assertIn("initializeDefaultApiMode", auth_js)
         self.assertIn("window.scheduleAuth.useLocalApi();", auth_js)
         self.assertIn("/api/desktop/cloud-login", auth_js)
         self.assertIn("/api/desktop/cloud-create-organization", auth_js)
+        self.assertIn("&& !isCloudEmployeePortalMode()", auth_js)
         self.assertIn("isDesktopLocalOrigin", auth_client_js)
+        self.assertIn("isEmployeePortalMode", auth_i18n_js)
         self.assertNotIn("apiCloudButton", auth_js)
         self.assertIn("CLOUD_API_FALLBACK_BASE_URL", auth_client_js)
         self.assertIn("https://schedule-app-beta.web.app", auth_client_js)
@@ -1921,6 +2017,37 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("window.scheduleAuth?.isHostedCloudOrigin?.()", schedule_js)
         self.assertIn("hosted-employee-schedule", schedule_js)
         self.assertIn("coverageHeaderRow", schedule_js)
+
+    def test_employee_portal_frontend_uses_server_portal_mode(self):
+        auth_client_js = Path("static/js/auth_client.js").read_text(encoding="utf-8")
+        access_control_js = Path("static/js/access_control.js").read_text(encoding="utf-8")
+        schedule_html = Path("templates/schedule.html").read_text(encoding="utf-8")
+        weekly_html = Path("templates/weekly_preferences.html").read_text(encoding="utf-8")
+        shared_css = Path("static/css/style.css").read_text(encoding="utf-8")
+
+        self.assertIn("function isEmployeePortalMode()", auth_client_js)
+        self.assertIn('document.body?.dataset?.employeePortalMode === "1"', auth_client_js)
+        self.assertIn("window.scheduleAuth?.isEmployeePortalMode?.()", access_control_js)
+        self.assertIn('data-employee-portal-mode="{{ \'1\' if cloud_employee_portal_mode() else \'0\' }}"', schedule_html)
+        self.assertIn('data-employee-portal-mode="{{ \'1\' if cloud_employee_portal_mode() else \'0\' }}"', weekly_html)
+        self.assertIn("employee-portal-preferences", weekly_html)
+        self.assertIn("data-employee-portal-hidden", weekly_html)
+        self.assertIn("window.scheduleAccessControl?.apply?.();", weekly_html)
+        self.assertIn("await loadWeekPreferences();", weekly_html)
+        self.assertIn("body.employee-portal-preferences", shared_css)
+
+    def test_service_worker_caches_current_employee_portal_assets(self):
+        service_worker_js = Path("static/service-worker.js").read_text(encoding="utf-8")
+        pwa_js = Path("static/js/pwa.js").read_text(encoding="utf-8")
+
+        self.assertIn("20260617-employee-portal-ui", service_worker_js)
+        self.assertIn("/login", service_worker_js)
+        self.assertIn("/static/css/auth.css?v=0.20.2_beta-portal-entry-operations-ui", service_worker_js)
+        self.assertIn("/static/js/auth.js?v=0.20.2_beta-portal-entry-employee-mode", service_worker_js)
+        self.assertIn("/static/js/schedule.js?v=0.20.2_beta-schedule-board-generation-modes", service_worker_js)
+        self.assertNotIn("/static/css/style.css?v=0.20.1_beta-generation-modes-rtl", service_worker_js)
+        self.assertNotIn("/static/css/schedule.css?v=0.20.1_beta-generation-modes", service_worker_js)
+        self.assertIn("registration.update()", pwa_js)
 
     def test_read_only_role_does_not_get_weekly_preferences_navigation(self):
         access_control_js = Path("static/js/access_control.js").read_text(encoding="utf-8")
@@ -2603,7 +2730,10 @@ class ApiRegressionTests(unittest.TestCase):
             params={"week_start_date": "2026-04-20"},
         )
         self.assertEqual(list_response.status_code, 200)
-        self.assertEqual([item["employee_id"] for item in list_response.json()], [employee_a])
+        employee_preferences = list_response.json()
+        self.assertEqual([item["employee_id"] for item in employee_preferences], [employee_a])
+        self.assertEqual(employee_preferences[0]["preference_type"], "off_day")
+        self.assertEqual(employee_preferences[0]["request_type"], "day_off")
 
         employee_list_response = self.client.get("/api/employees", headers=employee_headers)
         self.assertEqual(employee_list_response.status_code, 200)

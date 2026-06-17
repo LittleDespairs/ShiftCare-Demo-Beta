@@ -2517,3 +2517,167 @@ body.sidebar-collapsed.app-shell .brand {
         min-width: 0;
     }
 }
+
+/* Employee portal surfaces */
+body.employee-portal-shell.app-shell .brand-subtitle {
+    color: #b8c4d4;
+}
+
+body.employee-portal-shell.app-shell .nav-item {
+    min-height: 40px;
+}
+
+body.employee-portal-preferences [data-employee-portal-hidden],
+body.employee-portal-preferences #preferences-filter-count {
+    display: none !important;
+}
+
+body.employee-portal-preferences .preferences-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+body.employee-portal-preferences .toolbar-field,
+body.employee-portal-preferences .toolbar-actions {
+    grid-column: 1 / -1;
+}
+
+body.employee-portal-preferences .toolbar-actions {
+    justify-content: stretch;
+}
+
+body.employee-portal-preferences .toolbar-actions .btn {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+body.employee-portal-preferences .notes-box {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+}
+
+@media (max-width: 920px) {
+    body.employee-portal-shell.app-shell .sidebar {
+        display: grid;
+        gap: 10px;
+    }
+
+    body.employee-portal-shell.app-shell .sidebar-section-title,
+    body.employee-portal-shell.app-shell .sidebar-footer {
+        display: none;
+    }
+
+    body.employee-portal-shell.app-shell .nav-list {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    body.employee-portal-shell.app-shell .nav-item {
+        justify-content: center;
+        min-width: 0;
+        padding: 9px 8px;
+    }
+
+    body.employee-portal-shell.app-shell .nav-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 700px) {
+    body.employee-portal-preferences.app-shell .page-subtitle,
+    body.employee-portal-preferences.app-shell .notes-box {
+        display: none;
+    }
+
+    body.employee-portal-preferences .preferences-table-shell {
+        overflow: visible;
+        border: none;
+        background: transparent;
+    }
+
+    body.employee-portal-preferences .preferences-table,
+    body.employee-portal-preferences .preferences-table thead,
+    body.employee-portal-preferences .preferences-table tbody,
+    body.employee-portal-preferences .preferences-table tr,
+    body.employee-portal-preferences .preferences-table th,
+    body.employee-portal-preferences .preferences-table td {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+
+    body.employee-portal-preferences .preferences-table {
+        border-spacing: 0;
+    }
+
+    body.employee-portal-preferences .preferences-table thead {
+        display: none;
+    }
+
+    body.employee-portal-preferences .preferences-table tbody {
+        display: grid;
+        gap: 12px;
+    }
+
+    body.employee-portal-preferences .preferences-table tr {
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--panel);
+    }
+
+    body.employee-portal-preferences .preferences-table td {
+        border-bottom: 1px solid var(--border);
+        padding: 12px;
+    }
+
+    body.employee-portal-preferences .preferences-table td:last-child {
+        border-bottom: none;
+    }
+
+    body.employee-portal-preferences .preferences-table td:not(.employee-preference-cell)::before {
+        content: attr(data-cell-label);
+        display: block;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    body.employee-portal-preferences .employee-preference-cell {
+        background: var(--panel-soft);
+    }
+
+    body.employee-portal-preferences .request-stack .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    body.employee-portal-preferences .request-choice-grid,
+    body.employee-portal-preferences .request-category-options {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    body.employee-portal-shell.app-shell .brand-title {
+        font-size: 0.9rem;
+    }
+
+    body.employee-portal-shell.app-shell .brand-subtitle {
+        display: none;
+    }
+
+    body.employee-portal-shell.app-shell .nav-icon {
+        display: none;
+    }
+
+    body.employee-portal-shell.app-shell .nav-item {
+        min-height: 38px;
+        font-size: 0.78rem;
+    }
+}

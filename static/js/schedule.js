@@ -178,7 +178,7 @@
         }
 
         function isHostedWebScheduleMode() {
-            return Boolean(window.scheduleAuth?.isHostedCloudOrigin?.());
+            return Boolean(window.scheduleAuth?.isEmployeePortalMode?.() || window.scheduleAuth?.isHostedCloudOrigin?.());
         }
 
         function shouldShowCoverageInSchedule() {

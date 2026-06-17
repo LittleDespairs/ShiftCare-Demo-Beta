@@ -527,7 +527,7 @@
     function applyAuthTranslations() {
         const isAcceptInvitation = Boolean(document.getElementById("accept-title"));
         const isLoginShell = Boolean(document.getElementById("login-modal"));
-        const isCloudEmployeePortal = Boolean(window.scheduleAuth?.isHostedCloudOrigin?.());
+        const isCloudEmployeePortal = Boolean(window.scheduleAuth?.isEmployeePortalMode?.() || window.scheduleAuth?.isHostedCloudOrigin?.());
 
         setText("#auth-title", "app_title");
         setText(".brand-subtitle", "org_title");

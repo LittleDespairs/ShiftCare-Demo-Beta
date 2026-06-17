@@ -111,7 +111,7 @@
     }
 
     function isCloudEmployeePortalMode() {
-        return Boolean(window.scheduleAuth?.isHostedCloudOrigin?.());
+        return Boolean(window.scheduleAuth?.isEmployeePortalMode?.() || window.scheduleAuth?.isHostedCloudOrigin?.());
     }
 
     function destinationForUser(user) {
@@ -121,7 +121,7 @@
     }
 
     async function renderAuthStatus() {
-        if (window.scheduleAuth?.isDesktopLocalOrigin?.()) {
+        if (window.scheduleAuth?.isDesktopLocalOrigin?.() && !isCloudEmployeePortalMode()) {
             setMessage(t("auth_msg_desktop_ready", "Authorize a cloud user or add a new organization. Work will continue locally on this computer."), "");
             return;
         }
@@ -216,7 +216,7 @@
 
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const isDesktopLogin = window.scheduleAuth?.isDesktopLocalOrigin?.();
+        const isDesktopLogin = window.scheduleAuth?.isDesktopLocalOrigin?.() && !isCloudEmployeePortalMode();
         setMessage(isDesktopLogin
             ? t("auth_msg_signing_in_desktop", "Signing in and loading organization data...")
             : t("auth_msg_signing_in", "Signing in..."), "");
@@ -239,7 +239,7 @@
             setMessage(t("auth_msg_org_setup_desktop_only", "Organization setup is available only in the desktop app."), "error");
             return;
         }
-        const isDesktopLogin = window.scheduleAuth?.isDesktopLocalOrigin?.();
+        const isDesktopLogin = window.scheduleAuth?.isDesktopLocalOrigin?.() && !isCloudEmployeePortalMode();
         setMessage(isDesktopLogin
             ? t("auth_msg_creating_org_desktop", "Creating cloud organization and loading it locally...")
             : t("auth_msg_creating_org", "Creating organization..."), "");

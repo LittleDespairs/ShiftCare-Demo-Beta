@@ -125,7 +125,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.20.1_beta"
+APP_VERSION = "0.20.2_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -1240,6 +1240,39 @@ def repair_organization_employee_membership_links(cursor, organization_id: int) 
         if cursor.rowcount:
             repaired_count += 1
     return repaired_count
+
+
+def purge_disabled_organization_accounts(cursor, organization_id: int) -> int:
+    cursor.execute(
+        """
+        SELECT om.user_id, u.email
+        FROM organization_memberships om
+        JOIN users u ON u.id = om.user_id
+        WHERE om.organization_id = ?
+          AND om.status = 'disabled'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM organization_memberships active_membership
+              WHERE active_membership.user_id = om.user_id
+                AND active_membership.status = 'active'
+          )
+        ORDER BY om.user_id
+        """,
+        (organization_id,),
+    )
+    rows = cursor.fetchall()
+    for row in rows:
+        cursor.execute(
+            """
+            DELETE FROM organization_invitations
+            WHERE organization_id = ?
+              AND lower(email) = ?
+              AND status != 'pending'
+            """,
+            (organization_id, str(row["email"] or "").strip().lower()),
+        )
+        cursor.execute("DELETE FROM users WHERE id = ?", (int(row["user_id"]),))
+    return len(rows)
 
 
 def active_user_count(cursor) -> int:
@@ -4403,12 +4436,19 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
         if is_desktop_sqlite_runtime():
             settings = read_desktop_cloud_sync_settings(cursor, organization_id)
             if desktop_cloud_sync_is_ready(settings):
-                return request_cloud_json(
+                cloud_response = request_cloud_json(
                     settings["cloud_api_base_url"],
                     f"/api/organizations/{int(settings['cloud_organization_id'])}/members",
                     token=settings["desktop_cloud_access_token"],
                 )
+                cloud_response["members"] = [
+                    member
+                    for member in cloud_response.get("members") or []
+                    if member.get("membership_status") == "active"
+                ]
+                return cloud_response
         repaired_count = repair_organization_employee_membership_links(cursor, organization_id)
+        purged_count = purge_disabled_organization_accounts(cursor, organization_id)
         if repaired_count:
             write_auth_audit_event(
                 cursor,
@@ -4417,6 +4457,15 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
                 organization_id=organization_id,
                 metadata={"repaired_count": repaired_count},
             )
+        if purged_count:
+            write_auth_audit_event(
+                cursor,
+                "disabled_member_accounts_purged",
+                user_id=current_user["id"],
+                organization_id=organization_id,
+                metadata={"purged_count": purged_count},
+            )
+        if repaired_count or purged_count:
             connection.commit()
         cursor.execute(
             """
@@ -4428,6 +4477,7 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
             JOIN users u ON u.id = om.user_id
             LEFT JOIN employees e ON e.id = om.employee_id
             WHERE om.organization_id = ?
+              AND om.status = 'active'
             ORDER BY CASE om.status WHEN 'active' THEN 0 WHEN 'invited' THEN 1 ELSE 2 END, u.full_name, u.email
             """,
             (organization_id,),
@@ -4660,6 +4710,7 @@ def create_organization_invitation(
             "Organization not found",
         )
         email = str(request_data.email).strip().lower()
+        purged_count = purge_disabled_organization_accounts(cursor, organization_id)
         cursor.execute(
             """
             SELECT om.status, om.role, om.employee_id
@@ -4796,6 +4847,14 @@ def create_organization_invitation(
                         "employee_id": employee_id,
                     },
                 )
+                if purged_count:
+                    write_auth_audit_event(
+                        cursor,
+                        "disabled_member_accounts_purged",
+                        user_id=current_user["id"],
+                        organization_id=organization_id,
+                        metadata={"purged_count": purged_count},
+                    )
                 connection.commit()
                 return {
                     "invitation": {
@@ -4852,6 +4911,14 @@ def create_organization_invitation(
                 "employee_id": employee_id,
             },
         )
+        if purged_count:
+            write_auth_audit_event(
+                cursor,
+                "disabled_member_accounts_purged",
+                user_id=current_user["id"],
+                organization_id=organization_id,
+                metadata={"purged_count": purged_count},
+            )
         invitation_url = build_invitation_url_for_request(request, invitation_token)
         connection.commit()
         email_result = send_invitation_email(
@@ -4961,6 +5028,7 @@ def remove_organization_member(
             """,
             (now, user_id),
         )
+        purged_count = purge_disabled_organization_accounts(cursor, organization_id)
         write_auth_audit_event(
             cursor,
             "member_removed",
@@ -4972,8 +5040,16 @@ def remove_organization_member(
                 "removed_role": target_role,
             },
         )
+        if purged_count:
+            write_auth_audit_event(
+                cursor,
+                "disabled_member_accounts_purged",
+                user_id=current_user["id"],
+                organization_id=organization_id,
+                metadata={"purged_count": purged_count},
+            )
         connection.commit()
-        return {"message": "Organization member access removed"}
+        return {"message": "Organization member access removed", "purged_user_accounts": purged_count}
     except HTTPException:
         connection.rollback()
         raise

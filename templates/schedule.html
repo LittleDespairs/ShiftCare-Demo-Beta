@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="/static/css/schedule.css?v={{ app_version }}-schedule-board-generation-modes">
 </head>
 
-<body class="app-shell schedule-board-page ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}">
+<body class="app-shell schedule-board-page ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}" data-employee-portal-mode="{{ '1' if cloud_employee_portal_mode() else '0' }}">
     <div class="app-layout">
         <!--
             SIDEBAR / БОКОВОЕ МЕНЮ

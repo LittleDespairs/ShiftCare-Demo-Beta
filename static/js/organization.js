@@ -651,10 +651,11 @@
                     method: "POST",
                     body: JSON.stringify(payload),
                 });
-                setInviteResult(invitationUrlFromResponse(response));
+                const invitationUrl = invitationUrlFromResponse(response);
                 elements.inviteForm.reset();
                 elements.inviteDays.value = "7";
                 updateInviteRoleState();
+                setInviteResult(invitationUrl);
                 await loadOrganizationData();
                 renderEmployeeSelector();
                 setMessage(invitationEmailMessage(response, "Invitation created.", "Invitation emailed."), "success");

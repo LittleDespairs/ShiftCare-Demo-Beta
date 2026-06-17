@@ -596,7 +596,7 @@
     </style>
 </head>
 
-<body class="app-shell ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}">
+<body class="app-shell ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}" data-employee-portal-mode="{{ '1' if cloud_employee_portal_mode() else '0' }}">
     <div class="app-layout">
         <!--
             SIDEBAR / БОКОВОЕ МЕНЮ
@@ -691,7 +691,7 @@
                             <input type="date" id="week_start" class="input" data-week-picker="true">
                         </div>
 
-                        <div class="toolbar-field">
+                        <div class="toolbar-field" data-employee-portal-hidden="true">
                             <label class="form-label" for="preferences_employee_search" data-i18n="common_search_employee">
                                 Search employee
                             </label>
@@ -699,7 +699,7 @@
                                 data-i18n-placeholder="common_search_employee" placeholder="Search employee">
                         </div>
 
-                        <div class="toolbar-field">
+                        <div class="toolbar-field" data-employee-portal-hidden="true">
                             <label class="form-label" for="preferences_position_filter" data-i18n="assignments_position">
                                 Position
                             </label>
@@ -708,7 +708,7 @@
                             </select>
                         </div>
 
-                        <div class="toolbar-field">
+                        <div class="toolbar-field" data-employee-portal-hidden="true">
                             <label class="form-label" for="preferences_request_filter" data-i18n="preferences_request_filter">
                                 Request filter
                             </label>
@@ -953,6 +953,18 @@
                 return translated === key ? (fallback || key) : translated;
             }
             return fallback || key;
+        }
+
+        function isEmployeeUser() {
+            return window.scheduleAuth?.getActiveMembership?.()?.role === "employee";
+        }
+
+        function isEmployeePortalPreferencesMode() {
+            return Boolean(window.scheduleAuth?.isEmployeePortalMode?.() || isEmployeeUser());
+        }
+
+        function applyEmployeePortalPreferencesMode() {
+            document.body.classList.toggle("employee-portal-preferences", isEmployeePortalPreferencesMode());
         }
 
         function showMessage(text, type = "info") {
@@ -1276,12 +1288,16 @@
         document.addEventListener("DOMContentLoaded", async () => {
             if (!window.scheduleAuth.requireSession()) return;
             await refreshSessionFromServer();
+            applyEmployeePortalPreferencesMode();
             bindSidebarToggle();
             applySidebarState(getSavedSidebarState());
 
             setWeekStart();
             await loadAppSettings();
             await loadEmployees();
+            if (isEmployeePortalPreferencesMode() && employees.length > 0) {
+                await loadWeekPreferences();
+            }
 
             document.getElementById("load-btn").addEventListener("click", loadWeekPreferences);
             document.getElementById("preferences_employee_search").addEventListener("input", event => {
@@ -1333,7 +1349,8 @@
                     access_token: window.scheduleAuth.getToken(),
                     user: response.user,
                 });
-                window.applyAccessControl?.();
+                window.scheduleAccessControl?.apply?.();
+                applyEmployeePortalPreferencesMode();
             } catch (error) {
                 console.error(error);
             }

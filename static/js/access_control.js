@@ -57,7 +57,7 @@
 
     function accessForRole(role) {
         const baseAccess = ROLE_ACCESS[role] || ROLE_ACCESS.employee;
-        if (!window.scheduleAuth?.isHostedCloudOrigin?.()) {
+        if (!window.scheduleAuth?.isEmployeePortalMode?.()) {
             return baseAccess;
         }
         const pages = new Set(["/", "/schedule", "/organization", "/guide", "/docs"]);
@@ -152,6 +152,7 @@
         if (!membership) return;
         const access = accessForRole(membership.role);
         document.body.dataset.authRole = membership.role;
+        document.body.classList.toggle("employee-portal-shell", Boolean(window.scheduleAuth?.isEmployeePortalMode?.()));
         ensureStandardNav();
         document.querySelectorAll(".nav-list a[href]").forEach((link) => {
             const path = canonicalPath(new URL(link.getAttribute("href"), window.location.origin).pathname);
