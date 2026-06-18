@@ -1988,6 +1988,81 @@ def _insert_license_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organi
     return imported_count
 
 
+def collect_employee_link_public_ids(cursor, organization_id: int) -> dict[str, list[dict]]:
+    cursor.execute(
+        """
+        SELECT om.user_id, e.public_id AS employee_public_id
+        FROM organization_memberships om
+        JOIN employees e ON e.id = om.employee_id
+        WHERE om.organization_id = ?
+          AND om.role = 'employee'
+          AND om.status = 'active'
+          AND om.employee_id IS NOT NULL
+          AND e.public_id IS NOT NULL
+          AND e.public_id != ''
+        ORDER BY om.user_id
+        """,
+        (organization_id,),
+    )
+    memberships = [dict(row) for row in cursor.fetchall()]
+    cursor.execute(
+        """
+        SELECT oi.id AS invitation_id, e.public_id AS employee_public_id
+        FROM organization_invitations oi
+        JOIN employees e ON e.id = oi.employee_id
+        WHERE oi.organization_id = ?
+          AND oi.employee_id IS NOT NULL
+          AND e.public_id IS NOT NULL
+          AND e.public_id != ''
+        ORDER BY oi.id
+        """,
+        (organization_id,),
+    )
+    invitations = [dict(row) for row in cursor.fetchall()]
+    return {"memberships": memberships, "invitations": invitations}
+
+
+def restore_employee_links_from_public_ids(
+    cursor,
+    organization_id: int,
+    preserved_links: dict[str, list[dict]],
+    employee_id_by_public_id: dict[str, int],
+    now: str,
+) -> dict[str, int]:
+    restored_memberships = 0
+    restored_invitations = 0
+    for link in preserved_links.get("memberships") or []:
+        employee_id = employee_id_by_public_id.get(str(link.get("employee_public_id") or ""))
+        if not employee_id:
+            continue
+        cursor.execute(
+            """
+            UPDATE organization_memberships
+            SET employee_id = ?, updated_at = ?
+            WHERE organization_id = ?
+              AND user_id = ?
+              AND role = 'employee'
+              AND status = 'active'
+            """,
+            (employee_id, now, organization_id, int(link["user_id"])),
+        )
+        restored_memberships += cursor.rowcount
+    for link in preserved_links.get("invitations") or []:
+        employee_id = employee_id_by_public_id.get(str(link.get("employee_public_id") or ""))
+        if not employee_id:
+            continue
+        cursor.execute(
+            """
+            UPDATE organization_invitations
+            SET employee_id = ?
+            WHERE organization_id = ? AND id = ?
+            """,
+            (employee_id, organization_id, int(link["invitation_id"])),
+        )
+        restored_invitations += cursor.rowcount
+    return {"memberships": restored_memberships, "invitations": restored_invitations}
+
+
 def import_organization_bundle(connection, organization_id: int, bundle: dict, replace_existing: bool, imported_by_user_id: int) -> dict:
     if bundle.get("format") != "shiftcare.organization.v1":
         raise HTTPException(status_code=400, detail="Unsupported organization bundle format")
@@ -2009,6 +2084,8 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
     if any(existing_counts.values()) and not replace_existing:
         raise HTTPException(status_code=409, detail="Target organization already has scheduling data")
 
+    preserved_employee_links = collect_employee_link_public_ids(cursor, organization_id) if replace_existing else {"memberships": [], "invitations": []}
+
     if replace_existing:
         for table_name in ORGANIZATION_IMPORT_DELETE_ORDER:
             if table_name == "employee_positions":
@@ -2029,10 +2106,22 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
     )
 
     employee_id_map = _insert_employee_bundle_rows(cursor, records.get("employees") or [], organization_id, now)
+    employee_id_by_public_id = {
+        str(row.get("public_id")): employee_id_map[int(row["id"])]
+        for row in records.get("employees") or []
+        if row.get("public_id") and int(row["id"]) in employee_id_map
+    }
     position_id_map = _insert_position_bundle_rows(cursor, records.get("positions") or [], organization_id, now)
     license_count = _insert_license_bundle_rows(cursor, records.get("licenses") or [], organization_id, now)
     employees_by_public_id = _source_rows_by_public_id(records.get("employees") or [])
     positions_by_public_id = _source_rows_by_public_id(records.get("positions") or [])
+    restored_employee_links = restore_employee_links_from_public_ids(
+        cursor,
+        organization_id,
+        preserved_employee_links,
+        employee_id_by_public_id,
+        now,
+    )
 
     shift_template_id_map = {}
     for row in records.get("shift_templates") or []:
@@ -2305,6 +2394,7 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
             "schedule_entries": len(records.get("schedule_entries") or []),
             "licenses": license_count,
         },
+        "restored_employee_links": restored_employee_links,
     }
 
 
@@ -6082,6 +6172,7 @@ def get_positions(access_context: dict | None = Depends(require_schedule_view_if
     try:
         cursor = connection.cursor()
         employee_id = employee_scope_from_access(access_context)
+        organization_id = access_context["membership"]["organization_id"] if access_context else None
         if employee_id is not None:
             cursor.execute(
                 """
@@ -6093,6 +6184,8 @@ def get_positions(access_context: dict | None = Depends(require_schedule_view_if
                 """,
                 (employee_id,),
             )
+        elif organization_id is not None:
+            cursor.execute("SELECT * FROM positions WHERE organization_id = ? ORDER BY id", (organization_id,))
         else:
             cursor.execute("SELECT * FROM positions ORDER BY id")
         return [row_to_position_dict(row) for row in cursor.fetchall()]
@@ -6102,6 +6195,7 @@ def get_positions(access_context: dict | None = Depends(require_schedule_view_if
 
 @app.post("/api/positions", tags=["Positions"])
 def add_position(position: PositionCreate, _access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
     connection = get_connection()
     try:
         cursor = connection.cursor()
@@ -6109,14 +6203,15 @@ def add_position(position: PositionCreate, _access: dict | None = Depends(requir
             cursor.execute(
                 """
                 INSERT INTO positions (
-                    name, color, requires_continuous_coverage, minimum_staff_presence,
+                    organization_id, name, color, requires_continuous_coverage, minimum_staff_presence,
                     allow_same_day_other_positions,
                     max_consecutive_nights, emergency_max_consecutive_nights,
                     max_consecutive_split_days, emergency_max_consecutive_split_days
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    organization_id,
                     position.name,
                     position.color,
                     int(position.requires_continuous_coverage),
@@ -6434,17 +6529,26 @@ def add_shift_template(
 ):
     parse_time_string(template.start_time)
     parse_time_string(template.end_time)
+    organization_id = _access["membership"]["organization_id"] if _access else 1
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (template.position_id,), "Position not found")
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM positions WHERE id = ? AND organization_id = ?",
+            (template.position_id, organization_id),
+            "Position not found",
+        )
         try:
             cursor.execute(
                 """
-                INSERT INTO shift_templates (position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO shift_templates (
+                    organization_id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    organization_id,
                     template.position_id,
                     template.name,
                     template.category,
@@ -6600,20 +6704,29 @@ def save_shift_requirement(
     requirement: ShiftRequirementCreate,
     _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
 ):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (requirement.position_id,), "Position not found")
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM positions WHERE id = ? AND organization_id = ?",
+            (requirement.position_id, organization_id),
+            "Position not found",
+        )
         cursor.execute(
             """
-            INSERT INTO shift_requirements (position_id, shift_category, required_total, required_female_min, required_male_min)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO shift_requirements (
+                organization_id, position_id, shift_category, required_total, required_female_min, required_male_min
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(position_id, shift_category)
             DO UPDATE SET required_total = excluded.required_total,
                           required_female_min = excluded.required_female_min,
                           required_male_min = excluded.required_male_min
             """,
             (
+                organization_id,
                 requirement.position_id,
                 requirement.shift_category,
                 requirement.required_total,
@@ -6710,17 +6823,24 @@ def add_coverage_requirement(
     requirement: CoverageRequirementCreate,
     _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
 ):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (requirement.position_id,), "Position not found")
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM positions WHERE id = ? AND organization_id = ?",
+            (requirement.position_id, organization_id),
+            "Position not found",
+        )
         cursor.execute(
             """
             INSERT INTO coverage_requirements
-                (position_id, start_time, end_time, required_total, required_female_min, required_male_min, is_overnight)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (organization_id, position_id, start_time, end_time, required_total, required_female_min, required_male_min, is_overnight)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                organization_id,
                 requirement.position_id,
                 requirement.start_time,
                 requirement.end_time,
@@ -7187,18 +7307,25 @@ def save_employee_day_status(
     status: EmployeeDayStatusCreate,
     _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
 ):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (status.employee_id,), "Employee not found")
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+            (status.employee_id, organization_id),
+            "Employee not found",
+        )
         cursor.execute(
             """
-            INSERT INTO employee_day_statuses (employee_id, date, status_type)
-            VALUES (?, ?, ?)
+            INSERT INTO employee_day_statuses (organization_id, employee_id, date, status_type)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(employee_id, date)
-            DO UPDATE SET status_type = excluded.status_type
+            DO UPDATE SET organization_id = excluded.organization_id,
+                          status_type = excluded.status_type
             """,
-            (status.employee_id, status.date, status.status_type),
+            (organization_id, status.employee_id, status.date, status.status_type),
         )
         connection.commit()
         return {"message": "Employee day status saved successfully", "status": status.model_dump()}
@@ -7242,6 +7369,9 @@ def get_employee_day_status_map(connection, employee_ids: list[int], dates: list
 
 
 def sync_employee_day_off_status_for_date(connection, cursor, employee_id: int, date_string: str) -> None:
+    cursor.execute("SELECT organization_id FROM employees WHERE id = ?", (employee_id,))
+    employee_row = cursor.fetchone()
+    organization_id = int(employee_row["organization_id"]) if employee_row else 1
     cursor.execute(
         """
         SELECT 1
@@ -7277,10 +7407,10 @@ def sync_employee_day_off_status_for_date(connection, cursor, employee_id: int, 
 
     cursor.execute(
         """
-        INSERT INTO employee_day_statuses (employee_id, date, status_type)
-        VALUES (?, ?, 'day_off')
+        INSERT INTO employee_day_statuses (organization_id, employee_id, date, status_type)
+        VALUES (?, ?, ?, 'day_off')
         """,
-        (employee_id, date_string),
+        (organization_id, employee_id, date_string),
     )
 
 
@@ -7315,6 +7445,15 @@ def sync_generated_day_off_statuses(
         if entry["employee_id"] in employee_id_set
     }
     day_status_map = get_employee_day_status_map(connection, employee_ids, dates)
+    cursor.execute(
+        f"""
+        SELECT id, organization_id
+        FROM employees
+        WHERE id IN ({employee_placeholders})
+        """,
+        employee_ids,
+    )
+    organization_id_by_employee_id = {int(row["id"]): int(row["organization_id"]) for row in cursor.fetchall()}
 
     inserted_count = 0
     for employee_id in employee_ids:
@@ -7325,10 +7464,10 @@ def sync_generated_day_off_statuses(
                 continue
             cursor.execute(
                 """
-                INSERT INTO employee_day_statuses (employee_id, date, status_type)
-                VALUES (?, ?, 'day_off')
+                INSERT INTO employee_day_statuses (organization_id, employee_id, date, status_type)
+                VALUES (?, ?, ?, 'day_off')
                 """,
-                (employee_id, date_string),
+                (organization_id_by_employee_id.get(employee_id, 1), employee_id, date_string),
             )
             inserted_count += 1
 
@@ -7345,10 +7484,14 @@ def get_schedule_entries(
     position_id: int | None = None,
     dates: list[str] | None = None,
     employee_id: int | None = None,
+    organization_id: int | None = None,
 ) -> list[dict]:
     cursor = connection.cursor()
     clauses = []
     params: list = []
+    if organization_id is not None:
+        clauses.append("se.organization_id = ?")
+        params.append(organization_id)
     if position_id is not None:
         clauses.append("se.position_id = ?")
         params.append(position_id)
@@ -7403,11 +7546,17 @@ def get_schedule(
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        organization_id = access_context["membership"]["organization_id"] if access_context else None
         employee_id = employee_scope_from_access(access_context)
         if employee_id is not None and position_id is not None:
             require_employee_position_scope(cursor, employee_id, position_id)
-            return get_schedule_entries(connection, position_id=position_id)
-        return get_schedule_entries(connection, position_id=position_id, employee_id=employee_id)
+            return get_schedule_entries(connection, position_id=position_id, organization_id=organization_id)
+        return get_schedule_entries(
+            connection,
+            position_id=position_id,
+            employee_id=employee_id,
+            organization_id=organization_id,
+        )
     finally:
         connection.close()
 
@@ -7423,10 +7572,10 @@ def add_schedule_entry(entry: ScheduleEntryCreate, _access: dict | None = Depend
         require_demo_schedule_entry_slot(cursor)
         cursor.execute(
             """
-            INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO schedule_entries (organization_id, employee_id, position_id, date, shift_template_id)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (entry.employee_id, entry.position_id, entry.date, entry.shift_template_id),
+            (organization_id, entry.employee_id, entry.position_id, entry.date, entry.shift_template_id),
         )
         sync_employee_day_off_status_for_date(connection, cursor, entry.employee_id, entry.date)
         connection.commit()
@@ -8026,12 +8175,15 @@ def choose_best_interval_candidate(
 
 
 def insert_generated_entry(cursor, employee: dict, position_id: int, date_string: str, template: dict, created_entries: list[dict]):
+    cursor.execute("SELECT organization_id FROM positions WHERE id = ?", (position_id,))
+    position_row = cursor.fetchone()
+    organization_id = int(position_row["organization_id"]) if position_row else 1
     cursor.execute(
         """
-        INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO schedule_entries (organization_id, employee_id, position_id, date, shift_template_id)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (employee["id"], position_id, date_string, template["id"]),
+        (organization_id, employee["id"], position_id, date_string, template["id"]),
     )
     created_entries.append(
         {

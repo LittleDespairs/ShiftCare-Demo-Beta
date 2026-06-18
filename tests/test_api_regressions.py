@@ -1922,6 +1922,75 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(own_schedule_response.status_code, 200)
         self.assertEqual({entry["employee_id"] for entry in own_schedule_response.json()}, {employee_a})
 
+    def test_cloud_import_preserves_employee_portal_schedule_links(self):
+        owner_response = self.client.post(
+            "/api/auth/create-organization",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        owner_user_id = owner_response.json()["user"]["id"]
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+
+        employee_id = self._create_employee(headers=owner_headers, full_name="Care Worker A", id_card="111111111")
+        position_id = self._create_position(headers=owner_headers, name="Nurse")
+        template_id = self._create_shift_template(headers=owner_headers, position_id=position_id, name="Nurse Morning")
+        assignment_response = self.client.post(
+            "/api/employee-positions",
+            headers=owner_headers,
+            json={"employee_id": employee_id, "position_id": position_id, "is_primary": True, "priority_score": 90},
+        )
+        self.assertEqual(assignment_response.status_code, 200)
+        schedule_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": template_id,
+            },
+        )
+        self.assertEqual(schedule_response.status_code, 200)
+
+        invitation_response = self.client.post(
+            f"/api/organizations/{organization_id}/invitations",
+            headers=owner_headers,
+            json={"email": "employee-a@example.com", "employee_id": employee_id, "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        accept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "full_name": "Portal Login Name",
+                "password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(accept_response.status_code, 200)
+        employee_headers = {"Authorization": f"Bearer {accept_response.json()['access_token']}"}
+
+        bundle = main.build_organization_export_bundle(self.connection, organization_id, exported_by_user_id=owner_user_id)
+        import_response = self.client.post(
+            f"/api/organizations/{organization_id}/cloud-import",
+            headers=owner_headers,
+            json={"bundle": bundle, "replace_existing": True},
+        )
+        self.assertEqual(import_response.status_code, 200)
+        self.assertEqual(import_response.json()["restored_employee_links"]["memberships"], 1)
+
+        imported_schedule_response = self.client.get("/api/schedule", headers=employee_headers)
+        self.assertEqual(imported_schedule_response.status_code, 200)
+        imported_schedule = imported_schedule_response.json()
+        self.assertEqual(len(imported_schedule), 1)
+        self.assertEqual(imported_schedule[0]["date"], "2026-04-20")
+        self.assertEqual(imported_schedule[0]["shift_template_name"], "Nurse Morning")
+
     def test_invitation_url_uses_public_app_base_without_manual_cloud_link(self):
         owner_response = self.client.post(
             "/api/auth/bootstrap",
