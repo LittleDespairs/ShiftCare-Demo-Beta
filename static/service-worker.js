@@ -1,4 +1,4 @@
-const CACHE_NAME = "shiftcare-0.20.2-beta-portal-shell-20260617-employee-portal-ui";
+const CACHE_NAME = "shiftcare-0.20.3-beta-portal-shell-20260618-syncfix";
 
 const SHELL_ASSETS = [
   "/",
@@ -6,19 +6,19 @@ const SHELL_ASSETS = [
   "/schedule",
   "/weekly-preferences",
   "/organization",
-  "/static/css/style.css?v=0.20.2_beta-operations-ui-week-picker-generation-modes-rtl",
-  "/static/css/auth.css?v=0.20.2_beta-portal-entry-operations-ui",
-  "/static/css/schedule.css?v=0.20.2_beta-schedule-board-generation-modes",
-  "/static/js/i18n.js?v=0.20.2_beta-auth-i18n-fix",
-  "/static/js/i18n.js?v=0.20.2_beta-week-picker",
-  "/static/js/auth_client.js?v=0.20.2_beta-desktop-local",
-  "/static/js/access_control.js?v=0.20.2_beta-directory-access",
-  "/static/js/auth_i18n.js?v=0.20.2_beta-role-management-portal-mode",
-  "/static/js/auth.js?v=0.20.2_beta-portal-entry-employee-mode",
-  "/static/js/schedule.js?v=0.20.2_beta-schedule-board-generation-modes",
-  "/static/js/organization.js?v=0.20.2_beta-member-role-management",
-  "/static/js/online_status.js?v=0.20.2_beta",
-  "/static/js/pwa.js?v=0.20.2_beta",
+  "/static/css/style.css?v=0.20.3_beta-operations-ui-week-picker-generation-modes-rtl",
+  "/static/css/auth.css?v=0.20.3_beta-portal-entry-operations-ui",
+  "/static/css/schedule.css?v=0.20.3_beta-schedule-board-generation-modes",
+  "/static/js/i18n.js?v=0.20.3_beta-auth-i18n-fix",
+  "/static/js/i18n.js?v=0.20.3_beta-week-picker",
+  "/static/js/auth_client.js?v=0.20.3_beta-desktop-local",
+  "/static/js/access_control.js?v=0.20.3_beta-directory-access",
+  "/static/js/auth_i18n.js?v=0.20.3_beta-role-management-portal-mode",
+  "/static/js/auth.js?v=0.20.3_beta-portal-entry-employee-mode",
+  "/static/js/schedule.js?v=0.20.3_beta-schedule-board-generation-modes",
+  "/static/js/organization.js?v=0.20.3_beta-member-role-management",
+  "/static/js/online_status.js?v=0.20.3_beta",
+  "/static/js/pwa.js?v=0.20.3_beta",
   "/static/manifest.webmanifest",
   "/static/icons/app-icon.svg"
 ];

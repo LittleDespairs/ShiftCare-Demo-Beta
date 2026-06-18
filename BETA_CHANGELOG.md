@@ -2,6 +2,24 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.20.3_beta - 2026-06-18
+
+## Release Focus
+
+Employee portal schedule synchronization hotfix.
+
+## Changed
+
+- Fixed cloud sync so schedules created in the desktop/admin flow keep the correct organization ownership.
+- Preserved employee portal account links during full cloud imports by restoring links through stable employee public IDs.
+- Kept portal schedule reads scoped to the authenticated organization.
+- Updated runtime, service worker cache keys, Android metadata, PyInstaller specs, installer metadata, build docs, and release notes to `0.20.3_beta`.
+
+## Verification
+
+- Automated regression tests passed locally.
+- Added regression coverage for employee portal schedule visibility after cloud import.
+
 # 0.20.2_beta - 2026-06-17
 
 ## Release Focus

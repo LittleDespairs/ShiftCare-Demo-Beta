@@ -125,7 +125,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.20.2_beta"
+APP_VERSION = "0.20.3_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
