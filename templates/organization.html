@@ -5,11 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#121820">
-    <title>Organization - {{ app_name }}</title>
+    <title>Personal account - {{ app_name }}</title>
     <link rel="manifest" href="/static/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-operations-ui-generation-modes-rtl">
-    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}-operations-ui">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-employee-portal-polish">
+    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}-employee-portal-account">
 </head>
 
 <body class="app-shell ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}" data-employee-portal-mode="{{ '1' if cloud_employee_portal_mode() else '0' }}">
@@ -20,7 +20,7 @@
                     <div class="brand-logo">SC</div>
                     <div class="brand-text">
                         <h1 class="brand-title" data-i18n="app_title">{{ app_name }}</h1>
-                        <p class="brand-subtitle" data-i18n="nav_organization">Organization</p>
+                        <p class="brand-subtitle" data-i18n="nav_organization">Personal account</p>
                     </div>
                 </div>
                 <button id="sidebar-toggle" class="sidebar-toggle" type="button" data-i18n-title="toggle_sidebar"
@@ -40,7 +40,7 @@
                 </a>
                 <a href="/organization" class="nav-item active">
                     <span class="nav-icon" aria-hidden="true">◎</span>
-                    <span class="nav-label" data-i18n="nav_organization">Organization</span>
+                    <span class="nav-label" data-i18n="nav_organization">Personal account</span>
                 </a>
                 <a href="/settings" class="nav-item">
                     <span class="nav-icon" aria-hidden="true">⚙</span>
@@ -52,8 +52,8 @@
         <main class="main-area">
             <header class="topbar">
                 <div class="page-heading">
-                    <h2 id="organization-title" class="page-title">Organization</h2>
-                    <p class="page-subtitle" data-i18n="org_subtitle">Members, roles, and employee invitation links.</p>
+                    <h2 id="organization-title" class="page-title" data-i18n="org_title">Personal account</h2>
+                    <p class="page-subtitle" data-i18n="org_subtitle">Profile, password, personal schedule colors, and account access.</p>
                 </div>
                 <div class="topbar-actions">
                     <div class="lang-switcher">
@@ -66,7 +66,10 @@
                         <select id="organization-select"></select>
                     </label>
                     <div id="organization-identity" class="organization-identity"></div>
-                    <button id="logout-btn" class="btn btn-secondary" type="button" data-i18n="common_logout">Logout</button>
+                    <button id="logout-btn" class="session-logout-button" type="button">
+                        <span class="session-logout-icon" aria-hidden="true"></span>
+                        <span class="session-logout-text">Logout</span>
+                    </button>
                 </div>
             </header>
 
@@ -100,7 +103,88 @@
                             <span data-i18n="org_new_password">New password</span>
                             <input id="new-password" type="password" autocomplete="new-password" minlength="8" required>
                         </label>
+                        <label class="form-field">
+                            <span data-i18n="org_confirm_new_password">Confirm new password</span>
+                            <input id="confirm-new-password" type="password" autocomplete="new-password" minlength="8" required>
+                        </label>
+                        <p class="field-hint" data-i18n="org_password_hint">
+                            The current session stays active. Other open sessions are signed out after the password changes.
+                        </p>
                         <button class="btn btn-secondary" type="submit" data-i18n="org_change_password">Change password</button>
+                    </form>
+                </section>
+
+                <section id="portal-appearance-panel" class="organization-panel">
+                    <div class="settings-section-header">
+                        <div>
+                            <h3 class="settings-section-title" data-i18n="org_personal_colors">Personal schedule colors</h3>
+                            <p class="settings-section-text" data-i18n="org_personal_colors_text">These colors are saved only for your browser and make the schedule easier to scan.</p>
+                        </div>
+                    </div>
+
+                    <form id="portal-appearance-form" class="organization-form-stack">
+                        <div class="portal-color-grid">
+                            <label class="portal-color-control" for="portal-morning-color">
+                                <input id="portal-morning-color" type="color" value="#ecfeff">
+                                <span>
+                                    <strong data-i18n="settings_color_morning">Morning cards</strong>
+                                    <small data-i18n="settings_color_morning_text">Used for morning shift cards and legend.</small>
+                                </span>
+                            </label>
+                            <label class="portal-color-control" for="portal-evening-color">
+                                <input id="portal-evening-color" type="color" value="#fff7ed">
+                                <span>
+                                    <strong data-i18n="settings_color_evening">Evening cards</strong>
+                                    <small data-i18n="settings_color_evening_text">Used for evening shift cards and legend.</small>
+                                </span>
+                            </label>
+                            <label class="portal-color-control" for="portal-night-color">
+                                <input id="portal-night-color" type="color" value="#eef2ff">
+                                <span>
+                                    <strong data-i18n="settings_color_night">Night cards</strong>
+                                    <small data-i18n="settings_color_night_text">Used for night shift cards and legend.</small>
+                                </span>
+                            </label>
+                            <label class="portal-color-control" for="portal-status-color">
+                                <input id="portal-status-color" type="color" value="#f5f3ff">
+                                <span>
+                                    <strong data-i18n="settings_color_status">Status cards</strong>
+                                    <small data-i18n="settings_color_status_text">Used for day-off and special status cards.</small>
+                                </span>
+                            </label>
+                        </div>
+
+                        <label class="form-field">
+                            <span data-i18n="schedule_card_display_mode">Card display</span>
+                            <select id="portal-card-display-mode">
+                                <option value="detailed" data-i18n="schedule_card_display_detailed">Detailed cards</option>
+                                <option value="compact" data-i18n="schedule_card_display_compact">Compact cards</option>
+                            </select>
+                        </label>
+
+                        <div class="portal-appearance-preview" aria-hidden="true">
+                            <div id="portal-preview-morning" class="portal-preview-card morning">
+                                <strong data-i18n="shift_morning">Morning</strong>
+                                <span>07:00-15:00</span>
+                            </div>
+                            <div id="portal-preview-evening" class="portal-preview-card evening">
+                                <strong data-i18n="shift_evening">Evening</strong>
+                                <span>15:00-23:00</span>
+                            </div>
+                            <div id="portal-preview-night" class="portal-preview-card night">
+                                <strong data-i18n="shift_night">Night</strong>
+                                <span>23:00-07:00</span>
+                            </div>
+                            <div id="portal-preview-status" class="portal-preview-card status">
+                                <strong data-i18n="schedule_status_legend">Status</strong>
+                                <span data-i18n="schedule_day_status">Day status</span>
+                            </div>
+                        </div>
+
+                        <div class="organization-link-actions">
+                            <button class="btn btn-primary" type="submit" data-i18n="org_save_personal_colors">Save personal colors</button>
+                            <button id="portal-appearance-reset" class="btn btn-secondary" type="button" data-i18n="org_reset_personal_colors">Reset colors</button>
+                        </div>
                     </form>
                 </section>
 
@@ -230,11 +314,11 @@
             <div id="organization-message" class="organization-message" role="status" aria-live="polite"></div>
         </main>
     </div>
-<script src="/static/js/i18n.js?v={{ app_version }}-auth-i18n-fix"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-employee-portal-polish"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-directory-access"></script>
-<script src="/static/js/auth_i18n.js?v={{ app_version }}-role-management-refresh"></script>
-<script src="/static/js/organization.js?v={{ app_version }}-member-role-management"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-employee-portal-polish"></script>
+<script src="/static/js/auth_i18n.js?v={{ app_version }}-employee-portal-account"></script>
+<script src="/static/js/organization.js?v={{ app_version }}-employee-portal-account"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

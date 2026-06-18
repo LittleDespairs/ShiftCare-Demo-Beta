@@ -44,6 +44,13 @@
         };
         const LOCAL_COVERAGE_DISPLAY_MODE_PREFIX = "schedule_app_coverage_display_mode";
         const LOCAL_CARD_DISPLAY_MODE_PREFIX = "schedule_app_card_display_mode";
+        const LOCAL_PORTAL_APPEARANCE_PREFIX = "schedule_app_portal_appearance";
+        const DEFAULT_PERSONAL_SCHEDULE_COLORS = {
+            schedule_morning_color: "#ecfeff",
+            schedule_evening_color: "#fff7ed",
+            schedule_night_color: "#eef2ff",
+            schedule_status_color: "#f5f3ff"
+        };
 
         function isDemoMode() {
             return document.body?.dataset?.demoMode === "1";
@@ -275,6 +282,25 @@
         function getUserScopedStorageKey(prefix) {
             const userId = window.scheduleAuth?.getUser?.()?.id || "local";
             return `${prefix}_${userId}`;
+        }
+
+        function isHexColor(value) {
+            return /^#[0-9A-Fa-f]{6}$/.test(String(value || ""));
+        }
+
+        function loadPersonalScheduleAppearance() {
+            const raw = localStorage.getItem(getUserScopedStorageKey(LOCAL_PORTAL_APPEARANCE_PREFIX));
+            if (!raw) return {};
+            try {
+                const parsed = JSON.parse(raw);
+                return Object.fromEntries(
+                    Object.keys(DEFAULT_PERSONAL_SCHEDULE_COLORS)
+                        .map(key => [key, isHexColor(parsed?.[key]) ? parsed[key] : ""])
+                        .filter(([, value]) => Boolean(value))
+                );
+            } catch (error) {
+                return {};
+            }
         }
 
         function formatConfirmImpactList(items) {
@@ -1217,12 +1243,13 @@
         function applyScheduleAppearanceSettings() {
             const panel = document.querySelector(".schedule-panel");
             if (!panel) return;
+            const personalAppearance = loadPersonalScheduleAppearance();
 
             const colorMap = {
-                "--shift-morning-bg": appSettings.schedule_morning_color || "#ecfeff",
-                "--shift-evening-bg": appSettings.schedule_evening_color || "#fff7ed",
-                "--shift-night-bg": appSettings.schedule_night_color || "#eef2ff",
-                "--shift-status-bg": appSettings.schedule_status_color || "#f5f3ff"
+                "--shift-morning-bg": personalAppearance.schedule_morning_color || appSettings.schedule_morning_color || DEFAULT_PERSONAL_SCHEDULE_COLORS.schedule_morning_color,
+                "--shift-evening-bg": personalAppearance.schedule_evening_color || appSettings.schedule_evening_color || DEFAULT_PERSONAL_SCHEDULE_COLORS.schedule_evening_color,
+                "--shift-night-bg": personalAppearance.schedule_night_color || appSettings.schedule_night_color || DEFAULT_PERSONAL_SCHEDULE_COLORS.schedule_night_color,
+                "--shift-status-bg": personalAppearance.schedule_status_color || appSettings.schedule_status_color || DEFAULT_PERSONAL_SCHEDULE_COLORS.schedule_status_color
             };
 
             Object.entries(colorMap).forEach(([property, value]) => {
@@ -2495,7 +2522,7 @@
             `;
         }
 
-        function renderScheduleCell(employeeId, positionId, date, dayLabel = "") {
+        function renderScheduleCell(employeeId, positionId, date, dayLabel = "", dayIndex = 0) {
             // Render one employee/day cell
             // Отрисовываем одну ячейку: сотрудник + день
             const dayEntries = allScheduleEntries.filter(entry => (
@@ -2507,11 +2534,17 @@
             const dayStatus = getDayStatus(employeeId, date);
             const hasFullCellStatus = dayStatus && ["sick", "day_off", "vacation"].includes(dayStatus.status_type);
             const editable = canEditSchedule();
-            const dayCellAttributes = `data-day-label="${escapeHtml(dayLabel)}" data-date-label="${escapeHtml(date)}"`;
+            const dayCellAttributes = `data-day-label="${escapeHtml(dayLabel)}" data-date-label="${escapeHtml(date)}" data-day-index="${Number(dayIndex)}"`;
+            const dayClasses = [
+                "schedule-day-cell",
+                `day-index-${Number(dayIndex)}`,
+                dayEntries.length > 0 ? "has-shifts" : "is-empty",
+                dayIndex === 5 || dayIndex === 6 ? "is-weekend" : ""
+            ].filter(Boolean).join(" ");
 
             if (hasFullCellStatus) {
                 return `
-                    <td class="schedule-day-cell has-day-status" ${dayCellAttributes}>
+                    <td class="${dayClasses} has-day-status" ${dayCellAttributes}>
                         <div class="schedule-day-inner">
                             ${renderReadOnlyCellBody(dayEntries, employeeId, positionId, date)}
                         </div>
@@ -2522,7 +2555,7 @@
 
             if (!editable) {
                 return `
-                    <td class="schedule-day-cell" ${dayCellAttributes}>
+                    <td class="${dayClasses}" ${dayCellAttributes}>
                         <div class="schedule-day-inner ${dayEntries.length > 0 ? "has-entries" : ""}">
                             ${renderReadOnlyCellBody(dayEntries, employeeId, positionId, date)}
                         </div>
@@ -2531,7 +2564,7 @@
             }
 
             return `
-                <td class="schedule-day-cell" ${dayCellAttributes}>
+                <td class="${dayClasses}" ${dayCellAttributes}>
                     <div class="schedule-day-inner ${dayEntries.length > 0 ? "has-entries" : ""}">
                             <div class="add-box">
                             <div class="cell-actions">
@@ -2576,10 +2609,10 @@
                         </div>
                     </th>
 
-                    ${weekDates.map(date => {
+                    ${weekDates.map((date, index) => {
                 const dateSummary = getGenerationDateSummary(date);
                 return `
-                        <th>
+                        <th class="schedule-day-header-cell day-index-${index}" data-day-index="${index}">
                             <div class="coverage-header-cell ${dateSummary ? `has-attention ${dateSummary.severity}` : ""}">
                                 ${renderCoverageSummary(positionId, date)}
                             </div>
@@ -2604,7 +2637,7 @@
                     ${weekDates.map((date, index) => {
                 const dateSummary = getGenerationDateSummary(date);
                 return `
-                        <th>
+                        <th class="schedule-day-header-cell day-index-${index}" data-day-index="${index}">
                             <div class="day-header ${dateSummary ? `has-attention ${dateSummary.severity}` : ""}">
                                 <div class="day-header-title">${escapeHtml(getWeekdayName(index))}</div>
                                 <div class="day-header-date">${escapeHtml(date)}</div>
@@ -2678,7 +2711,7 @@
                         </div>
                     </td>
 
-                    ${weekDates.map((date, index) => renderScheduleCell(employee.id, positionId, date, getWeekdayName(index))).join("")}
+                    ${weekDates.map((date, index) => renderScheduleCell(employee.id, positionId, date, getWeekdayName(index), index)).join("")}
                 </tr>
             `).join("");
 

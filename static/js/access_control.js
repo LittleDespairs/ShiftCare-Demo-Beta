@@ -83,7 +83,51 @@
             const value = window.translate(key);
             return value === key ? fallback : value;
         }
+        if (typeof window.organizationAuthText === "function") {
+            const value = window.organizationAuthText(key);
+            return value === key ? fallback : value;
+        }
         return fallback;
+    }
+
+    async function logoutCurrentUser() {
+        try {
+            await window.scheduleAuth?.request?.("/api/auth/logout", { method: "POST" });
+        } catch (error) {
+            // The local session is still cleared when the server logout request cannot finish.
+        }
+        window.scheduleAuth?.clearSession?.();
+        window.location.href = "/login";
+    }
+
+    function ensureGlobalLogoutButton() {
+        if (isAuthPage()) return;
+        const token = window.scheduleAuth?.getToken?.();
+        const user = window.scheduleAuth?.getUser?.();
+        if (!token || !user) return;
+
+        const actions = document.querySelector(".topbar-actions");
+        if (!actions) return;
+
+        let button = document.getElementById("logout-btn") || document.getElementById("global-logout-btn");
+        if (!button) {
+            button = document.createElement("button");
+            button.id = "global-logout-btn";
+            button.type = "button";
+            actions.appendChild(button);
+        }
+        button.classList.remove("btn", "btn-secondary");
+        button.classList.add("session-logout-button");
+        button.dataset.sessionLogout = "true";
+        button.setAttribute("aria-label", translateLocal("common_logout", "Logout"));
+        button.innerHTML = `
+            <span class="session-logout-icon" aria-hidden="true"></span>
+            <span class="session-logout-text">${translateLocal("common_logout", "Logout")}</span>
+        `;
+        if (!button.dataset.accessLogoutBound) {
+            button.addEventListener("click", logoutCurrentUser);
+            button.dataset.accessLogoutBound = "1";
+        }
     }
 
     function ensureStandardNav() {
@@ -94,7 +138,7 @@
             ["/schedule", "🗓", "nav_schedule", "Schedule"],
             ["/employees", "👥", "nav_employees", "Employees"],
             ["/weekly-preferences", "✦", "nav_requests", "Preferences"],
-            ["/organization", "◎", "nav_organization", "Organization"],
+            ["/organization", "◎", "nav_organization", "Personal account"],
             ["/settings", "⚙", "nav_settings", "Settings"],
         ];
         const existing = new Map();
@@ -134,7 +178,7 @@
             "/employees": ["nav_employees", "Employees"],
             "/weekly-preferences": ["nav_requests", "Preferences"],
             "/settings": ["nav_settings", "Settings"],
-            "/organization": ["nav_organization", "Organization"],
+            "/organization": ["nav_organization", "Personal account"],
         };
         document.querySelectorAll(".nav-list a[href]").forEach((link) => {
             const path = canonicalPath(new URL(link.getAttribute("href"), window.location.origin).pathname);
@@ -161,6 +205,7 @@
             link.style.display = isAllowed ? "" : "none";
         });
         applyNavLabels();
+        ensureGlobalLogoutButton();
     }
 
     function enforcePageAccess() {
@@ -211,6 +256,7 @@
         enforcePageAccess();
         applyRoleNavigation();
         disableScheduleEditingForReadOnlyRoles();
+        ensureGlobalLogoutButton();
     }
 
     if (document.readyState === "loading") {

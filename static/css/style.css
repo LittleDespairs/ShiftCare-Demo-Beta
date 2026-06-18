@@ -426,6 +426,76 @@ body.rtl .topbar-actions {
     color: #fff;
 }
 
+.session-logout-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-height: 42px;
+    padding: 9px 13px;
+    border: 1px solid #d8b7b4;
+    border-radius: 6px;
+    background: #fff7f6;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 900;
+    letter-spacing: 0;
+    white-space: nowrap;
+    box-shadow: none;
+    transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.session-logout-button:hover {
+    border-color: #c58d88;
+    background: #fde7e4;
+    color: #8f261f;
+}
+
+.session-logout-button:focus-visible {
+    outline: 3px solid rgba(173, 48, 39, 0.16);
+    outline-offset: 2px;
+}
+
+.session-logout-icon {
+    position: relative;
+    display: inline-block;
+    width: 17px;
+    height: 17px;
+    border: 2px solid currentColor;
+    border-inline-end: 0;
+    border-radius: 4px 0 0 4px;
+}
+
+.session-logout-icon::before,
+.session-logout-icon::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    background: currentColor;
+    transform: translateY(-50%);
+}
+
+.session-logout-icon::before {
+    right: -7px;
+    width: 12px;
+    height: 2px;
+}
+
+.session-logout-icon::after {
+    right: -8px;
+    width: 7px;
+    height: 7px;
+    border-block-start: 2px solid currentColor;
+    border-inline-end: 2px solid currentColor;
+    background: transparent;
+    transform: translateY(-50%) rotate(45deg);
+}
+
+body.rtl .session-logout-icon {
+    transform: scaleX(-1);
+}
+
 .content-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
@@ -1892,6 +1962,10 @@ body.rtl input[type="date"] {
     .toolbar-actions,
     .form-actions,
     .table-actions {
+        width: 100%;
+    }
+
+    .session-logout-button {
         width: 100%;
     }
 

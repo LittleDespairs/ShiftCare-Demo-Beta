@@ -17,6 +17,14 @@
     const ALL_MEMBER_ROLES = ["owner", "admin", "scheduler", "manager", "read_only", "employee"];
     const ADMIN_ASSIGNABLE_ROLES = ["scheduler", "manager", "read_only", "employee"];
     const INVITE_ROLES = ["employee", "read_only", "manager", "scheduler", "admin", "owner"];
+    const LOCAL_PORTAL_APPEARANCE_PREFIX = "schedule_app_portal_appearance";
+    const LOCAL_CARD_DISPLAY_MODE_PREFIX = "schedule_app_card_display_mode";
+    const DEFAULT_PORTAL_APPEARANCE = {
+        schedule_morning_color: "#ecfeff",
+        schedule_evening_color: "#fff7ed",
+        schedule_night_color: "#eef2ff",
+        schedule_status_color: "#f5f3ff",
+    };
 
     function text(value) {
         return window.escapeHtml ? window.escapeHtml(value) : String(value ?? "");
@@ -177,7 +185,7 @@
             <span>${text(state.user.email)}</span>
             <span>${text(state.membership?.organization_name || uiText("org_no_organization", "No organization"))} · ${text(formatRole(state.membership?.role || "no role"))}</span>
         `;
-        elements.title.textContent = state.organizationName || uiText("org_title", "Organization");
+        elements.title.textContent = uiText("org_title", "Personal account");
         elements.profileName.value = state.user.full_name || "";
         elements.profileEmail.value = state.user.email || "";
     }
@@ -289,6 +297,94 @@
 
     function yesNo(value) {
         return value ? uiText("common_yes", "Yes") : uiText("common_no", "No");
+    }
+
+    function getUserScopedStorageKey(prefix) {
+        const userId = window.scheduleAuth?.getUser?.()?.id || state.user?.id || "local";
+        return `${prefix}_${userId}`;
+    }
+
+    function isHexColor(value) {
+        return /^#[0-9A-Fa-f]{6}$/.test(String(value || ""));
+    }
+
+    function loadPortalAppearance() {
+        const raw = localStorage.getItem(getUserScopedStorageKey(LOCAL_PORTAL_APPEARANCE_PREFIX));
+        if (!raw) return { ...DEFAULT_PORTAL_APPEARANCE };
+        try {
+            const parsed = JSON.parse(raw);
+            return {
+                schedule_morning_color: isHexColor(parsed.schedule_morning_color) ? parsed.schedule_morning_color : DEFAULT_PORTAL_APPEARANCE.schedule_morning_color,
+                schedule_evening_color: isHexColor(parsed.schedule_evening_color) ? parsed.schedule_evening_color : DEFAULT_PORTAL_APPEARANCE.schedule_evening_color,
+                schedule_night_color: isHexColor(parsed.schedule_night_color) ? parsed.schedule_night_color : DEFAULT_PORTAL_APPEARANCE.schedule_night_color,
+                schedule_status_color: isHexColor(parsed.schedule_status_color) ? parsed.schedule_status_color : DEFAULT_PORTAL_APPEARANCE.schedule_status_color,
+            };
+        } catch (error) {
+            return { ...DEFAULT_PORTAL_APPEARANCE };
+        }
+    }
+
+    function getSavedCardDisplayMode() {
+        const value = localStorage.getItem(getUserScopedStorageKey(LOCAL_CARD_DISPLAY_MODE_PREFIX));
+        return value === "compact" ? "compact" : "detailed";
+    }
+
+    function setPreviewColors(settings) {
+        const target = elements.appearancePanel || document.documentElement;
+        target.style.setProperty("--portal-morning-color", settings.schedule_morning_color);
+        target.style.setProperty("--portal-evening-color", settings.schedule_evening_color);
+        target.style.setProperty("--portal-night-color", settings.schedule_night_color);
+        target.style.setProperty("--portal-status-color", settings.schedule_status_color);
+    }
+
+    function readAppearanceForm() {
+        return {
+            schedule_morning_color: isHexColor(elements.portalMorningColor?.value) ? elements.portalMorningColor.value : DEFAULT_PORTAL_APPEARANCE.schedule_morning_color,
+            schedule_evening_color: isHexColor(elements.portalEveningColor?.value) ? elements.portalEveningColor.value : DEFAULT_PORTAL_APPEARANCE.schedule_evening_color,
+            schedule_night_color: isHexColor(elements.portalNightColor?.value) ? elements.portalNightColor.value : DEFAULT_PORTAL_APPEARANCE.schedule_night_color,
+            schedule_status_color: isHexColor(elements.portalStatusColor?.value) ? elements.portalStatusColor.value : DEFAULT_PORTAL_APPEARANCE.schedule_status_color,
+        };
+    }
+
+    function syncAppearanceForm() {
+        if (!elements.appearanceForm) return;
+        const settings = loadPortalAppearance();
+        elements.portalMorningColor.value = settings.schedule_morning_color;
+        elements.portalEveningColor.value = settings.schedule_evening_color;
+        elements.portalNightColor.value = settings.schedule_night_color;
+        elements.portalStatusColor.value = settings.schedule_status_color;
+        if (elements.portalCardDisplayMode) {
+            elements.portalCardDisplayMode.value = getSavedCardDisplayMode();
+        }
+        setPreviewColors(settings);
+    }
+
+    function bindAppearanceForm() {
+        if (!elements.appearanceForm) return;
+        [
+            elements.portalMorningColor,
+            elements.portalEveningColor,
+            elements.portalNightColor,
+            elements.portalStatusColor,
+        ].forEach((input) => {
+            input?.addEventListener("input", () => setPreviewColors(readAppearanceForm()));
+        });
+        elements.appearanceForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            const settings = readAppearanceForm();
+            localStorage.setItem(getUserScopedStorageKey(LOCAL_PORTAL_APPEARANCE_PREFIX), JSON.stringify(settings));
+            if (elements.portalCardDisplayMode) {
+                const mode = elements.portalCardDisplayMode.value === "compact" ? "compact" : "detailed";
+                localStorage.setItem(getUserScopedStorageKey(LOCAL_CARD_DISPLAY_MODE_PREFIX), mode);
+            }
+            setPreviewColors(settings);
+            setMessage(uiText("org_msg_personal_colors_saved", "Personal schedule colors saved."), "success");
+        });
+        elements.portalAppearanceReset?.addEventListener("click", () => {
+            localStorage.removeItem(getUserScopedStorageKey(LOCAL_PORTAL_APPEARANCE_PREFIX));
+            syncAppearanceForm();
+            setMessage(uiText("org_msg_personal_colors_reset", "Personal colors were reset."), "success");
+        });
     }
 
     function renderMembers(members, emptyMessage = uiText("org_no_members", "No members found.")) {
@@ -690,6 +786,11 @@
 
         elements.passwordForm.addEventListener("submit", async (event) => {
             event.preventDefault();
+            if (elements.newPassword.value !== elements.confirmNewPassword.value) {
+                setMessage(uiText("org_msg_password_confirmation_mismatch", "New password confirmation does not match."), "error");
+                elements.confirmNewPassword.focus();
+                return;
+            }
             setMessage(uiText("org_msg_changing_password", "Changing password..."), "");
             try {
                 await window.scheduleAuth.request("/api/auth/change-password", {
@@ -700,7 +801,7 @@
                     }),
                 });
                 elements.passwordForm.reset();
-                setMessage(uiText("org_msg_password_changed", "Password changed."), "success");
+                setMessage(uiText("org_msg_password_changed", "Password changed. This session stays active; other sessions were signed out."), "success");
             } catch (error) {
                 setMessage(error.message, "error");
             }
@@ -971,15 +1072,17 @@
             if (!button || button.disabled) return;
             regenerateInvitation(Number(button.dataset.invitationId));
         });
-        elements.logout.addEventListener("click", async () => {
-            try {
-                await window.scheduleAuth.request("/api/auth/logout", { method: "POST" });
-            } catch (error) {
-                // Local session is cleared regardless of server response.
-            }
-            window.scheduleAuth.clearSession();
-            window.location.href = "/login";
-        });
+        if (!elements.logout?.dataset.accessLogoutBound) {
+            elements.logout?.addEventListener("click", async () => {
+                try {
+                    await window.scheduleAuth.request("/api/auth/logout", { method: "POST" });
+                } catch (error) {
+                    // Local session is cleared regardless of server response.
+                }
+                window.scheduleAuth.clearSession();
+                window.location.href = "/login";
+            });
+        }
     }
 
     document.addEventListener("DOMContentLoaded", async () => {
@@ -996,6 +1099,15 @@
             passwordForm: document.getElementById("password-form"),
             currentPassword: document.getElementById("current-password"),
             newPassword: document.getElementById("new-password"),
+            confirmNewPassword: document.getElementById("confirm-new-password"),
+            appearancePanel: document.getElementById("portal-appearance-panel"),
+            appearanceForm: document.getElementById("portal-appearance-form"),
+            portalMorningColor: document.getElementById("portal-morning-color"),
+            portalEveningColor: document.getElementById("portal-evening-color"),
+            portalNightColor: document.getElementById("portal-night-color"),
+            portalStatusColor: document.getElementById("portal-status-color"),
+            portalCardDisplayMode: document.getElementById("portal-card-display-mode"),
+            portalAppearanceReset: document.getElementById("portal-appearance-reset"),
             membersBody: document.getElementById("members-table-body"),
             invitationsBody: document.getElementById("invitations-table-body"),
             inviteForm: document.getElementById("invite-form"),
@@ -1026,13 +1138,14 @@
             cloudLinkTime: document.getElementById("cloud-link-time"),
             cloudLinkStatus: document.getElementById("cloud-link-status"),
             cloudUnlink: document.getElementById("cloud-unlink-btn"),
-            logout: document.getElementById("logout-btn"),
+            logout: document.getElementById("logout-btn") || document.getElementById("global-logout-btn"),
         });
 
         state.user = window.scheduleAuth.requireSession();
         if (!state.user) return;
         bindInviteForm();
         bindProfileForms();
+        bindAppearanceForm();
         bindActions();
         try {
             state.clientConfig = await window.scheduleAuth.request("/api/client-config");
@@ -1042,6 +1155,7 @@
             await refreshCurrentUser();
             renderOrganizationSelector();
             renderIdentity();
+            syncAppearanceForm();
             renderEmployeePortal();
             renderPermissions();
             updateInviteRoleState();

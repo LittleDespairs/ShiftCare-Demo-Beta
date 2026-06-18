@@ -48,15 +48,21 @@
             auth_employee_access: "Employee access",
             auth_join_org: "Join your organization",
             auth_join_text: "Use the invitation link from your administrator to create your own account.",
-            org_title: "Organization",
-            org_subtitle: "Members, roles, and employee invitation links.",
+            org_title: "Personal account",
+            org_subtitle: "Profile, password, personal schedule colors, and account access.",
             org_account: "Account",
-            org_account_text: "Profile details and password.",
+            org_account_text: "Profile details, sign-in email, and password.",
             org_full_name: "Full name",
             org_save_profile: "Save profile",
             org_current_password: "Current password",
             org_new_password: "New password",
+            org_confirm_new_password: "Confirm new password",
+            org_password_hint: "The current session stays active. Other open sessions are signed out after the password changes.",
             org_change_password: "Change password",
+            org_personal_colors: "Personal schedule colors",
+            org_personal_colors_text: "These colors are saved only for your browser and make the schedule easier to scan.",
+            org_save_personal_colors: "Save personal colors",
+            org_reset_personal_colors: "Reset colors",
             org_invite: "Invite member",
             org_invite_text: "Email a one-time invitation link and choose the access role.",
             org_role: "Role",
@@ -125,7 +131,10 @@
             org_msg_saving_profile: "Saving profile...",
             org_msg_profile_saved: "Profile saved.",
             org_msg_changing_password: "Changing password...",
-            org_msg_password_changed: "Password changed.",
+            org_msg_password_confirmation_mismatch: "New password confirmation does not match.",
+            org_msg_password_changed: "Password changed. This session stays active; other sessions were signed out.",
+            org_msg_personal_colors_saved: "Personal schedule colors saved.",
+            org_msg_personal_colors_reset: "Personal colors were reset.",
             org_no_organization: "No organization",
             org_role_owner: "Owner",
             org_role_admin: "Admin",
@@ -210,15 +219,21 @@
             auth_employee_access: "Доступ сотрудника",
             auth_join_org: "Присоединиться к организации",
             auth_join_text: "Используйте ссылку приглашения от администратора, чтобы создать свой аккаунт.",
-            org_title: "Организация",
-            org_subtitle: "Участники, роли и ссылки приглашений сотрудников.",
+            org_title: "Личный кабинет",
+            org_subtitle: "Профиль, пароль, личные цвета расписания и доступ к аккаунту.",
             org_account: "Аккаунт",
-            org_account_text: "Профиль и пароль.",
+            org_account_text: "Данные профиля, email для входа и пароль.",
             org_full_name: "Полное имя",
             org_save_profile: "Сохранить профиль",
             org_current_password: "Текущий пароль",
             org_new_password: "Новый пароль",
+            org_confirm_new_password: "Повторите новый пароль",
+            org_password_hint: "Текущая сессия останется активной. Остальные открытые сессии будут завершены после смены пароля.",
             org_change_password: "Сменить пароль",
+            org_personal_colors: "Личные цвета расписания",
+            org_personal_colors_text: "Эти цвета сохраняются только в вашем браузере и помогают быстрее читать расписание.",
+            org_save_personal_colors: "Сохранить личные цвета",
+            org_reset_personal_colors: "Сбросить цвета",
             org_invite: "Пригласить участника",
             org_invite_text: "Отправьте одноразовую ссылку приглашения по email и выберите роль доступа.",
             org_role: "Роль",
@@ -287,7 +302,10 @@
             org_msg_saving_profile: "Сохранение профиля...",
             org_msg_profile_saved: "Профиль сохранён.",
             org_msg_changing_password: "Смена пароля...",
-            org_msg_password_changed: "Пароль изменён.",
+            org_msg_password_confirmation_mismatch: "Подтверждение нового пароля не совпадает.",
+            org_msg_password_changed: "Пароль изменён. Текущая сессия активна, остальные сессии завершены.",
+            org_msg_personal_colors_saved: "Личные цвета расписания сохранены.",
+            org_msg_personal_colors_reset: "Личные цвета сброшены.",
             org_no_organization: "Нет организации",
             org_role_owner: "Владелец",
             org_role_admin: "Администратор",
@@ -372,15 +390,21 @@
             auth_employee_access: "גישת עובד",
             auth_join_org: "הצטרפות לארגון",
             auth_join_text: "השתמש בקישור ההזמנה מהאדמין כדי ליצור חשבון.",
-            org_title: "ארגון",
-            org_subtitle: "חברים, תפקידים וקישורי הזמנה לעובדים.",
+            org_title: "חשבון אישי",
+            org_subtitle: "פרופיל, סיסמה, צבעי סידור אישיים וגישה לחשבון.",
             org_account: "חשבון",
-            org_account_text: "פרטי פרופיל וסיסמה.",
+            org_account_text: "פרטי פרופיל, אימייל כניסה וסיסמה.",
             org_full_name: "שם מלא",
             org_save_profile: "שמור פרופיל",
             org_current_password: "סיסמה נוכחית",
             org_new_password: "סיסמה חדשה",
+            org_confirm_new_password: "אימות סיסמה חדשה",
+            org_password_hint: "הסשן הנוכחי נשאר פעיל. סשנים פתוחים אחרים ינותקו לאחר שינוי הסיסמה.",
             org_change_password: "שנה סיסמה",
+            org_personal_colors: "צבעי סידור אישיים",
+            org_personal_colors_text: "הצבעים נשמרים רק בדפדפן שלך ועוזרים לקרוא את הסידור מהר יותר.",
+            org_save_personal_colors: "שמור צבעים אישיים",
+            org_reset_personal_colors: "אפס צבעים",
             org_invite: "הזמן חבר",
             org_invite_text: "שלח קישור הזמנה חד-פעמי באימייל ובחר תפקיד גישה.",
             org_role: "תפקיד",
@@ -449,7 +473,10 @@
             org_msg_saving_profile: "שומר פרופיל...",
             org_msg_profile_saved: "הפרופיל נשמר.",
             org_msg_changing_password: "משנה סיסמה...",
-            org_msg_password_changed: "הסיסמה שונתה.",
+            org_msg_password_confirmation_mismatch: "אימות הסיסמה החדשה אינו תואם.",
+            org_msg_password_changed: "הסיסמה שונתה. הסשן הנוכחי נשאר פעיל; סשנים אחרים נותקו.",
+            org_msg_personal_colors_saved: "צבעי הסידור האישיים נשמרו.",
+            org_msg_personal_colors_reset: "הצבעים האישיים אופסו.",
             org_no_organization: "אין ארגון",
             org_role_owner: "בעלים",
             org_role_admin: "אדמין",
@@ -566,7 +593,7 @@
         setText(".auth-kicker", isAcceptInvitation ? "auth_employee_access" : "auth_kicker");
         setText("#organization-title", "org_title");
         setText(".page-subtitle", "org_subtitle");
-        setText("#logout-btn", "common_logout");
+        setText("#logout-btn .session-logout-text, #global-logout-btn .session-logout-text", "common_logout");
         setText(".nav-item[href='/'] .nav-label", "nav_home");
         setText(".nav-item[href='/schedule'] .nav-label", "nav_schedule");
         setText(".nav-item[href='/organization'] .nav-label", "org_title");
@@ -579,7 +606,13 @@
         setText("#profile-form .btn", "org_save_profile");
         setText("#password-form label:nth-of-type(1) span", "org_current_password");
         setText("#password-form label:nth-of-type(2) span", "org_new_password");
+        setText("#password-form label:nth-of-type(3) span", "org_confirm_new_password");
+        setText("#password-form .field-hint", "org_password_hint");
         setText("#password-form .btn", "org_change_password");
+        setText("#portal-appearance-panel .settings-section-title", "org_personal_colors");
+        setText("#portal-appearance-panel .settings-section-text", "org_personal_colors_text");
+        setText("#portal-appearance-form button[type='submit']", "org_save_personal_colors");
+        setText("#portal-appearance-reset", "org_reset_personal_colors");
         setText("#invite-form .settings-section-title", "org_invite");
         setText("#invite-form .settings-section-text", "org_invite_text");
         setText("#invite-form label:nth-of-type(1) span", "org_role");
