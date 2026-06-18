@@ -2302,3 +2302,129 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        body.schedule-board-page.employee-schedule-view .schedule-board-layout,
+        body.schedule-board-page[data-auth-role="employee"] .schedule-board-layout {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        body.schedule-board-page.employee-schedule-view .schedule-generation-mode,
+        body.schedule-board-page[data-auth-role="employee"] .schedule-generation-mode,
+        body.schedule-board-page.employee-schedule-view .schedule-inspector-stack,
+        body.schedule-board-page[data-auth-role="employee"] .schedule-inspector-stack {
+            display: none !important;
+        }
+
+        body.schedule-board-page .schedule-table tbody tr.is-current-employee .employee-column {
+            box-shadow: inset 4px 0 0 var(--primary);
+        }
+
+        body.rtl.schedule-board-page .schedule-table tbody tr.is-current-employee .employee-column {
+            box-shadow: inset -4px 0 0 var(--primary);
+        }
+
+        @media (max-width: 700px) {
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-board-layout {
+                display: block;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-panel .panel-body {
+                padding: 12px;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-stage-top {
+                display: grid;
+                gap: 10px;
+                align-items: start;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-shell {
+                overflow: visible;
+                min-height: 0;
+                border: 0;
+                background: transparent;
+                box-shadow: none;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-floating-header {
+                display: none !important;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table,
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table thead,
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table tbody,
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table tr,
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table th,
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table td {
+                display: block;
+                min-width: 0;
+                width: 100%;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table {
+                border-spacing: 0;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table thead {
+                display: none;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table tbody {
+                display: grid;
+                gap: 10px;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table tbody tr {
+                overflow: hidden;
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                background: #ffffff;
+                box-shadow: none;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table td {
+                border-inline-end: 0;
+                border-bottom: 1px solid #d3dce8;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-table td:last-child {
+                border-bottom: 0;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .employee-column {
+                position: static;
+                z-index: auto;
+                min-width: 0;
+                width: 100%;
+                background: #eef3f7;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .employee-cell,
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-day-inner,
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-day-cell.has-day-status .schedule-day-inner {
+                min-height: 0;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .employee-cell {
+                padding: 12px;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-day-cell {
+                min-width: 0;
+                background: #ffffff;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-day-cell::before {
+                content: attr(data-day-label) " - " attr(data-date-label);
+                display: block;
+                padding: 9px 12px 0;
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 900;
+            }
+
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-day-inner,
+            body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .schedule-day-cell.has-day-status .schedule-day-inner {
+                padding: 8px 10px 10px;
+            }
+        }

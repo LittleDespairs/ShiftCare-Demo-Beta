@@ -62,6 +62,7 @@
            ========================================================= */
         document.addEventListener("DOMContentLoaded", async () => {
             applyHostedWebScheduleMode();
+            applyEmployeeScheduleViewMode();
             setDefaultWeekStart();
             bindPageButtons();
             bindShiftPicker();
@@ -254,6 +255,21 @@
 
         function isEmployeeUser() {
             return getActiveMembership()?.role === "employee";
+        }
+
+        function getCurrentEmployeeId() {
+            const employeeId = getActiveMembership()?.employee_id;
+            const numericEmployeeId = Number(employeeId);
+            return Number.isFinite(numericEmployeeId) && numericEmployeeId > 0 ? numericEmployeeId : null;
+        }
+
+        function isCurrentEmployeeId(employeeId) {
+            const currentEmployeeId = getCurrentEmployeeId();
+            return currentEmployeeId !== null && Number(employeeId) === currentEmployeeId;
+        }
+
+        function applyEmployeeScheduleViewMode() {
+            document.body.classList.toggle("employee-schedule-view", isEmployeeUser());
         }
 
         function getUserScopedStorageKey(prefix) {
@@ -1947,7 +1963,16 @@
 
             return Array.from(employeeMap.values())
                 .filter(employee => assignedEmployeeIds.includes(employee.id))
-                .sort((a, b) => a.full_name.localeCompare(b.full_name));
+                .sort((a, b) => {
+                    if (isEmployeeUser()) {
+                        const aIsCurrent = isCurrentEmployeeId(a.id);
+                        const bIsCurrent = isCurrentEmployeeId(b.id);
+                        if (aIsCurrent !== bIsCurrent) {
+                            return aIsCurrent ? -1 : 1;
+                        }
+                    }
+                    return String(a.full_name || "").localeCompare(String(b.full_name || ""), undefined, { sensitivity: "base" });
+                });
         }
 
         function getRequirementMapForPosition(positionId) {
@@ -2642,7 +2667,7 @@
             }
 
             tbody.innerHTML = filteredEmployees.map(employee => `
-                <tr>
+                <tr class="${isCurrentEmployeeId(employee.id) ? "is-current-employee" : ""}">
                     <td class="employee-column">
                         <div class="employee-cell">
                             <div class="employee-name">${escapeHtml(employee.full_name)}</div>
