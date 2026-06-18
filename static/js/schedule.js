@@ -1251,6 +1251,9 @@
                 "--shift-night-bg": personalAppearance.schedule_night_color || appSettings.schedule_night_color || DEFAULT_PERSONAL_SCHEDULE_COLORS.schedule_night_color,
                 "--shift-status-bg": personalAppearance.schedule_status_color || appSettings.schedule_status_color || DEFAULT_PERSONAL_SCHEDULE_COLORS.schedule_status_color
             };
+            colorMap["--morning"] = colorMap["--shift-morning-bg"];
+            colorMap["--evening"] = colorMap["--shift-evening-bg"];
+            colorMap["--night"] = colorMap["--shift-night-bg"];
 
             Object.entries(colorMap).forEach(([property, value]) => {
                 panel.style.setProperty(property, value);

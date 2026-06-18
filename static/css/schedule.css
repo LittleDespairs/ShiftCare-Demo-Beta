@@ -1485,9 +1485,9 @@
 
         /* ShiftCare operations schedule visual layer */
         body.app-shell .schedule-panel {
-            --shift-morning-bg: var(--morning);
-            --shift-evening-bg: var(--evening);
-            --shift-night-bg: var(--night);
+            --shift-morning-bg: var(--morning, #dff3ef);
+            --shift-evening-bg: var(--evening, #f7e3c4);
+            --shift-night-bg: var(--night, #dfe7f8);
             --shift-status-bg: var(--panel-soft);
             border-color: var(--border-strong);
             border-radius: 6px;
@@ -1535,22 +1535,22 @@
         }
 
         body.app-shell .legend-chip.morning::before {
-            background: var(--morning);
+            background: var(--shift-morning-bg);
             border-color: var(--primary);
         }
 
         body.app-shell .legend-chip.evening::before {
-            background: var(--evening);
+            background: var(--shift-evening-bg);
             border-color: var(--warning);
         }
 
         body.app-shell .legend-chip.night::before {
-            background: var(--night);
+            background: var(--shift-night-bg);
             border-color: var(--muted-strong);
         }
 
         body.app-shell .legend-chip.status::before {
-            background: var(--panel-soft);
+            background: var(--shift-status-bg);
             border-color: var(--border-strong);
         }
 
@@ -1695,22 +1695,22 @@
 
         body.app-shell .entry-card.morning {
             --entry-accent: var(--primary);
-            border-color: #add6cf;
-            background: var(--morning);
+            border-color: color-mix(in srgb, var(--shift-morning-bg) 62%, var(--primary));
+            background: var(--shift-morning-bg);
             color: #104d48;
         }
 
         body.app-shell .entry-card.evening {
             --entry-accent: var(--warning);
-            border-color: #e5cda3;
-            background: var(--evening);
+            border-color: color-mix(in srgb, var(--shift-evening-bg) 62%, var(--warning));
+            background: var(--shift-evening-bg);
             color: #70460b;
         }
 
         body.app-shell .entry-card.night {
             --entry-accent: #475569;
-            border-color: #c1cbe0;
-            background: var(--night);
+            border-color: color-mix(in srgb, var(--shift-night-bg) 62%, #475569);
+            background: var(--shift-night-bg);
             color: #263247;
         }
 
@@ -1720,7 +1720,7 @@
 
         body.app-shell .entry-card.status {
             border-color: var(--border);
-            background: var(--panel-soft);
+            background: var(--shift-status-bg);
         }
 
         body.app-shell .entry-title {
