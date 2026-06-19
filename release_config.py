@@ -1,0 +1,1 @@
+WINDOWS_SIGNER_SUBJECT = "ShiftCare"

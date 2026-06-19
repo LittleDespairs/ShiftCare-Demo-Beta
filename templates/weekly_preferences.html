@@ -972,11 +972,21 @@
         }
 
         function formatDate(dateObject) {
-            return dateObject.toISOString().split("T")[0];
+            const year = dateObject.getFullYear();
+            const month = String(dateObject.getMonth() + 1).padStart(2, "0");
+            const day = String(dateObject.getDate()).padStart(2, "0");
+            return `${year}-${month}-${day}`;
+        }
+
+        function parseDate(value) {
+            const parts = String(value || "").split("-").map(Number);
+            if (parts.length !== 3 || parts.some(part => !Number.isFinite(part))) return null;
+            return new Date(parts[0], parts[1] - 1, parts[2]);
         }
 
         function buildWeek(startDate) {
-            const base = new Date(startDate);
+            const base = parseDate(startDate);
+            if (!base) return [];
             const dates = [];
 
             for (let i = 0; i < 7; i++) {

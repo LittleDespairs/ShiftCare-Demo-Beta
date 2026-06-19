@@ -231,6 +231,124 @@
             white-space: nowrap;
         }
 
+        .recurring-preference-control {
+            width: 100%;
+            min-height: 42px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            padding: 8px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .recurring-request-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .recurring-request-empty {
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .recurring-request-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 28px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: #f8fafc;
+            color: var(--text);
+            padding: 4px 5px 4px 9px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .recurring-request-chip.request {
+            background: #ecfeff;
+            color: #134e4a;
+            border-color: #99f6e4;
+        }
+
+        .recurring-request-chip.exclude {
+            background: #fff7ed;
+            color: #9a3412;
+            border-color: #fed7aa;
+            border-style: dashed;
+        }
+
+        .recurring-request-chip.block {
+            background: var(--shift-status-bg);
+            color: #5b21b6;
+            border-color: #c4b5fd;
+        }
+
+        .recurring-request-chip.combo {
+            background: #f8fafc;
+            color: #334155;
+            border-color: #cbd5e1;
+        }
+
+        .recurring-request-chip.morning {
+            background: var(--shift-morning-bg);
+            border-color: color-mix(in srgb, var(--shift-morning-bg) 58%, #0f766e);
+            color: #134e4a;
+        }
+
+        .recurring-request-chip.evening {
+            background: var(--shift-evening-bg);
+            border-color: color-mix(in srgb, var(--shift-evening-bg) 58%, #c2410c);
+            color: #9a3412;
+        }
+
+        .recurring-request-chip.night {
+            background: var(--shift-night-bg);
+            border-color: color-mix(in srgb, var(--shift-night-bg) 58%, #4338ca);
+            color: #312e81;
+        }
+
+        .recurring-request-remove {
+            width: 20px;
+            height: 20px;
+            border: none;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.78);
+            color: inherit;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+        .recurring-request-remove:hover {
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        .recurring-add-request {
+            justify-self: start;
+            min-height: 30px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+            padding: 5px 9px;
+            font-size: 0.78rem;
+            font-weight: 850;
+        }
+
+        .recurring-add-request:hover {
+            border-color: var(--primary);
+            background: var(--primary-soft);
+            color: var(--primary-hover);
+        }
+
         .recurring-request-modal {
             width: min(560px, 100%);
         }
@@ -1052,7 +1170,7 @@
                                     <span class="recurring-choice-title" data-i18n="preferences_exclude_shift">Exclude shift</span>
                                     <span class="recurring-choice-hint" data-i18n="preferences_exclude_shift_hint">Do not assign one specific shift.</span>
                                 </button>
-                                <button class="recurring-choice-card" type="button" data-recurring-request-type="off_day" role="radio" aria-checked="false">
+                                <button class="recurring-choice-card" type="button" data-recurring-request-type="day_off" role="radio" aria-checked="false">
                                     <span class="recurring-choice-title" data-i18n="preference_off_day">Day off</span>
                                     <span class="recurring-choice-hint" data-i18n="preferences_day_off_hint">Block work for this day.</span>
                                 </button>
@@ -1249,7 +1367,7 @@
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
 <script src="/static/js/access_control.js?v={{ app_version }}-employee-portal-polish"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
-<script src="/static/js/employees.js?v={{ app_version }}-employee-position-filter"></script>
+<script src="/static/js/employees.js?v={{ app_version }}-recurring-multi-request"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

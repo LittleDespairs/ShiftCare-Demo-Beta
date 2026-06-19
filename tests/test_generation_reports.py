@@ -1252,13 +1252,18 @@ class GenerationReportTests(unittest.TestCase):
             VALUES (1, 1, 1, 100, 0)
             """
         )
-        cursor.execute(
+        cursor.executemany(
             """
             INSERT INTO employee_recurring_preferences (
-                employee_id, preference_kind, day_of_week, preference_type
+                employee_id, preference_kind, day_of_week, preference_type, request_type, target_category
             )
-            VALUES (1, 'strict', 0, 'only_night')
-            """
+            VALUES (1, 'strict', 0, ?, ?, ?)
+            """,
+            [
+                ("only_night", "request_shift", "night"),
+                ("not_morning", "exclude_shift", "morning"),
+                ("not_evening", "exclude_shift", "evening"),
+            ],
         )
         employee = {
             "id": 1,
@@ -1424,6 +1429,77 @@ class GenerationReportTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(reports, [])
 
+    def test_permanent_strict_shift_request_prioritizes_requested_category(self):
+        cursor = self.connection.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (?, ?, 'male', 0, 4, 6, 1, 1, 1, 1)
+            """,
+            [(1, "Employee A"), (2, "Requested Night")],
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.executemany(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (?, 1, 1, 100, 0)
+            """,
+            [(1,), (2,)],
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (
+                id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only
+            )
+            VALUES (1, 1, 'Night', 'night', '23:00', '07:00', 1, 1, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO employee_recurring_preferences (
+                employee_id, preference_kind, day_of_week, preference_type, request_type, target_category
+            )
+            VALUES (2, 'strict', 0, 'only_night', 'request_shift', 'night')
+            """
+        )
+        self.connection.commit()
+
+        employees = main.load_position_employees(self.connection, 1)
+        templates = main.load_active_templates(self.connection, 1)
+        created_entries = []
+        errors = []
+        reports = []
+
+        main.fill_day_by_legacy_categories(
+            self.connection,
+            cursor,
+            employees,
+            templates,
+            [{"shift_category": "night", "required_total": 1, "required_female_min": 0, "required_male_min": 0}],
+            1,
+            WEEK_START_DATE,
+            WEEK_DATES[0],
+            created_entries,
+            errors,
+            reports,
+        )
+
+        cursor.execute("SELECT employee_id FROM schedule_entries")
+        self.assertEqual(cursor.fetchone()["employee_id"], 2)
+        self.assertEqual(errors, [])
+        self.assertEqual(reports, [])
+
     def test_generation_mode_changes_legacy_candidate_priority(self):
         cursor = self.connection.cursor()
         cursor.executemany(
@@ -1561,6 +1637,207 @@ class GenerationReportTests(unittest.TestCase):
         cursor.execute("SELECT employee_id FROM schedule_entries")
         self.assertEqual(cursor.fetchone()["employee_id"], 2)
 
+
+    def test_primary_assignment_beats_workload_balance_when_candidate_is_eligible(self):
+        cursor = self.connection.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (?, ?, 'female', 0, 7, 7, 1, 1, 1, 1)
+            """,
+            [(1, "Primary Employee"), (2, "Secondary Employee")],
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.executemany(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (?, 1, ?, 50, 0)
+            """,
+            [(1, 1), (2, 0)],
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (
+                id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only
+            )
+            VALUES (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
+            """
+        )
+        cursor.executemany(
+            """
+            INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
+            VALUES (?, 1, ?, 1)
+            """,
+            [(1, WEEK_DATES[0]), (2, WEEK_DATES[0])],
+        )
+        self.connection.commit()
+
+        employees = main.load_position_employees(self.connection, 1)
+        templates = main.load_active_templates(self.connection, 1)
+        created_entries = []
+
+        main.fill_day_by_legacy_categories(
+            self.connection,
+            cursor,
+            employees,
+            templates,
+            [{"shift_category": "morning", "required_total": 1, "required_female_min": 0, "required_male_min": 0}],
+            1,
+            WEEK_START_DATE,
+            WEEK_DATES[1],
+            created_entries,
+            [],
+            [],
+        )
+
+        cursor.execute("SELECT employee_id FROM schedule_entries WHERE date = ?", (WEEK_DATES[1],))
+        self.assertEqual(cursor.fetchone()["employee_id"], 1)
+
+    def test_numeric_assignment_priority_beats_workload_balance_when_candidate_is_eligible(self):
+        cursor = self.connection.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (?, ?, 'female', 0, 7, 7, 1, 1, 1, 1)
+            """,
+            [(1, "High Priority"), (2, "Low Priority")],
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.executemany(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (?, 1, 0, ?, 0)
+            """,
+            [(1, 100), (2, 10)],
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (
+                id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only
+            )
+            VALUES (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
+            """
+        )
+        cursor.executemany(
+            """
+            INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
+            VALUES (?, 1, ?, 1)
+            """,
+            [(1, WEEK_DATES[0]), (2, WEEK_DATES[0])],
+        )
+        self.connection.commit()
+
+        employees = main.load_position_employees(self.connection, 1)
+        templates = main.load_active_templates(self.connection, 1)
+        created_entries = []
+
+        main.fill_day_by_legacy_categories(
+            self.connection,
+            cursor,
+            employees,
+            templates,
+            [{"shift_category": "morning", "required_total": 1, "required_female_min": 0, "required_male_min": 0}],
+            1,
+            WEEK_START_DATE,
+            WEEK_DATES[1],
+            created_entries,
+            [],
+            [],
+        )
+
+        cursor.execute("SELECT employee_id FROM schedule_entries WHERE date = ?", (WEEK_DATES[1],))
+        self.assertEqual(cursor.fetchone()["employee_id"], 1)
+
+    def test_employee_below_minimum_beats_higher_assignment_priority(self):
+        cursor = self.connection.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO employees (
+                id,
+                full_name,
+                sex,
+                min_shifts_per_week,
+                target_shifts_per_week,
+                max_shifts_per_week,
+                can_work_night,
+                can_work_weekends,
+                can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            )
+            VALUES (?, ?, 'female', ?, ?, 7, 1, 1, 1, 1)
+            """,
+            [
+                (1, "High Priority At Target", 0, 1),
+                (2, "Lower Priority Below Minimum", 3, 3),
+            ],
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.executemany(
+            """
+            INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+            VALUES (?, 1, 1, ?, 0)
+            """,
+            [(1, 100), (2, 50)],
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (
+                id, position_id, name, category, start_time, end_time, is_overnight, is_active, is_split_only
+            )
+            VALUES (1, 1, 'Morning', 'morning', '06:00', '14:00', 0, 1, 0)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO schedule_entries (employee_id, position_id, date, shift_template_id)
+            VALUES (1, 1, ?, 1)
+            """,
+            (WEEK_DATES[0],),
+        )
+        self.connection.commit()
+
+        employees = main.load_position_employees(self.connection, 1)
+        templates = main.load_active_templates(self.connection, 1)
+        created_entries = []
+
+        main.fill_day_by_legacy_categories(
+            self.connection,
+            cursor,
+            employees,
+            templates,
+            [{"shift_category": "morning", "required_total": 1, "required_female_min": 0, "required_male_min": 0}],
+            1,
+            WEEK_START_DATE,
+            WEEK_DATES[1],
+            created_entries,
+            [],
+            [],
+        )
+
+        cursor.execute("SELECT employee_id FROM schedule_entries WHERE date = ?", (WEEK_DATES[1],))
+        self.assertEqual(cursor.fetchone()["employee_id"], 2)
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -13,6 +14,8 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException
 
+import release_config
+
 
 GITHUB_REPO_OWNER = "LittleDespairs"
 GITHUB_REPO_NAME = "Schedule_app_releases"
@@ -20,6 +23,8 @@ GITHUB_DEMO_REPO_NAME = "ShiftCare-Demo-Beta"
 GITHUB_RELEASE_ASSET_PATTERN = re.compile(
     r"^(?:ScheduleApp|ShiftCare|ShiftCare_Demo)_Setup_(?P<version>\d+\.\d+\.\d+(?:[-_][A-Za-z0-9.]+)?)\.exe$"
 )
+DEFAULT_WINDOWS_SIGNER_SUBJECT = release_config.WINDOWS_SIGNER_SUBJECT
+SIGNATURE_CHECK_TIMEOUT_SECONDS = 15
 
 
 def normalize_version(value: str) -> str:
@@ -147,6 +152,67 @@ def download_update_installer(download_url: str, asset_name: str, app_version: s
         raise HTTPException(status_code=502, detail=f"Could not download update: {exc}") from exc
 
     return target_path
+
+
+def expected_windows_signer_subject() -> str:
+    return os.environ.get("SHIFTCARE_WINDOWS_SIGNER_SUBJECT", DEFAULT_WINDOWS_SIGNER_SUBJECT).strip()
+
+
+def verify_windows_installer_signature(installer_path: Path) -> dict:
+    if not installer_path.is_file():
+        raise HTTPException(status_code=404, detail="Update installer was not downloaded")
+
+    if os.name != "nt":
+        return {"skipped": True, "reason": "non-windows"}
+
+    script = """
+$signature = Get-AuthenticodeSignature -LiteralPath $args[0]
+[pscustomobject]@{
+    Status = [string]$signature.Status
+    StatusMessage = [string]$signature.StatusMessage
+    Subject = if ($signature.SignerCertificate) { [string]$signature.SignerCertificate.Subject } else { "" }
+    Thumbprint = if ($signature.SignerCertificate) { [string]$signature.SignerCertificate.Thumbprint } else { "" }
+} | ConvertTo-Json -Compress
+"""
+    try:
+        completed = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+                str(installer_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=SIGNATURE_CHECK_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(status_code=502, detail=f"Could not verify update installer signature: {exc}") from exc
+
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "Unknown signature verification error").strip()
+        raise HTTPException(status_code=400, detail=f"Could not verify update installer signature: {detail}")
+
+    try:
+        signature = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Windows signature verification returned invalid output") from exc
+
+    status = str(signature.get("Status") or "")
+    if status != "Valid":
+        status_message = str(signature.get("StatusMessage") or status or "Unknown")
+        raise HTTPException(status_code=400, detail=f"Update installer signature is not valid: {status_message}")
+
+    subject = str(signature.get("Subject") or "")
+    expected_subject = expected_windows_signer_subject()
+    if expected_subject and expected_subject.lower() not in subject.lower():
+        raise HTTPException(status_code=400, detail="Update installer is signed by an unexpected publisher")
+
+    return signature
 
 
 def schedule_desktop_shutdown(delay_seconds: float = 2.0) -> None:

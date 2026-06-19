@@ -2,6 +2,27 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.20.4_beta - 2026-06-19
+
+## Release Focus
+
+Improve schedule generation fidelity and make manual schedule corrections safer for production use.
+
+## Changed
+
+- Improved position assignment priority handling so primary and higher-priority employees are favored more consistently during generation.
+- Added multi-request permanent strict and soft preferences in employee cards, matching the weekly preferences workflow.
+- Added manual shift time overrides on the schedule page and included those overrides in coverage calculations.
+- Preserved manually pre-filled shifts during generation and counted them toward coverage instead of replacing them.
+- Stopped single-position generation from filling unrelated empty days with day-off statuses.
+- Prevented hidden cloud preference pulls from replacing local preferences immediately before generation, and kept pulled cloud preference rows out of the local sync outbox.
+- Updated runtime, service worker cache keys, Android metadata, PyInstaller specs, installer metadata, build docs, and release notes to `0.20.4_beta`.
+
+## Verification
+
+- Automated regression tests passed locally.
+- Added regression coverage for manual time overrides, preserved manual shifts, multi-request recurring preferences, strict preference generation, and cloud preference sync safety.
+
 # 0.20.3_beta - 2026-06-18
 
 ## Release Focus

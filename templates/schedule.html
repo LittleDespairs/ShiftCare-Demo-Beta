@@ -14,8 +14,8 @@
         Main shared stylesheet / Основной общий CSS-файл
         Он уже используется новой главной страницей
     -->
-    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-employee-portal-polish">
-    <link rel="stylesheet" href="/static/css/schedule.css?v={{ app_version }}-employee-schedule-personal-colors">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-schedule-sync-manual-time">
+    <link rel="stylesheet" href="/static/css/schedule.css?v={{ app_version }}-schedule-sync-manual-time">
 </head>
 
 <body class="app-shell schedule-board-page ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}" data-employee-portal-mode="{{ '1' if cloud_employee_portal_mode() else '0' }}">
@@ -421,6 +421,46 @@
                     <div id="status-picker-body" class="shift-picker-body"></div>
                 </div>
             </div>
+
+            <div id="time-override-overlay" class="shift-picker-overlay" aria-hidden="true">
+                <div class="shift-picker-modal schedule-time-modal" role="dialog" aria-modal="true" aria-labelledby="time-override-title">
+                    <div class="shift-picker-header">
+                        <div>
+                            <h3 id="time-override-title" class="shift-picker-title" data-i18n="schedule_edit_shift_time">
+                                Edit time
+                            </h3>
+                            <div id="time-override-context" class="shift-picker-context"></div>
+                            <div id="time-override-template-context" class="shift-picker-context"></div>
+                        </div>
+                        <button id="time-override-close" class="shift-picker-close" type="button" aria-label="Close">
+                            ×
+                        </button>
+                    </div>
+                    <form id="time-override-form" class="schedule-time-form">
+                        <div class="schedule-time-fields">
+                            <label class="schedule-time-field">
+                                <span data-i18n="common_start_time">Start time</span>
+                                <input id="time-override-start" class="input" type="time" required>
+                            </label>
+                            <label class="schedule-time-field">
+                                <span data-i18n="common_end_time">End time</span>
+                                <input id="time-override-end" class="input" type="time" required>
+                            </label>
+                        </div>
+                        <div class="schedule-time-actions">
+                            <button id="time-override-reset" class="btn btn-soft" type="button" data-i18n="schedule_reset_template_time">
+                                Reset to template
+                            </button>
+                            <button id="time-override-cancel" class="btn btn-secondary" type="button" data-i18n="common_cancel">
+                                Cancel
+                            </button>
+                            <button id="time-override-save" class="btn btn-primary" type="submit" data-i18n="common_save">
+                                Save
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
             <footer class="app-footer">
                 <div class="footer-left" data-i18n="footer_version">
                     {{ app_name }} v{{ app_version }}
@@ -439,11 +479,11 @@
         It controls language switching and RTL/LTR direction.
         Он управляет языком и направлением интерфейса RTL/LTR.
     -->
-<script src="/static/js/i18n.js?v={{ app_version }}-employee-portal-polish"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-schedule-sync-manual-time"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
 <script src="/static/js/access_control.js?v={{ app_version }}-employee-portal-polish"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
-    <script src="/static/js/schedule.js?v={{ app_version }}-employee-schedule-personal-colors"></script>
+    <script src="/static/js/schedule.js?v={{ app_version }}-schedule-sync-manual-time"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

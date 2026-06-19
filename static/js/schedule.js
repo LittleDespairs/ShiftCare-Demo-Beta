@@ -35,6 +35,7 @@
         let weekDates = [];
         let pendingShiftTarget = null;
         let pendingStatusTarget = null;
+        let pendingTimeOverrideEntry = null;
         let lastGenerationSummary = null;
         let selectedGenerationMode = "balanced";
         let scheduleDataLoaded = false;
@@ -74,6 +75,7 @@
             bindPageButtons();
             bindShiftPicker();
             bindStatusPicker();
+            bindTimeOverridePicker();
             bindSidebarToggle();
             bindScheduleActionModals();
             bindScheduleFloatingHeader();
@@ -180,7 +182,8 @@
         function t(key, fallback = "") {
             // Safe translation helper / Безопасный помощник перевода
             if (typeof translate === "function") {
-                return translate(key);
+                const translated = translate(key);
+                return translated === key && fallback ? fallback : translated;
             }
             return fallback || key;
         }
@@ -203,13 +206,23 @@
 
         function formatDate(dateObject) {
             // Format JS Date to YYYY-MM-DD / Форматируем дату в YYYY-MM-DD
-            return dateObject.toISOString().split("T")[0];
+            const year = dateObject.getFullYear();
+            const month = String(dateObject.getMonth() + 1).padStart(2, "0");
+            const day = String(dateObject.getDate()).padStart(2, "0");
+            return `${year}-${month}-${day}`;
+        }
+
+        function parseDate(value) {
+            const parts = String(value || "").split("-").map(Number);
+            if (parts.length !== 3 || parts.some(part => !Number.isFinite(part))) return null;
+            return new Date(parts[0], parts[1] - 1, parts[2]);
         }
 
         function buildWeekDates(weekStart) {
             // Build 7 dates starting from selected week start
             // Строим 7 дат, начиная с выбранного начала недели
-            const base = new Date(weekStart);
+            const base = parseDate(weekStart);
+            if (!base) return [];
             const dates = [];
 
             for (let i = 0; i < 7; i++) {
@@ -451,7 +464,8 @@
         }
 
         function formatBoardDate(value, options = {}) {
-            const date = new Date(`${value}T00:00:00`);
+            const date = parseDate(value);
+            if (!date) return value || "";
             return new Intl.DateTimeFormat(getScheduleLocale(), {
                 day: "2-digit",
                 month: "short",
@@ -2435,16 +2449,32 @@
             return position ? position.name : String(positionId);
         }
 
+        function formatEntryTimeLabel(entry) {
+            return `${entry.start_time} - ${entry.end_time}`;
+        }
+
+        function normalizeTimeLikeText(value) {
+            return String(value || "")
+                .toLowerCase()
+                .replace(/\s+/g, "")
+                .replace(/:00(?=\D|$)/g, "");
+        }
+
         function renderEntryCard(entry, options = {}) {
-            const extraClasses = options.muted ? " is-muted-foreign" : "";
+            const extraClasses = `${options.muted ? " is-muted-foreign" : ""}${entry.time_overridden ? " is-time-overridden" : ""}`;
+            const timeLabel = formatEntryTimeLabel(entry);
+            const templateRepeatsTime = normalizeTimeLikeText(entry.shift_template_name) === normalizeTimeLikeText(timeLabel);
+            const templateMeta = templateRepeatsTime
+                ? ""
+                : `${escapeHtml(entry.shift_template_name)} · `;
             const positionMeta = options.showPosition
                 ? ` · ${escapeHtml(getPositionName(entry.position_id))}`
                 : "";
             return `
                 <div class="${getCardClassByShiftCategory(entry.shift_category)} ${entry.no_show ? "has-no-show" : ""}${extraClasses}">
-                    <div class="entry-title">${escapeHtml(entry.shift_template_name)}</div>
+                    <div class="entry-title">${escapeHtml(timeLabel)}</div>
                     <div class="entry-meta">
-                        ${escapeHtml(getShiftCategoryLabel(entry.shift_category))} · ${escapeHtml(entry.start_time)} - ${escapeHtml(entry.end_time)}${positionMeta}
+                        ${templateMeta}${escapeHtml(getShiftCategoryLabel(entry.shift_category))}${positionMeta}
                     </div>
                     ${entry.no_show ? `
                         <div class="entry-no-show-label">${t("status_no_show", "No-show")}</div>
@@ -2460,6 +2490,15 @@
                         ` : ""}
                     ` : ""}
                     ${options.showActions ? `
+                        <button
+                            class="entry-time-btn edit-shift-time-btn"
+                            data-entry-id="${entry.id}"
+                            type="button"
+                            title="${t("schedule_edit_shift_time", "Edit time")}"
+                            aria-label="${t("schedule_edit_shift_time", "Edit time")}"
+                        >
+                            ${t("schedule_time_btn", "Time")}
+                        </button>
                         <button
                             class="entry-delete delete-shift-btn"
                             data-entry-id="${entry.id}"
@@ -2764,6 +2803,13 @@
                 });
             });
 
+            document.querySelectorAll(".edit-shift-time-btn").forEach(button => {
+                button.addEventListener("click", () => {
+                    const entryId = Number(button.dataset.entryId);
+                    openTimeOverridePicker(entryId);
+                });
+            });
+
             document.querySelectorAll(".delete-day-status-btn").forEach(button => {
                 button.addEventListener("click", async () => {
                     const employeeId = Number(button.dataset.employeeId);
@@ -2818,6 +2864,58 @@
             document.addEventListener("keydown", event => {
                 if (event.key === "Escape" && pendingStatusTarget) {
                     closeStatusPicker();
+                }
+            });
+        }
+
+        function bindTimeOverridePicker() {
+            const overlay = document.getElementById("time-override-overlay");
+            if (!overlay) return;
+
+            const closeButton = document.getElementById("time-override-close");
+            const cancelButton = document.getElementById("time-override-cancel");
+            const resetButton = document.getElementById("time-override-reset");
+            const form = document.getElementById("time-override-form");
+
+            closeButton?.addEventListener("click", closeTimeOverridePicker);
+            cancelButton?.addEventListener("click", closeTimeOverridePicker);
+            overlay.addEventListener("click", event => {
+                if (event.target === overlay) {
+                    closeTimeOverridePicker();
+                }
+            });
+
+            document.addEventListener("keydown", event => {
+                if (event.key === "Escape" && pendingTimeOverrideEntry) {
+                    closeTimeOverridePicker();
+                }
+            });
+
+            form?.addEventListener("submit", async event => {
+                event.preventDefault();
+                if (!pendingTimeOverrideEntry) return;
+                const startInput = document.getElementById("time-override-start");
+                const endInput = document.getElementById("time-override-end");
+                const submitButton = document.getElementById("time-override-save");
+                const payload = {
+                    start_time: startInput.value,
+                    end_time: endInput.value
+                };
+                submitButton.disabled = true;
+                const saved = await updateScheduleEntryTime(pendingTimeOverrideEntry.id, payload);
+                submitButton.disabled = false;
+                if (saved) {
+                    closeTimeOverridePicker();
+                }
+            });
+
+            resetButton?.addEventListener("click", async () => {
+                if (!pendingTimeOverrideEntry) return;
+                resetButton.disabled = true;
+                const saved = await updateScheduleEntryTime(pendingTimeOverrideEntry.id, { reset: true });
+                resetButton.disabled = false;
+                if (saved) {
+                    closeTimeOverridePicker();
                 }
             });
         }
@@ -2964,6 +3062,39 @@
             });
         }
 
+        function openTimeOverridePicker(entryId) {
+            if (!canEditSchedule()) return;
+            const entry = allScheduleEntries.find(item => item.id === entryId);
+            if (!entry) return;
+            pendingTimeOverrideEntry = entry;
+
+            const employee = allEmployees.find(item => item.id === entry.employee_id);
+            const overlay = document.getElementById("time-override-overlay");
+            const context = document.getElementById("time-override-context");
+            const templateContext = document.getElementById("time-override-template-context");
+            const startInput = document.getElementById("time-override-start");
+            const endInput = document.getElementById("time-override-end");
+            const resetButton = document.getElementById("time-override-reset");
+
+            context.textContent = `${employee ? employee.full_name : entry.employee_name || ""} · ${entry.date}`;
+            templateContext.textContent = `${entry.shift_template_name} · ${entry.template_start_time || entry.start_time} - ${entry.template_end_time || entry.end_time}`;
+            startInput.value = entry.start_time || entry.template_start_time || "";
+            endInput.value = entry.end_time || entry.template_end_time || "";
+            resetButton.hidden = !entry.time_overridden;
+            resetButton.disabled = false;
+
+            overlay.classList.add("is-open");
+            overlay.setAttribute("aria-hidden", "false");
+            startInput.focus();
+        }
+
+        function closeTimeOverridePicker() {
+            const overlay = document.getElementById("time-override-overlay");
+            overlay.classList.remove("is-open");
+            overlay.setAttribute("aria-hidden", "true");
+            pendingTimeOverrideEntry = null;
+        }
+
         /* =========================================================
            CRUD: SCHEDULE / CRUD: РАСПИСАНИЕ
            ========================================================= */
@@ -3042,6 +3173,32 @@
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_save_shift_status", "Server error while saving shift status."), "danger");
+            }
+        }
+
+        async function updateScheduleEntryTime(entryId, payload) {
+            if (!canEditSchedule()) return false;
+            try {
+                const response = await fetch(`/api/schedule/${entryId}/time`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("msg_failed_save_shift_time", "Failed to save shift time."), "danger");
+                    return false;
+                }
+
+                await refreshScheduleEntriesOnly();
+                return true;
+            } catch (error) {
+                console.error(error);
+                showMessage(t("msg_server_error_save_shift_time", "Server error while saving shift time."), "danger");
+                return false;
             }
         }
 

@@ -11,6 +11,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -107,6 +108,7 @@ from schemas import (
     PositionCreate,
     ScheduleEntryCreate,
     ScheduleEntryStatusUpdate,
+    ScheduleEntryTimeUpdate,
     ShiftRequirementCreate,
     ShiftTemplateCreate,
     UpdateInstallRequest,
@@ -119,13 +121,14 @@ from update_service import (
     normalize_version,
     release_asset_version,
     schedule_desktop_shutdown,
+    verify_windows_installer_signature,
     version_sort_key,
 )
 import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.20.3_beta"
+APP_VERSION = "0.20.4_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -159,6 +162,8 @@ PERSISTED_RECURRING_PREFERENCE_TYPES = tuple(value for value in WEEKLY_PREFERENC
 SOFT_PREFERENCE_PENALTY = 350
 SOFT_DAY_OFF_PENALTY = 1200
 SOFT_COMBO_PENALTY = 500
+STRICT_REQUEST_MATCH_BONUS = 950
+STRICT_REQUEST_MISMATCH_PENALTY = 450
 GENERATION_MODE_BALANCED = "balanced"
 GENERATION_MODE_COVERAGE = "coverage"
 GENERATION_MODE_REQUESTS = "requests"
@@ -2292,26 +2297,33 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
         new_employee_id = employee_id_map.get(int(row["employee_id"]))
         if not new_employee_id:
             continue
-        cursor.execute(
-            """
-            INSERT INTO employee_recurring_preferences (
-                organization_id, public_id, employee_id, preference_kind, day_of_week,
-                preference_type, created_at, updated_at, updated_by
+        for request_index, normalized_request in enumerate(normalize_preference_request(
+            row.get("preference_type"),
+            row.get("request_type"),
+            row.get("target_category"),
+        )):
+            cursor.execute(
+                """
+                INSERT INTO employee_recurring_preferences (
+                    organization_id, public_id, employee_id, preference_kind, day_of_week,
+                    preference_type, request_type, target_category, created_at, updated_at, updated_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    organization_id,
+                    row.get("public_id") if request_index == 0 else None,
+                    new_employee_id,
+                    row.get("preference_kind"),
+                    int(row.get("day_of_week") or 0),
+                    normalized_request["preference_type"],
+                    normalized_request["request_type"],
+                    normalized_request["target_category"],
+                    row.get("created_at") or now,
+                    row.get("updated_at") or now,
+                    row.get("updated_by"),
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                organization_id,
-                row.get("public_id"),
-                new_employee_id,
-                row.get("preference_kind"),
-                int(row.get("day_of_week") or 0),
-                row.get("preference_type"),
-                row.get("created_at") or now,
-                row.get("updated_at") or now,
-                row.get("updated_by"),
-            ),
-        )
 
     for row in records.get("employee_day_statuses") or []:
         new_employee_id = employee_id_map.get(int(row["employee_id"]))
@@ -2346,9 +2358,10 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
             """
             INSERT INTO schedule_entries (
                 organization_id, public_id, employee_id, position_id, date, shift_template_id,
-                no_show, created_at, updated_at, updated_by
+                no_show, start_time_override, end_time_override, is_overnight_override,
+                created_at, updated_at, updated_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 organization_id,
@@ -2358,6 +2371,9 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
                 row.get("date"),
                 new_template_id,
                 int(row.get("no_show") or 0),
+                row.get("start_time_override"),
+                row.get("end_time_override"),
+                int(row["is_overnight_override"]) if row.get("is_overnight_override") is not None else None,
                 row.get("created_at") or now,
                 row.get("updated_at") or now,
                 row.get("updated_by"),
@@ -2483,15 +2499,31 @@ def get_employee_entries_for_date(connection, employee_id: int, date_string: str
     cursor = connection.cursor()
     cursor.execute(
         """
-        SELECT se.*, st.category, st.start_time, st.end_time, st.is_overnight, st.is_split_only
+        SELECT
+            se.*,
+            st.category,
+            COALESCE(se.start_time_override, st.start_time) AS start_time,
+            COALESCE(se.end_time_override, st.end_time) AS end_time,
+            COALESCE(se.is_overnight_override, st.is_overnight) AS is_overnight,
+            st.start_time AS template_start_time,
+            st.end_time AS template_end_time,
+            st.is_overnight AS template_is_overnight,
+            st.is_split_only
         FROM schedule_entries se
         JOIN shift_templates st ON st.id = se.shift_template_id
         WHERE se.employee_id = ? AND se.date = ? AND se.no_show = 0
-        ORDER BY st.start_time
+        ORDER BY COALESCE(se.start_time_override, st.start_time)
         """,
         (employee_id, date_string),
     )
-    return [dict(row) for row in cursor.fetchall()]
+    entries = [dict(row) for row in cursor.fetchall()]
+    for entry in entries:
+        entry["is_overnight"] = bool(entry["is_overnight"])
+        entry["template_is_overnight"] = bool(entry["template_is_overnight"])
+        entry["is_split_only"] = bool(entry["is_split_only"])
+        if entry.get("is_overnight_override") is not None:
+            entry["is_overnight_override"] = bool(entry["is_overnight_override"])
+    return entries
 
 
 def employee_has_night_on_date(connection, employee_id: int, date_string: str) -> bool:
@@ -2685,38 +2717,45 @@ def interval_generation_sort_key(
     projected_night_count: int,
     projected_split_count: int,
     projected_balance: int,
+    assignment_priority: tuple,
     priority: tuple,
 ):
     mode = normalize_generation_mode(generation_mode)
     shortage_priority = -target_shortage_gain if target_shortage_gain else -score
     preference_priority = generation_preference_penalty(soft_preference_penalty, mode)
+    need_priority = priority[:1]
+    workload_priority = priority[1:]
     if mode == GENERATION_MODE_COVERAGE:
         return (
             shortage_priority,
             -score,
             overage_cost,
             fatigue_penalty,
+            need_priority,
+            assignment_priority,
             projected_balance,
             preference_priority,
             projected_same_category_count,
             projected_same_category_streak,
             projected_night_count,
             projected_split_count,
-            priority,
+            workload_priority,
         )
     if mode == GENERATION_MODE_REQUESTS:
         return (
             preference_priority,
             shortage_priority,
             fatigue_penalty,
+            need_priority,
+            assignment_priority,
+            projected_balance,
             -score,
             overage_cost,
-            projected_balance,
             projected_same_category_count,
             projected_same_category_streak,
             projected_night_count,
             projected_split_count,
-            priority,
+            workload_priority,
         )
     return (
         shortage_priority,
@@ -2724,12 +2763,14 @@ def interval_generation_sort_key(
         -score,
         overage_cost,
         fatigue_penalty,
+        need_priority,
+        assignment_priority,
+        projected_balance,
         projected_same_category_count,
         projected_same_category_streak,
         projected_night_count,
         projected_split_count,
-        projected_balance,
-        priority,
+        workload_priority,
     )
 
 
@@ -2742,41 +2783,50 @@ def legacy_generation_sort_key(
     projected_night_count: int,
     projected_split_count: int,
     projected_balance: int,
+    assignment_priority: tuple,
     priority: tuple,
 ):
     mode = normalize_generation_mode(generation_mode)
     preference_priority = generation_preference_penalty(soft_preference_penalty, mode)
+    need_priority = priority[:1]
+    workload_priority = priority[1:]
     if mode == GENERATION_MODE_COVERAGE:
         return (
             fatigue_penalty,
+            need_priority,
+            assignment_priority,
             projected_balance,
             preference_priority,
             projected_same_category_count,
             projected_same_category_streak,
             projected_night_count,
             projected_split_count,
-            priority,
+            workload_priority,
         )
     if mode == GENERATION_MODE_REQUESTS:
         return (
             preference_priority,
             fatigue_penalty,
+            need_priority,
+            assignment_priority,
             projected_balance,
             projected_same_category_count,
             projected_same_category_streak,
             projected_night_count,
             projected_split_count,
-            priority,
+            workload_priority,
         )
     return (
         preference_priority,
         fatigue_penalty,
+        need_priority,
+        assignment_priority,
+        projected_balance,
         projected_same_category_count,
         projected_same_category_streak,
         projected_night_count,
         projected_split_count,
-        projected_balance,
-        priority,
+        workload_priority,
     )
 
 
@@ -3007,18 +3057,98 @@ def weekly_shift_request_penalty(connection, employee_id: int, date_string: str,
     return 120
 
 
-def get_recurring_preference(connection, employee_id: int, date_string: str, preference_kind: str) -> str:
+def normalize_preference_request(preference_type: str | None, request_type: str | None, target_category: str | None) -> list[dict]:
+    preference_type = preference_type or ""
+    if preference_type == "off_day" and (not target_category or request_type == "request_shift"):
+        request_type = "day_off"
+    elif preference_type == "vacation" and (not target_category or request_type == "request_shift"):
+        request_type = "vacation"
+    elif preference_type == "no_morning_evening_combo" and (not target_category or request_type == "request_shift"):
+        request_type = "no_morning_evening_combo"
+    elif preference_type.startswith("not_") and request_type == "request_shift" and not target_category:
+        request_type = "exclude_shift"
+        target_category = preference_type.removeprefix("not_")
+    if not request_type:
+        if preference_type == "off_day":
+            request_type = "day_off"
+        elif preference_type == "vacation":
+            request_type = "vacation"
+        elif preference_type == "no_morning_evening_combo":
+            request_type = "no_morning_evening_combo"
+        elif preference_type.startswith("not_"):
+            request_type = "exclude_shift"
+            target_category = preference_type.removeprefix("not_")
+        elif preference_type.startswith("only_"):
+            target_category = preference_type.removeprefix("only_")
+            requests = [{
+                "preference_type": f"only_{target_category}",
+                "request_type": "request_shift",
+                "target_category": target_category,
+            }]
+            requests.extend(
+                {
+                    "preference_type": f"not_{other_category}",
+                    "request_type": "exclude_shift",
+                    "target_category": other_category,
+                }
+                for other_category in ("morning", "evening", "night")
+                if other_category != target_category
+            )
+            return requests
+    if request_type == "request_shift" and not target_category and preference_type.startswith("only_"):
+        target_category = preference_type.removeprefix("only_")
+    if request_type == "exclude_shift" and not target_category and preference_type.startswith("not_"):
+        target_category = preference_type.removeprefix("not_")
+    return [{
+        "preference_type": preference_type,
+        "request_type": request_type,
+        "target_category": target_category,
+    }]
+
+
+def get_recurring_preferences(connection, employee_id: int, date_string: str, preference_kind: str) -> list[dict]:
     cursor = connection.cursor()
     cursor.execute(
         """
-        SELECT preference_type
+        SELECT preference_type, request_type, target_category
         FROM employee_recurring_preferences
         WHERE employee_id = ? AND preference_kind = ? AND day_of_week = ?
         """,
         (employee_id, preference_kind, recurring_day_of_week(date_string)),
     )
-    row = cursor.fetchone()
-    return row["preference_type"] if row else "no_preference"
+    preferences = []
+    seen = set()
+    for row in cursor.fetchall():
+        row_dict = dict(row)
+        for normalized in normalize_preference_request(
+            row_dict.get("preference_type"),
+            row_dict.get("request_type"),
+            row_dict.get("target_category"),
+        ):
+            if not normalized["request_type"]:
+                continue
+            key = (normalized["request_type"], normalized["target_category"])
+            if key in seen:
+                continue
+            seen.add(key)
+            preferences.append(normalized)
+    return preferences
+
+
+def get_recurring_preference(connection, employee_id: int, date_string: str, preference_kind: str) -> str:
+    preferences = get_recurring_preferences(connection, employee_id, date_string, preference_kind)
+    if any(item["request_type"] in {"day_off", "vacation"} for item in preferences):
+        blocker = next(item["request_type"] for item in preferences if item["request_type"] in {"day_off", "vacation"})
+        return "off_day" if blocker == "day_off" else blocker
+    if any(item["request_type"] == "no_morning_evening_combo" for item in preferences):
+        return "no_morning_evening_combo"
+    excluded = [item["target_category"] for item in preferences if item["request_type"] == "exclude_shift"]
+    requested = [item["target_category"] for item in preferences if item["request_type"] == "request_shift"]
+    if len(requested) == 1 and set(excluded) == {"morning", "evening", "night"} - {requested[0]}:
+        return f"only_{requested[0]}"
+    if len(excluded) == 1 and not requested:
+        return f"not_{excluded[0]}"
+    return "no_preference"
 
 
 def preference_allows_category(preference_type: str, category: str) -> bool:
@@ -3033,6 +3163,40 @@ def preference_allows_category(preference_type: str, category: str) -> bool:
     return True
 
 
+def recurring_preferences_allow_category(preferences: list[dict], category: str) -> bool:
+    if any(item["request_type"] in {"day_off", "vacation"} for item in preferences):
+        return False
+    if any(item["request_type"] == "exclude_shift" and item["target_category"] == category for item in preferences):
+        return False
+    return True
+
+
+def recurring_requested_categories(preferences: list[dict]) -> set[str]:
+    return {
+        item["target_category"]
+        for item in preferences
+        if item["request_type"] == "request_shift" and item["target_category"]
+    }
+
+
+def strict_recurring_preference_penalty(
+    connection,
+    employee_id: int,
+    date_string: str,
+    assignment_templates: list[dict],
+) -> int:
+    preferences = get_recurring_preferences(connection, employee_id, date_string, "strict")
+    requested_categories = recurring_requested_categories(preferences)
+    if not requested_categories or not assignment_templates:
+        return 0
+
+    penalty = 0
+    for template in assignment_templates:
+        category = template["category"]
+        penalty += -STRICT_REQUEST_MATCH_BONUS if category in requested_categories else STRICT_REQUEST_MISMATCH_PENALTY
+    return penalty
+
+
 def soft_recurring_preference_penalty(
     connection,
     employee_id: int,
@@ -3040,19 +3204,22 @@ def soft_recurring_preference_penalty(
     assignment_templates: list[dict],
     projected_entries: list[dict] | None = None,
 ) -> int:
-    preference_type = get_recurring_preference(connection, employee_id, date_string, "soft")
-    if preference_type == "no_preference" or not assignment_templates:
+    preferences = get_recurring_preferences(connection, employee_id, date_string, "soft")
+    if not preferences or not assignment_templates:
         return 0
-    if preference_type in ("off_day", "vacation"):
+    if any(item["request_type"] in {"day_off", "vacation"} for item in preferences):
         return SOFT_DAY_OFF_PENALTY
 
     penalty = 0
     assignment_categories = [template["category"] for template in assignment_templates]
+    requested_categories = recurring_requested_categories(preferences)
     for category in assignment_categories:
-        if not preference_allows_category(preference_type, category):
+        if not recurring_preferences_allow_category(preferences, category):
             penalty += SOFT_PREFERENCE_PENALTY
+        if requested_categories:
+            penalty += -250 if category in requested_categories else 120
 
-    if preference_type == "no_morning_evening_combo":
+    if any(item["request_type"] == "no_morning_evening_combo" for item in preferences):
         projected_categories = set(assignment_categories)
         projected_categories.update(entry_category(entry) for entry in (projected_entries or []))
         if "morning" in projected_categories and "evening" in projected_categories:
@@ -3111,8 +3278,8 @@ def category_allowed_by_preferences(connection, employee: dict, date_string: str
     if not week_preferences_allow_category(get_week_preferences(connection, employee["id"], date_string), category):
         return False
 
-    strict_recurring = get_recurring_preference(connection, employee["id"], date_string, "strict")
-    if not preference_allows_category(strict_recurring, category):
+    strict_recurring_preferences = get_recurring_preferences(connection, employee["id"], date_string, "strict")
+    if not recurring_preferences_allow_category(strict_recurring_preferences, category):
         return False
     return True
 
@@ -3853,6 +4020,52 @@ def run_desktop_sync_once() -> bool:
         connection.close()
 
 
+@contextmanager
+def suspend_desktop_sync_triggers(cursor: sqlite3.Cursor, organization_id: int = 1):
+    cursor.execute(
+        """
+        SELECT value
+        FROM app_settings
+        WHERE organization_id = ? AND key = 'desktop_sync_suspended'
+        """,
+        (organization_id,),
+    )
+    previous_row = cursor.fetchone()
+    previous_value = previous_row["value"] if previous_row else None
+    cursor.execute(
+        """
+        INSERT INTO app_settings (organization_id, key, value)
+        VALUES (?, 'desktop_sync_suspended', '1')
+        ON CONFLICT(key)
+        DO UPDATE SET organization_id = excluded.organization_id,
+                      value = excluded.value
+        """,
+        (organization_id,),
+    )
+    try:
+        yield
+    finally:
+        if previous_value is None:
+            cursor.execute(
+                """
+                DELETE FROM app_settings
+                WHERE organization_id = ? AND key = 'desktop_sync_suspended'
+                """,
+                (organization_id,),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO app_settings (organization_id, key, value)
+                VALUES (?, 'desktop_sync_suspended', ?)
+                ON CONFLICT(key)
+                DO UPDATE SET organization_id = excluded.organization_id,
+                              value = excluded.value
+                """,
+                (organization_id, previous_value),
+            )
+
+
 def desktop_sync_worker_loop() -> None:
     while True:
         sleep(20)
@@ -3951,89 +4164,97 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
     local_employee_ids = {str(row["public_id"]): int(row["id"]) for row in cursor.fetchall() if row["public_id"]}
     now = current_utc_timestamp()
 
-    cursor.execute("DELETE FROM employee_preferences WHERE organization_id = 1")
-    for row in records.get("employee_preferences") or []:
-        public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
-        local_employee_id = local_employee_ids.get(str(public_id))
-        if not local_employee_id:
-            continue
-        cursor.execute(
-            """
-            INSERT INTO employee_preferences (
-                organization_id, public_id, employee_id, allow_morning, allow_evening, allow_night,
-                allow_morning_evening_combo, created_at, updated_at, updated_by
+    with suspend_desktop_sync_triggers(cursor, 1):
+        cursor.execute("DELETE FROM employee_preferences WHERE organization_id = 1")
+        for row in records.get("employee_preferences") or []:
+            public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
+            local_employee_id = local_employee_ids.get(str(public_id))
+            if not local_employee_id:
+                continue
+            cursor.execute(
+                """
+                INSERT INTO employee_preferences (
+                    organization_id, public_id, employee_id, allow_morning, allow_evening, allow_night,
+                    allow_morning_evening_combo, created_at, updated_at, updated_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    1,
+                    row.get("public_id"),
+                    local_employee_id,
+                    int(row.get("allow_morning") or 0),
+                    int(row.get("allow_evening") or 0),
+                    int(row.get("allow_night") or 0),
+                    int(row.get("allow_morning_evening_combo") or 0),
+                    row.get("created_at") or now,
+                    row.get("updated_at") or now,
+                    None,
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                1,
-                row.get("public_id"),
-                local_employee_id,
-                int(row.get("allow_morning") or 0),
-                int(row.get("allow_evening") or 0),
-                int(row.get("allow_night") or 0),
-                int(row.get("allow_morning_evening_combo") or 0),
-                row.get("created_at") or now,
-                row.get("updated_at") or now,
-                None,
-            ),
-        )
 
-    cursor.execute("DELETE FROM employee_week_preferences WHERE organization_id = 1")
-    for row in records.get("employee_week_preferences") or []:
-        public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
-        local_employee_id = local_employee_ids.get(str(public_id))
-        if not local_employee_id:
-            continue
-        cursor.execute(
-            """
-            INSERT INTO employee_week_preferences (
-                organization_id, public_id, employee_id, week_start_date, preference_date,
-                preference_type, request_type, target_category, created_at, updated_at, updated_by
+        cursor.execute("DELETE FROM employee_week_preferences WHERE organization_id = 1")
+        for row in records.get("employee_week_preferences") or []:
+            public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
+            local_employee_id = local_employee_ids.get(str(public_id))
+            if not local_employee_id:
+                continue
+            cursor.execute(
+                """
+                INSERT INTO employee_week_preferences (
+                    organization_id, public_id, employee_id, week_start_date, preference_date,
+                    preference_type, request_type, target_category, created_at, updated_at, updated_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    1,
+                    row.get("public_id"),
+                    local_employee_id,
+                    row.get("week_start_date"),
+                    row.get("preference_date"),
+                    row.get("preference_type"),
+                    row.get("request_type") or "request_shift",
+                    row.get("target_category"),
+                    row.get("created_at") or now,
+                    row.get("updated_at") or now,
+                    None,
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                1,
-                row.get("public_id"),
-                local_employee_id,
-                row.get("week_start_date"),
-                row.get("preference_date"),
+
+        cursor.execute("DELETE FROM employee_recurring_preferences WHERE organization_id = 1")
+        for row in records.get("employee_recurring_preferences") or []:
+            public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
+            local_employee_id = local_employee_ids.get(str(public_id))
+            if not local_employee_id:
+                continue
+            for request_index, normalized_request in enumerate(normalize_preference_request(
                 row.get("preference_type"),
-                row.get("request_type") or "request_shift",
+                row.get("request_type"),
                 row.get("target_category"),
-                row.get("created_at") or now,
-                row.get("updated_at") or now,
-                None,
-            ),
-        )
-
-    cursor.execute("DELETE FROM employee_recurring_preferences WHERE organization_id = 1")
-    for row in records.get("employee_recurring_preferences") or []:
-        public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
-        local_employee_id = local_employee_ids.get(str(public_id))
-        if not local_employee_id:
-            continue
-        cursor.execute(
-            """
-            INSERT INTO employee_recurring_preferences (
-                organization_id, public_id, employee_id, preference_kind, day_of_week,
-                preference_type, created_at, updated_at, updated_by
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                1,
-                row.get("public_id"),
-                local_employee_id,
-                row.get("preference_kind"),
-                int(row.get("day_of_week") or 0),
-                row.get("preference_type"),
-                row.get("created_at") or now,
-                row.get("updated_at") or now,
-                None,
-            ),
-        )
+            )):
+                cursor.execute(
+                    """
+                    INSERT INTO employee_recurring_preferences (
+                        organization_id, public_id, employee_id, preference_kind, day_of_week,
+                        preference_type, request_type, target_category, created_at, updated_at, updated_by
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        1,
+                        row.get("public_id") if request_index == 0 else None,
+                        local_employee_id,
+                        row.get("preference_kind"),
+                        int(row.get("day_of_week") or 0),
+                        normalized_request["preference_type"],
+                        normalized_request["request_type"],
+                        normalized_request["target_category"],
+                        row.get("created_at") or now,
+                        row.get("updated_at") or now,
+                        None,
+                    ),
+                )
     cursor.execute(
         """
         INSERT INTO app_settings (organization_id, key, value)
@@ -5693,6 +5914,7 @@ def install_update(request_data: UpdateInstallRequest):
         raise HTTPException(status_code=400, detail="Requested update does not match the latest release")
 
     installer_path = download_update_installer(latest["download_url"], latest["asset_name"])
+    verify_windows_installer_signature(installer_path)
     subprocess.Popen([str(installer_path), "/CLOSEAPPLICATIONS"], close_fds=True)
     schedule_desktop_shutdown()
 
@@ -7218,9 +7440,9 @@ def save_employee_recurring_preferences(
                 """
                 INSERT INTO employee_recurring_preferences (
                     organization_id, employee_id, preference_kind, day_of_week,
-                    preference_type, created_at, updated_at, updated_by
+                    preference_type, request_type, target_category, created_at, updated_at, updated_by
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     organization_id,
@@ -7228,6 +7450,8 @@ def save_employee_recurring_preferences(
                     rule.preference_kind,
                     rule.day_of_week,
                     rule.preference_type,
+                    rule.request_type,
+                    rule.target_category,
                     now,
                     now,
                     user_id,
@@ -7511,11 +7735,17 @@ def get_schedule_entries(
             se.date,
             se.shift_template_id,
             se.no_show,
+            se.start_time_override,
+            se.end_time_override,
+            se.is_overnight_override,
             st.name AS shift_template_name,
             st.category AS shift_category,
-            st.start_time,
-            st.end_time,
-            st.is_overnight,
+            COALESCE(se.start_time_override, st.start_time) AS start_time,
+            COALESCE(se.end_time_override, st.end_time) AS end_time,
+            COALESCE(se.is_overnight_override, st.is_overnight) AS is_overnight,
+            st.start_time AS template_start_time,
+            st.end_time AS template_end_time,
+            st.is_overnight AS template_is_overnight,
             st.is_split_only,
             p.name AS position_name,
             p.color AS position_color,
@@ -7526,15 +7756,23 @@ def get_schedule_entries(
         JOIN positions p ON p.id = se.position_id
         JOIN employees e ON e.id = se.employee_id
         {where_sql}
-        ORDER BY se.date, se.employee_id, se.position_id, st.start_time
+        ORDER BY se.date, se.employee_id, se.position_id, COALESCE(se.start_time_override, st.start_time)
         """,
         params,
     )
     items = [dict(row) for row in cursor.fetchall()]
     for item in items:
         item["is_overnight"] = bool(item["is_overnight"])
+        item["template_is_overnight"] = bool(item["template_is_overnight"])
         item["is_split_only"] = bool(item["is_split_only"])
         item["no_show"] = bool(item["no_show"])
+        if item["is_overnight_override"] is not None:
+            item["is_overnight_override"] = bool(item["is_overnight_override"])
+        item["time_overridden"] = (
+            item["start_time_override"] is not None
+            or item["end_time_override"] is not None
+            or item["is_overnight_override"] is not None
+        )
     return items
 
 
@@ -7627,6 +7865,125 @@ def update_schedule_entry_status(
         connection.close()
 
 
+@app.patch("/api/schedule/{schedule_entry_id}/time", tags=["Schedule"])
+def update_schedule_entry_time(
+    schedule_entry_id: int,
+    time_update: ScheduleEntryTimeUpdate,
+    _access: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        entry_row = fetch_one_or_404(
+            cursor,
+            "SELECT employee_id, date, organization_id FROM schedule_entries WHERE id = ?",
+            (schedule_entry_id,),
+            "Schedule entry not found",
+        )
+        if _access and int(entry_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Schedule entry not found")
+
+        now = current_utc_timestamp()
+        user_id = _access["user"]["id"] if _access else None
+        if time_update.reset:
+            cursor.execute(
+                """
+                UPDATE schedule_entries
+                SET start_time_override = NULL,
+                    end_time_override = NULL,
+                    is_overnight_override = NULL,
+                    updated_at = ?,
+                    updated_by = ?
+                WHERE id = ?
+                """,
+                (now, user_id, schedule_entry_id),
+            )
+        else:
+            start_time = time_update.start_time
+            end_time = time_update.end_time
+            is_overnight = bool(time_update.is_overnight) if time_update.is_overnight is not None else False
+            if time_to_minutes(end_time) <= time_to_minutes(start_time):
+                is_overnight = True
+            cursor.execute(
+                """
+                UPDATE schedule_entries
+                SET start_time_override = ?,
+                    end_time_override = ?,
+                    is_overnight_override = ?,
+                    updated_at = ?,
+                    updated_by = ?
+                WHERE id = ?
+                """,
+                (start_time, end_time, int(is_overnight), now, user_id, schedule_entry_id),
+            )
+
+        connection.commit()
+        updated_entries = get_schedule_entries(
+            connection,
+            dates=[entry_row["date"]],
+            employee_id=entry_row["employee_id"],
+            organization_id=entry_row["organization_id"],
+        )
+        updated_entry = next((entry for entry in updated_entries if entry["id"] == schedule_entry_id), None)
+        return {
+            "message": "Schedule entry time updated successfully",
+            "schedule_entry": updated_entry,
+        }
+    finally:
+        connection.close()
+
+
+def clear_week_schedule_records(
+    cursor,
+    week_dates: list[str],
+    *,
+    position_id: int | None = None,
+    employee_ids: list[int] | None = None,
+) -> tuple[int, int]:
+    date_placeholders = ",".join(["?"] * len(week_dates))
+    if position_id is None:
+        cursor.execute(
+            f"""
+            DELETE FROM schedule_entries
+            WHERE date IN ({date_placeholders})
+            """,
+            week_dates,
+        )
+        deleted_count = cursor.rowcount
+        cursor.execute(
+            f"""
+            DELETE FROM employee_day_statuses
+            WHERE status_type = 'day_off'
+              AND date IN ({date_placeholders})
+            """,
+            week_dates,
+        )
+        return deleted_count, cursor.rowcount
+
+    cursor.execute(
+        f"""
+        DELETE FROM schedule_entries
+        WHERE position_id = ? AND date IN ({date_placeholders})
+        """,
+        [position_id, *week_dates],
+    )
+    deleted_count = cursor.rowcount
+    day_off_deleted_count = 0
+    if employee_ids:
+        employee_placeholders = ",".join(["?"] * len(employee_ids))
+        cursor.execute(
+            f"""
+            DELETE FROM employee_day_statuses
+            WHERE status_type = 'day_off'
+              AND employee_id IN ({employee_placeholders})
+              AND date IN ({date_placeholders})
+            """,
+            [*employee_ids, *week_dates],
+        )
+        day_off_deleted_count = cursor.rowcount
+    return deleted_count, day_off_deleted_count
+
+
 @app.post("/api/schedule/clear-week", tags=["Schedule"])
 def clear_week_schedule(
     request_data: ClearWeekScheduleRequest,
@@ -7637,30 +7994,19 @@ def clear_week_schedule(
         week_dates = build_week_dates(request_data.week_start_date)
         cursor = connection.cursor()
         backup_name = create_recovery_backup("clear_week")
-        cursor.execute(
-            f"""
-            DELETE FROM schedule_entries
-            WHERE position_id = ? AND date IN ({','.join(['?'] * len(week_dates))})
-            """,
-            [request_data.position_id, *week_dates],
-        )
-        deleted_count = cursor.rowcount
         employees = load_position_employees(connection, request_data.position_id)
         employee_ids = [employee["id"] for employee in employees]
-        if employee_ids:
-            cursor.execute(
-                f"""
-                DELETE FROM employee_day_statuses
-                WHERE status_type = 'day_off'
-                  AND employee_id IN ({','.join(['?'] * len(employee_ids))})
-                  AND date IN ({','.join(['?'] * len(week_dates))})
-                """,
-                [*employee_ids, *week_dates],
-            )
+        deleted_count, day_off_deleted_count = clear_week_schedule_records(
+            cursor,
+            week_dates,
+            position_id=request_data.position_id,
+            employee_ids=employee_ids,
+        )
         connection.commit()
         return {
             "message": "Week schedule cleared successfully",
             "deleted_count": deleted_count,
+            "day_off_deleted_count": day_off_deleted_count,
             "backup_name": backup_name,
         }
     finally:
@@ -7730,23 +8076,7 @@ def clear_all_week_schedules(
         week_dates = build_week_dates(request_data.week_start_date)
         cursor = connection.cursor()
         backup_name = create_recovery_backup("clear_week_all")
-        cursor.execute(
-            f"""
-            DELETE FROM schedule_entries
-            WHERE date IN ({','.join(['?'] * len(week_dates))})
-            """,
-            week_dates,
-        )
-        deleted_count = cursor.rowcount
-        cursor.execute(
-            f"""
-            DELETE FROM employee_day_statuses
-            WHERE status_type = 'day_off'
-              AND date IN ({','.join(['?'] * len(week_dates))})
-            """,
-            week_dates,
-        )
-        day_off_deleted_count = cursor.rowcount
+        deleted_count, day_off_deleted_count = clear_week_schedule_records(cursor, week_dates)
         connection.commit()
         return {
             "message": "All week schedules cleared successfully",
@@ -7969,18 +8299,21 @@ def candidate_priority(connection, employee: dict, date_string: str, week_start_
         bucket = 1
     else:
         bucket = 2
-    fallback_penalty = 1 if employee.get("is_fallback_only") else 0
-    primary_bonus = 0 if employee.get("is_primary") else 1
     return (
         bucket,
         len(worked_dates),
         week_count,
         night_count,
         split_count,
-        fallback_penalty,
-        primary_bonus,
-        -int(employee.get("priority_score", 50)),
         employee["id"],
+    )
+
+
+def candidate_assignment_priority(employee: dict) -> tuple:
+    return (
+        1 if employee.get("is_fallback_only") else 0,
+        0 if employee.get("is_primary") else 1,
+        -int(employee.get("priority_score", 50)),
     )
 
 
@@ -8112,7 +8445,13 @@ def choose_best_interval_candidate(
                 elif score <= 0:
                     continue
 
-                soft_preference_penalty = soft_recurring_preference_penalty(
+                soft_preference_penalty = strict_recurring_preference_penalty(
+                    connection,
+                    employee["id"],
+                    date_string,
+                    assignment_templates,
+                )
+                soft_preference_penalty += soft_recurring_preference_penalty(
                     connection,
                     employee["id"],
                     date_string,
@@ -8160,6 +8499,7 @@ def choose_best_interval_candidate(
                         projected_night_count,
                         projected_split_count,
                         projected_balance,
+                        candidate_assignment_priority(employee),
                         candidate_priority(connection, employee, date_string, week_start_date),
                     ),
                     employee,
@@ -8934,7 +9274,13 @@ def fill_day_by_legacy_categories(
                                 *get_employee_entries_for_date(connection, employee["id"], date_string),
                                 preview,
                             ]
-                            soft_preference_penalty = soft_recurring_preference_penalty(
+                            soft_preference_penalty = strict_recurring_preference_penalty(
+                                connection,
+                                employee["id"],
+                                date_string,
+                                [template],
+                            )
+                            soft_preference_penalty += soft_recurring_preference_penalty(
                                 connection,
                                 employee["id"],
                                 date_string,
@@ -8977,6 +9323,7 @@ def fill_day_by_legacy_categories(
                                     projected_night_count,
                                     projected_split_count,
                                     projected_balance,
+                                    candidate_assignment_priority(employee),
                                     candidate_priority(connection, employee, date_string, week_start_date),
                                 ),
                                 employee,
@@ -9075,11 +9422,17 @@ def get_employee_week_entries(
             se.date,
             se.shift_template_id,
             se.no_show,
+            se.start_time_override,
+            se.end_time_override,
+            se.is_overnight_override,
             st.name AS shift_template_name,
             st.category,
-            st.start_time,
-            st.end_time,
-            st.is_overnight,
+            COALESCE(se.start_time_override, st.start_time) AS start_time,
+            COALESCE(se.end_time_override, st.end_time) AS end_time,
+            COALESCE(se.is_overnight_override, st.is_overnight) AS is_overnight,
+            st.start_time AS template_start_time,
+            st.end_time AS template_end_time,
+            st.is_overnight AS template_is_overnight,
             st.is_split_only
         FROM schedule_entries se
         JOIN shift_templates st ON st.id = se.shift_template_id
@@ -9092,6 +9445,12 @@ def get_employee_week_entries(
     )
 
     entries = [dict(row) for row in cursor.fetchall() if row["id"] not in exclude_entry_ids]
+    for entry in entries:
+        entry["is_overnight"] = bool(entry["is_overnight"])
+        entry["template_is_overnight"] = bool(entry["template_is_overnight"])
+        entry["is_split_only"] = bool(entry["is_split_only"])
+        if entry.get("is_overnight_override") is not None:
+            entry["is_overnight_override"] = bool(entry["is_overnight_override"])
     entries.extend(staged_entries)
     return entries
 
@@ -9314,6 +9673,7 @@ def post_optimize_generated_schedule(
         date_string = group[0]["date"]
         entry_ids = {entry["id"] for entry in group}
         assignment_templates = [row_to_template_for_assignment(entry) for entry in group]
+        original_assignment_priority = candidate_assignment_priority(original_employee)
         original_entries_before = get_employee_week_entries(connection, original_employee["id"], week_start_date)
         original_entries_after = get_employee_week_entries(
             connection,
@@ -9328,6 +9688,8 @@ def post_optimize_generated_schedule(
         best_improvement = 0
         for candidate in employees:
             if candidate["id"] == original_employee["id"]:
+                continue
+            if candidate_assignment_priority(candidate) > original_assignment_priority:
                 continue
 
             previews = build_valid_assignment_previews(
@@ -9392,6 +9754,7 @@ def run_auto_generate_for_position(
     position_id: int,
     week_start_date: str,
     generation_mode: str = GENERATION_MODE_BALANCED,
+    sync_day_off_statuses: bool = True,
 ) -> dict:
     generation_mode = normalize_generation_mode(generation_mode)
     cursor = connection.cursor()
@@ -9472,13 +9835,15 @@ def run_auto_generate_for_position(
     )
 
     append_fatigue_summary_warnings(connection, employees, position_id, week_dates, week_start_date, errors)
-    day_off_count = sync_generated_day_off_statuses(
-        connection,
-        cursor,
-        employees,
-        position_id,
-        week_dates,
-    )
+    day_off_count = 0
+    if sync_day_off_statuses:
+        day_off_count = sync_generated_day_off_statuses(
+            connection,
+            cursor,
+            employees,
+            position_id,
+            week_dates,
+        )
 
     return {
         "message": "Auto-generation finished",
@@ -9495,6 +9860,39 @@ def run_auto_generate_for_position(
     }
 
 
+def load_positions_for_auto_generation(cursor) -> list[dict]:
+    cursor.execute(
+        """
+        SELECT
+            p.id,
+            p.name,
+            COALESCE(MAX(CASE
+                WHEN ep.is_primary = 1 AND ep.is_fallback_only = 0 THEN 1
+                ELSE 0
+            END), 0) AS has_primary_regular_staff,
+            COALESCE(MAX(CASE
+                WHEN ep.is_primary = 1 AND ep.is_fallback_only = 0 THEN ep.priority_score
+                ELSE -1
+            END), -1) AS best_primary_priority,
+            COALESCE(MAX(CASE
+                WHEN ep.is_fallback_only = 0 THEN ep.priority_score
+                ELSE -1
+            END), -1) AS best_regular_priority,
+            COUNT(ep.employee_id) AS assignment_count
+        FROM positions p
+        LEFT JOIN employee_positions ep ON ep.position_id = p.id
+        GROUP BY p.id, p.name
+        ORDER BY
+            has_primary_regular_staff DESC,
+            best_primary_priority DESC,
+            best_regular_priority DESC,
+            assignment_count DESC,
+            p.id
+        """
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+
 @app.post("/api/schedule/auto-generate", tags=["Schedule"])
 def auto_generate_schedule(
     request_data: AutoGenerateScheduleRequest,
@@ -9505,12 +9903,12 @@ def auto_generate_schedule(
         cursor = connection.cursor()
         organization_id = _access["membership"]["organization_id"] if _access else 1
         require_license_capability(cursor, "can_generate_schedule", organization_id)
-        pull_cloud_preferences_for_desktop_generation(connection)
         result = run_auto_generate_for_position(
             connection,
             request_data.position_id,
             request_data.week_start_date,
             request_data.generation_mode,
+            sync_day_off_statuses=False,
         )
         connection.commit()
         return result
@@ -9528,9 +9926,7 @@ def auto_generate_all_schedules(
         organization_id = _access["membership"]["organization_id"] if _access else 1
         cursor = connection.cursor()
         require_license_capability(cursor, "can_generate_schedule", organization_id)
-        pull_cloud_preferences_for_desktop_generation(connection)
-        cursor.execute("SELECT id, name FROM positions ORDER BY id")
-        positions = [dict(row) for row in cursor.fetchall()]
+        positions = load_positions_for_auto_generation(cursor)
         if not positions:
             raise HTTPException(status_code=400, detail="No positions found")
 

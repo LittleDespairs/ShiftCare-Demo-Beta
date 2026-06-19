@@ -22,18 +22,6 @@ const RECURRING_PREFERENCE_DAYS = [
     ["weekday_friday", "Friday"],
     ["weekday_saturday", "Saturday"],
 ];
-const RECURRING_PREFERENCE_OPTIONS = [
-    ["no_preference", "preference_no_preference", "No preference"],
-    ["off_day", "preference_off_day", "Day off"],
-    ["vacation", "preference_vacation", "Vacation"],
-    ["only_morning", "preference_only_morning", "Only morning"],
-    ["only_evening", "preference_only_evening", "Only evening"],
-    ["only_night", "preference_only_night", "Only night"],
-    ["not_morning", "preference_not_morning", "Not morning"],
-    ["not_evening", "preference_not_evening", "Not evening"],
-    ["not_night", "preference_not_night", "Not night"],
-    ["no_morning_evening_combo", "preference_no_morning_evening_combo", "No morning + evening combo"],
-];
 const RECURRING_CATEGORY_LABELS = {
     morning: ["shift_morning", "Morning"],
     evening: ["shift_evening", "Evening"],
@@ -234,8 +222,8 @@ function renderFilteredEmployeesTable() {
 
 function createEmptyRecurringPreferenceState() {
     return {
-        strict: Array(7).fill("no_preference"),
-        soft: Array(7).fill("no_preference"),
+        strict: Array.from({ length: 7 }, () => []),
+        soft: Array.from({ length: 7 }, () => []),
     };
 }
 
@@ -281,54 +269,113 @@ function collectRecurringPreferenceState() {
     const state = createEmptyRecurringPreferenceState();
     RECURRING_PREFERENCE_KINDS.forEach(kind => {
         for (let day = 0; day < 7; day += 1) {
-            const select = document.querySelector(`[data-recurring-kind="${kind}"][data-recurring-day="${day}"]`);
-            if (select && select.tagName === "SELECT") {
-                state[kind][day] = select.value || "no_preference";
-            } else if (currentRecurringPreferences?.[kind]?.[day]) {
-                state[kind][day] = currentRecurringPreferences[kind][day];
-            }
+            state[kind][day] = [...(currentRecurringPreferences?.[kind]?.[day] || [])];
         }
     });
     return state;
 }
 
-function recurringPreferenceOptionsHtml(selectedValue) {
-    return RECURRING_PREFERENCE_OPTIONS.map(([value, key, fallback]) => `
-        <option value="${value}" ${selectedValue === value ? "selected" : ""}>
-            ${employeeText(key, fallback)}
-        </option>
-    `).join("");
-}
-
-function recurringPreferenceLabel(preferenceType) {
-    const option = RECURRING_PREFERENCE_OPTIONS.find(([value]) => value === preferenceType);
-    if (!option) return preferenceType || employeeText("preference_no_preference", "No preference");
-    return employeeText(option[1], option[2]);
-}
-
-function recurringPreferenceCardClass(preferenceType) {
-    if (preferenceType === "off_day" || preferenceType === "vacation") return "block";
-    if (preferenceType === "no_morning_evening_combo") return "combo";
-    if (preferenceType.includes("morning")) return `morning ${preferenceType.startsWith("not_") ? "exclude" : ""}`.trim();
-    if (preferenceType.includes("evening")) return `evening ${preferenceType.startsWith("not_") ? "exclude" : ""}`.trim();
-    if (preferenceType.includes("night")) return `night ${preferenceType.startsWith("not_") ? "exclude" : ""}`.trim();
-    return "";
-}
-
-function recurringPreferenceToRequest(preferenceType) {
-    if (preferenceType?.startsWith("only_")) {
-        return { requestType: "request_shift", category: preferenceType.replace("only_", "") };
-    }
-    if (preferenceType?.startsWith("not_")) {
-        return { requestType: "exclude_shift", category: preferenceType.replace("not_", "") };
-    }
-    return { requestType: preferenceType || "no_preference", category: "morning" };
-}
-
-function recurringRequestToPreference(requestType, category) {
+function recurringPreferenceTypeFromRequest(requestType, category) {
     if (requestType === "request_shift") return `only_${category || "morning"}`;
     if (requestType === "exclude_shift") return `not_${category || "morning"}`;
+    if (requestType === "day_off" || requestType === "off_day") return "off_day";
     return requestType || "no_preference";
+}
+
+function normalizeRecurringRequest(rule) {
+    let requestType = rule?.request_type;
+    let targetCategory = rule?.target_category;
+    const preferenceType = rule?.preference_type || "";
+    if (preferenceType === "off_day" && (!targetCategory || requestType === "request_shift")) {
+        requestType = "day_off";
+    } else if (preferenceType === "vacation" && (!targetCategory || requestType === "request_shift")) {
+        requestType = "vacation";
+    } else if (preferenceType === "no_morning_evening_combo" && (!targetCategory || requestType === "request_shift")) {
+        requestType = "no_morning_evening_combo";
+    } else if (preferenceType.startsWith("not_") && requestType === "request_shift" && !targetCategory) {
+        requestType = "exclude_shift";
+        targetCategory = preferenceType.replace("not_", "");
+    }
+    if (!requestType) {
+        if (preferenceType === "off_day") requestType = "day_off";
+        if (preferenceType === "vacation") requestType = "vacation";
+        if (preferenceType === "no_morning_evening_combo") requestType = "no_morning_evening_combo";
+        if (preferenceType.startsWith("only_")) {
+            requestType = "request_shift";
+            targetCategory = preferenceType.replace("only_", "");
+        }
+        if (preferenceType.startsWith("not_")) {
+            requestType = "exclude_shift";
+            targetCategory = preferenceType.replace("not_", "");
+        }
+    }
+    if (requestType === "off_day") requestType = "day_off";
+    if (requestType === "request_shift" && !targetCategory && preferenceType.startsWith("only_")) {
+        targetCategory = preferenceType.replace("only_", "");
+    }
+    if (requestType === "exclude_shift" && !targetCategory && preferenceType.startsWith("not_")) {
+        targetCategory = preferenceType.replace("not_", "");
+    }
+    return {
+        ...rule,
+        preference_type: recurringPreferenceTypeFromRequest(requestType, targetCategory),
+        request_type: requestType || "no_preference",
+        target_category: ["request_shift", "exclude_shift"].includes(requestType) ? targetCategory : null,
+    };
+}
+
+function recurringRequestKey(rule) {
+    return `${rule.request_type || "no_preference"}:${rule.target_category || ""}`;
+}
+
+function recurringRequestLabel(rule) {
+    const request = normalizeRecurringRequest(rule);
+    if (request.request_type === "request_shift") {
+        return `${employeeText("preferences_request_shift", "Request shift")} - ${employeeText(RECURRING_CATEGORY_LABELS[request.target_category]?.[0], RECURRING_CATEGORY_LABELS[request.target_category]?.[1] || request.target_category)}`;
+    }
+    if (request.request_type === "exclude_shift") {
+        return `${employeeText("preferences_exclude_shift", "Exclude shift")} - ${employeeText(RECURRING_CATEGORY_LABELS[request.target_category]?.[0], RECURRING_CATEGORY_LABELS[request.target_category]?.[1] || request.target_category)}`;
+    }
+    if (request.request_type === "day_off") return employeeText("preference_off_day", "Day off");
+    if (request.request_type === "vacation") return employeeText("preference_vacation", "Vacation");
+    if (request.request_type === "no_morning_evening_combo") {
+        return employeeText("preference_no_morning_evening_combo", "No morning + evening combo");
+    }
+    return employeeText("preference_no_preference", "No preference");
+}
+
+function recurringRequestChipClass(rule) {
+    const request = normalizeRecurringRequest(rule);
+    const classes = [];
+    if (request.request_type === "request_shift") classes.push("request");
+    if (request.request_type === "exclude_shift") classes.push("exclude");
+    if (["day_off", "vacation"].includes(request.request_type)) classes.push("block");
+    if (request.request_type === "no_morning_evening_combo") classes.push("combo");
+    if (request.target_category) classes.push(request.target_category);
+    return classes.join(" ");
+}
+
+function recurringDayHasBlocker(requests) {
+    return (requests || []).some(rule => ["day_off", "vacation"].includes(normalizeRecurringRequest(rule).request_type));
+}
+
+function renderRecurringRequestChip(rule, kind, dayIndex, requestIndex, canManage) {
+    const normalized = normalizeRecurringRequest(rule);
+    return `
+        <div class="recurring-request-chip ${recurringRequestChipClass(normalized)}">
+            <span>${escapeHtml(recurringRequestLabel(normalized))}</span>
+            <button
+                class="recurring-request-remove"
+                type="button"
+                data-recurring-action="remove"
+                data-recurring-kind="${kind}"
+                data-recurring-day="${dayIndex}"
+                data-recurring-index="${requestIndex}"
+                title="${employeeText("preferences_clear_button", "Clear")}"
+                ${canManage ? "" : "disabled"}
+            >×</button>
+        </div>
+    `;
 }
 
 function renderRecurringPreferenceControls() {
@@ -341,20 +388,26 @@ function renderRecurringPreferenceControls() {
         const container = document.getElementById(`recurring-${kind}-preferences`);
         if (!container) return;
         container.innerHTML = RECURRING_PREFERENCE_DAYS.map(([dayKey, dayFallback], dayIndex) => {
-            const selectedValue = currentRecurringPreferences?.[kind]?.[dayIndex] || "no_preference";
+            const requests = currentRecurringPreferences?.[kind]?.[dayIndex] || [];
+            const requestList = requests.length
+                ? requests.map((rule, requestIndex) => renderRecurringRequestChip(rule, kind, dayIndex, requestIndex, canManage)).join("")
+                : `<span class="recurring-request-empty">${employeeText("preference_no_preference", "No preference")}</span>`;
             return `
                 <div class="recurring-preference-row">
                     <span class="recurring-preference-day">${employeeText(dayKey, dayFallback)}</span>
-                    <button
-                        class="recurring-preference-card ${recurringPreferenceCardClass(selectedValue)}"
-                        type="button"
-                        data-recurring-kind="${kind}"
-                        data-recurring-day="${dayIndex}"
-                        ${canManage ? "" : "disabled"}
-                    >
-                        <span>${escapeHtml(recurringPreferenceLabel(selectedValue))}</span>
-                        <span class="recurring-preference-action">${employeeText("employees_recurring_change", "Change")}</span>
-                    </button>
+                    <div class="recurring-preference-control">
+                        <div class="recurring-request-list">${requestList}</div>
+                        <button
+                            class="recurring-add-request"
+                            type="button"
+                            data-recurring-action="add"
+                            data-recurring-kind="${kind}"
+                            data-recurring-day="${dayIndex}"
+                            ${canManage ? "" : "disabled"}
+                        >
+                            ${employeeText("preferences_add_request", "Add request")}
+                        </button>
+                    </div>
                 </div>
             `;
         }).join("");
@@ -375,18 +428,26 @@ function bindRecurringPreferenceModal() {
         if (event.target.id === "recurring-request-modal-overlay") closeRecurringPreferenceModal();
     });
     document.addEventListener("click", event => {
-        const button = event.target.closest("[data-recurring-kind][data-recurring-day]");
-        if (!button || button.disabled || button.tagName !== "BUTTON") return;
-        openRecurringPreferenceModal(button.dataset.recurringKind, Number(button.dataset.recurringDay));
+        const addButton = event.target.closest('[data-recurring-action="add"]');
+        if (addButton && !addButton.disabled) {
+            openRecurringPreferenceModal(addButton.dataset.recurringKind, Number(addButton.dataset.recurringDay));
+            return;
+        }
+        const removeButton = event.target.closest('[data-recurring-action="remove"]');
+        if (removeButton && !removeButton.disabled) {
+            removeRecurringPreference(
+                removeButton.dataset.recurringKind,
+                Number(removeButton.dataset.recurringDay),
+                Number(removeButton.dataset.recurringIndex),
+            );
+        }
     });
 }
 
 function openRecurringPreferenceModal(kind, dayIndex) {
     pendingRecurringTarget = { kind, dayIndex };
-    const preferenceType = currentRecurringPreferences?.[kind]?.[dayIndex] || "no_preference";
-    const { requestType, category } = recurringPreferenceToRequest(preferenceType);
-    setRecurringRequestType(requestType);
-    setRecurringCategory(category || "morning");
+    setRecurringRequestType("request_shift");
+    setRecurringCategory("morning");
     const title = document.getElementById("recurring-request-modal-title");
     if (title) {
         const day = RECURRING_PREFERENCE_DAYS[dayIndex];
@@ -429,9 +490,37 @@ function savePendingRecurringPreference() {
     if (!pendingRecurringTarget) return;
     const requestType = document.getElementById("recurring_request_value")?.value || "no_preference";
     const category = document.getElementById("recurring_category_value")?.value || "morning";
-    currentRecurringPreferences[pendingRecurringTarget.kind][pendingRecurringTarget.dayIndex] = recurringRequestToPreference(requestType, category);
+    const { kind, dayIndex } = pendingRecurringTarget;
+    if (!currentRecurringPreferences[kind]) currentRecurringPreferences[kind] = Array.from({ length: 7 }, () => []);
+    const currentRequests = [...(currentRecurringPreferences[kind][dayIndex] || [])].map(normalizeRecurringRequest);
+    if (requestType === "no_preference") {
+        currentRecurringPreferences[kind][dayIndex] = [];
+    } else {
+        const nextRequest = normalizeRecurringRequest({
+            request_type: requestType,
+            target_category: ["request_shift", "exclude_shift"].includes(requestType) ? category : null,
+        });
+        if (["day_off", "vacation"].includes(nextRequest.request_type)) {
+            currentRecurringPreferences[kind][dayIndex] = [nextRequest];
+        } else {
+            const nextKey = recurringRequestKey(nextRequest);
+            const filtered = currentRequests.filter(rule => (
+                !["day_off", "vacation"].includes(rule.request_type)
+                && recurringRequestKey(rule) !== nextKey
+            ));
+            filtered.push(nextRequest);
+            currentRecurringPreferences[kind][dayIndex] = filtered;
+        }
+    }
     renderRecurringPreferenceControls();
     closeRecurringPreferenceModal();
+}
+
+function removeRecurringPreference(kind, dayIndex, requestIndex) {
+    if (!currentRecurringPreferences?.[kind]?.[dayIndex]) return;
+    currentRecurringPreferences[kind][dayIndex] = currentRecurringPreferences[kind][dayIndex]
+        .filter((_, index) => index !== requestIndex);
+    renderRecurringPreferenceControls();
 }
 
 async function loadEmployeeRecurringPreferences(employeeId) {
@@ -449,13 +538,20 @@ async function loadEmployeeRecurringPreferences(employeeId) {
         const rules = await response.json();
         const nextState = createEmptyRecurringPreferenceState();
         rules.forEach(rule => {
+            const normalized = normalizeRecurringRequest(rule);
             if (
                 RECURRING_PREFERENCE_KINDS.includes(rule.preference_kind)
                 && Number.isInteger(Number(rule.day_of_week))
                 && Number(rule.day_of_week) >= 0
                 && Number(rule.day_of_week) <= 6
+                && normalized.request_type !== "no_preference"
             ) {
-                nextState[rule.preference_kind][Number(rule.day_of_week)] = rule.preference_type || "no_preference";
+                const dayRules = nextState[rule.preference_kind][Number(rule.day_of_week)];
+                if (["day_off", "vacation"].includes(normalized.request_type)) {
+                    nextState[rule.preference_kind][Number(rule.day_of_week)] = [normalized];
+                } else if (!recurringDayHasBlocker(dayRules) && !dayRules.some(item => recurringRequestKey(item) === recurringRequestKey(normalized))) {
+                    dayRules.push(normalized);
+                }
             }
         });
         currentRecurringPreferences = nextState;
@@ -473,11 +569,16 @@ async function saveEmployeeRecurringPreferences(employeeId) {
     const state = collectRecurringPreferenceState();
     const rules = [];
     RECURRING_PREFERENCE_KINDS.forEach(kind => {
-        state[kind].forEach((preferenceType, dayOfWeek) => {
-            rules.push({
-                preference_kind: kind,
-                day_of_week: dayOfWeek,
-                preference_type: preferenceType || "no_preference",
+        state[kind].forEach((requests, dayOfWeek) => {
+            (requests || []).map(normalizeRecurringRequest).forEach(request => {
+                if (request.request_type === "no_preference") return;
+                rules.push({
+                    preference_kind: kind,
+                    day_of_week: dayOfWeek,
+                    preference_type: request.preference_type,
+                    request_type: request.request_type,
+                    target_category: request.target_category,
+                });
             });
         });
     });

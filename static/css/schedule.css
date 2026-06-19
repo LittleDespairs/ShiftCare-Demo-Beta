@@ -648,9 +648,14 @@
             position: relative;
             border: 1px solid var(--border);
             border-radius: 12px;
-            padding: 6px 34px 6px 12px;
+            padding: 6px 88px 6px 12px;
             background: #fff;
             overflow: hidden;
+        }
+
+        body.rtl .entry-card {
+            padding-right: 12px;
+            padding-left: 88px;
         }
 
         .entry-card::before {
@@ -760,6 +765,15 @@
             z-index: 1;
         }
 
+        .entry-card.is-time-overridden {
+            box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.18);
+        }
+
+        .entry-card.is-time-overridden .entry-title {
+            color: #1d4ed8;
+            font-weight: 900;
+        }
+
         /* Special status card / Карточка особого статуса */
         .entry-card.status {
             background: var(--shift-status-bg);
@@ -793,6 +807,43 @@
         }
 
         .schedule-panel.card-display-compact .entry-meta {
+            display: none;
+        }
+
+        .entry-time-btn {
+            position: absolute;
+            top: 50%;
+            right: 34px;
+            z-index: 2;
+            transform: translateY(-50%);
+            width: 48px;
+            height: 22px;
+            border: 1px solid rgba(15, 23, 42, 0.14);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.72);
+            color: #334155;
+            font-size: 0.64rem;
+            font-weight: 800;
+            line-height: 1;
+            padding: 0 6px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        body.rtl .entry-time-btn {
+            right: auto;
+            left: 34px;
+        }
+
+        .entry-time-btn:hover {
+            background: #fff;
+            border-color: #93c5fd;
+            color: #1d4ed8;
+        }
+
+        .entry-card.has-no-show .entry-time-btn {
             display: none;
         }
 
@@ -936,6 +987,37 @@
 
         .entry-delete:hover {
             background: #fecaca;
+        }
+
+        .schedule-time-modal {
+            width: min(460px, 100%);
+        }
+
+        .schedule-time-form {
+            display: grid;
+            gap: 16px;
+            padding: 18px;
+        }
+
+        .schedule-time-fields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .schedule-time-field {
+            display: grid;
+            gap: 6px;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+
+        .schedule-time-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 8px;
         }
 
         /* Coverage row / Строка покрытия */

@@ -79,7 +79,7 @@ def get_bundled_database_path() -> Path | None:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
-CURRENT_SCHEMA_VERSION = 18
+CURRENT_SCHEMA_VERSION = 20
 POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
 DEMO_SEED_VERSION = "2026-06-14-separated-nursing-demo-v3"
 DEMO_ORGANIZATION_PUBLIC_ID = "shiftcare-demo-center"
@@ -608,12 +608,52 @@ def _ensure_postgres_runtime_schema(connection) -> None:
             ADD COLUMN IF NOT EXISTS no_show INTEGER NOT NULL DEFAULT 0
         """)
         cursor.execute("""
+            ALTER TABLE schedule_entries
+            ADD COLUMN IF NOT EXISTS start_time_override TEXT
+        """)
+        cursor.execute("""
+            ALTER TABLE schedule_entries
+            ADD COLUMN IF NOT EXISTS end_time_override TEXT
+        """)
+        cursor.execute("""
+            ALTER TABLE schedule_entries
+            ADD COLUMN IF NOT EXISTS is_overnight_override INTEGER
+        """)
+        cursor.execute("""
             ALTER TABLE employee_week_preferences
             ADD COLUMN IF NOT EXISTS request_type TEXT NOT NULL DEFAULT 'request_shift'
         """)
         cursor.execute("""
             ALTER TABLE employee_week_preferences
             ADD COLUMN IF NOT EXISTS target_category TEXT
+        """)
+        cursor.execute("""
+            ALTER TABLE employee_recurring_preferences
+            ADD COLUMN IF NOT EXISTS request_type TEXT NOT NULL DEFAULT 'request_shift'
+        """)
+        cursor.execute("""
+            ALTER TABLE employee_recurring_preferences
+            ADD COLUMN IF NOT EXISTS target_category TEXT
+        """)
+        cursor.execute("""
+            UPDATE employee_recurring_preferences
+            SET request_type = CASE
+                    WHEN preference_type = 'off_day' THEN 'day_off'
+                    WHEN preference_type = 'vacation' THEN 'vacation'
+                    WHEN preference_type = 'no_morning_evening_combo' THEN 'no_morning_evening_combo'
+                    WHEN preference_type LIKE 'not_%' THEN 'exclude_shift'
+                    ELSE request_type
+                END,
+                target_category = CASE
+                    WHEN preference_type LIKE '%morning' THEN 'morning'
+                    WHEN preference_type LIKE '%evening' THEN 'evening'
+                    WHEN preference_type LIKE '%night' THEN 'night'
+                    ELSE target_category
+                END
+        """)
+        cursor.execute("""
+            ALTER TABLE employee_recurring_preferences
+            DROP CONSTRAINT IF EXISTS employee_recurring_preferences_employee_id_preference_kind_day_of_week_key
         """)
         cursor.execute("""
             UPDATE employee_week_preferences
@@ -714,6 +754,132 @@ def _rebuild_employee_week_preferences_for_multiple_requests(cursor: sqlite3.Cur
         """
     )
     cursor.execute("DROP TABLE employee_week_preferences_old")
+
+
+def _legacy_recurring_request_rows(preference_type: str) -> list[tuple[str, str, str | None]]:
+    if preference_type in ("", "no_preference"):
+        return []
+    if preference_type == "off_day":
+        return [("off_day", "day_off", None)]
+    if preference_type == "vacation":
+        return [("vacation", "vacation", None)]
+    if preference_type == "no_morning_evening_combo":
+        return [("no_morning_evening_combo", "no_morning_evening_combo", None)]
+    if preference_type.startswith("not_"):
+        category = preference_type.removeprefix("not_")
+        return [(f"not_{category}", "exclude_shift", category)]
+    if preference_type.startswith("only_"):
+        category = preference_type.removeprefix("only_")
+        rows = [(f"only_{category}", "request_shift", category)]
+        rows.extend(
+            (f"not_{other_category}", "exclude_shift", other_category)
+            for other_category in ("morning", "evening", "night")
+            if other_category != category
+        )
+        return rows
+    return []
+
+
+def _rebuild_employee_recurring_preferences_for_multiple_requests(cursor: sqlite3.Cursor) -> None:
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'employee_recurring_preferences'")
+    row = cursor.fetchone()
+    table_sql = row["sql"] if row else ""
+    if not table_sql:
+        return
+
+    columns = _table_columns(cursor, "employee_recurring_preferences")
+    compact_sql = table_sql.replace(" ", "")
+    has_single_day_unique = "UNIQUE(employee_id,preference_kind,day_of_week)" in compact_sql
+    if {"request_type", "target_category"}.issubset(columns) and not has_single_day_unique:
+        return
+
+    cursor.execute("ALTER TABLE employee_recurring_preferences RENAME TO employee_recurring_preferences_old")
+    cursor.execute("""
+        CREATE TABLE employee_recurring_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            preference_kind TEXT NOT NULL CHECK (preference_kind IN ('strict', 'soft')),
+            day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+            preference_type TEXT NOT NULL CHECK (
+                preference_type IN (
+                    'off_day',
+                    'vacation',
+                    'only_morning',
+                    'only_evening',
+                    'only_night',
+                    'not_morning',
+                    'not_evening',
+                    'not_night',
+                    'no_morning_evening_combo'
+                )
+            ),
+            request_type TEXT NOT NULL DEFAULT 'request_shift',
+            target_category TEXT,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            updated_by INTEGER,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        )
+    """)
+
+    old_columns = _table_columns(cursor, "employee_recurring_preferences_old")
+    cursor.execute("SELECT * FROM employee_recurring_preferences_old ORDER BY id")
+    old_rows = [dict(row) for row in cursor.fetchall()]
+    seen = set()
+    for old_row in old_rows:
+        preference_type = str(old_row.get("preference_type") or "")
+        if {"request_type", "target_category"}.issubset(old_columns):
+            request_type = old_row.get("request_type")
+            target_category = old_row.get("target_category")
+            if not request_type:
+                request_rows = _legacy_recurring_request_rows(preference_type)
+            else:
+                request_rows = [(preference_type, request_type, target_category)]
+        else:
+            request_rows = _legacy_recurring_request_rows(preference_type)
+
+        first_inserted_for_source = False
+        for next_preference_type, request_type, target_category in request_rows:
+            if next_preference_type == "no_preference":
+                continue
+            unique_key = (
+                int(old_row["employee_id"]),
+                str(old_row["preference_kind"]),
+                int(old_row["day_of_week"]),
+                str(request_type),
+                target_category,
+            )
+            if unique_key in seen:
+                continue
+            seen.add(unique_key)
+            cursor.execute(
+                """
+                INSERT INTO employee_recurring_preferences (
+                    employee_id, preference_kind, day_of_week, preference_type,
+                    request_type, target_category, organization_id, public_id,
+                    created_at, updated_at, updated_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(old_row["employee_id"]),
+                    str(old_row["preference_kind"]),
+                    int(old_row["day_of_week"]),
+                    next_preference_type,
+                    request_type,
+                    target_category,
+                    int(old_row["organization_id"]) if "organization_id" in old_columns else 1,
+                    old_row.get("public_id") if not first_inserted_for_source and "public_id" in old_columns else None,
+                    old_row.get("created_at") if "created_at" in old_columns else None,
+                    old_row.get("updated_at") if "updated_at" in old_columns else None,
+                    old_row.get("updated_by") if "updated_by" in old_columns else None,
+                ),
+            )
+            first_inserted_for_source = True
+
+    cursor.execute("DROP TABLE employee_recurring_preferences_old")
 
 
 def _ensure_schema_migration_tables(cursor: sqlite3.Cursor) -> None:
@@ -1484,6 +1650,9 @@ def init_db():
             date TEXT NOT NULL,
             shift_template_id INTEGER NOT NULL,
             no_show INTEGER NOT NULL DEFAULT 0,
+            start_time_override TEXT,
+            end_time_override TEXT,
+            is_overnight_override INTEGER,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
             FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
             FOREIGN KEY (shift_template_id) REFERENCES shift_templates(id) ON DELETE RESTRICT
@@ -1494,6 +1663,12 @@ def init_db():
     schedule_entry_columns = {row["name"] for row in cursor.fetchall()}
     if "no_show" not in schedule_entry_columns:
         cursor.execute("ALTER TABLE schedule_entries ADD COLUMN no_show INTEGER NOT NULL DEFAULT 0")
+    if "start_time_override" not in schedule_entry_columns:
+        cursor.execute("ALTER TABLE schedule_entries ADD COLUMN start_time_override TEXT")
+    if "end_time_override" not in schedule_entry_columns:
+        cursor.execute("ALTER TABLE schedule_entries ADD COLUMN end_time_override TEXT")
+    if "is_overnight_override" not in schedule_entry_columns:
+        cursor.execute("ALTER TABLE schedule_entries ADD COLUMN is_overnight_override INTEGER")
 
     schedule_entry_fk_targets = {row["table"] for row in cursor.execute("PRAGMA foreign_key_list(schedule_entries)")}
     if "shift_templates_old" in schedule_entry_fk_targets:
@@ -1506,14 +1681,22 @@ def init_db():
                 date TEXT NOT NULL,
                 shift_template_id INTEGER NOT NULL,
                 no_show INTEGER NOT NULL DEFAULT 0,
+                start_time_override TEXT,
+                end_time_override TEXT,
+                is_overnight_override INTEGER,
                 FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
                 FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
                 FOREIGN KEY (shift_template_id) REFERENCES shift_templates(id) ON DELETE RESTRICT
             )
         """)
         cursor.execute("""
-            INSERT INTO schedule_entries (id, employee_id, position_id, date, shift_template_id, no_show)
-            SELECT id, employee_id, position_id, date, shift_template_id, no_show
+            INSERT INTO schedule_entries (
+                id, employee_id, position_id, date, shift_template_id, no_show,
+                start_time_override, end_time_override, is_overnight_override
+            )
+            SELECT
+                id, employee_id, position_id, date, shift_template_id, no_show,
+                start_time_override, end_time_override, is_overnight_override
             FROM schedule_entries_old
         """)
         cursor.execute("DROP TABLE schedule_entries_old")
@@ -1646,9 +1829,30 @@ def init_db():
                     'no_morning_evening_combo'
                 )
             ),
-            UNIQUE(employee_id, preference_kind, day_of_week),
+            request_type TEXT NOT NULL DEFAULT 'request_shift',
+            target_category TEXT,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
         )
+    """)
+
+    _rebuild_employee_recurring_preferences_for_multiple_requests(cursor)
+    _add_column_if_missing(cursor, "employee_recurring_preferences", "request_type", "TEXT NOT NULL DEFAULT 'request_shift'")
+    _add_column_if_missing(cursor, "employee_recurring_preferences", "target_category", "TEXT")
+    cursor.execute("""
+        UPDATE employee_recurring_preferences
+        SET request_type = CASE
+                WHEN preference_type = 'off_day' THEN 'day_off'
+                WHEN preference_type = 'vacation' THEN 'vacation'
+                WHEN preference_type = 'no_morning_evening_combo' THEN 'no_morning_evening_combo'
+                WHEN preference_type LIKE 'not_%' THEN 'exclude_shift'
+                ELSE request_type
+            END,
+            target_category = CASE
+                WHEN preference_type LIKE '%morning' THEN 'morning'
+                WHEN preference_type LIKE '%evening' THEN 'evening'
+                WHEN preference_type LIKE '%night' THEN 'night'
+                ELSE target_category
+            END
     """)
 
     cursor.execute("""
@@ -1836,7 +2040,7 @@ def init_db():
             cursor,
             previous_schema_version,
             CURRENT_SCHEMA_VERSION,
-            "Add permanent employee recurring preferences",
+            "Allow multiple permanent recurring preference requests per day",
         )
         _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
 

@@ -1,6 +1,7 @@
 import os
 import json
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -8,12 +9,14 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from tests.test_support import database, main
 import email_service
 import license_runtime
+import update_service
 from db_adapter import CompatRow, PostgresCursorAdapter, _is_postgres_integrity_error, _rewrite_sql_for_postgres
 
 
@@ -1789,12 +1792,25 @@ class ApiRegressionTests(unittest.TestCase):
                 {
                     "preference_kind": "strict",
                     "day_of_week": 0,
-                    "preference_type": "only_night",
+                    "request_type": "request_shift",
+                    "target_category": "night",
+                },
+                {
+                    "preference_kind": "strict",
+                    "day_of_week": 0,
+                    "request_type": "exclude_shift",
+                    "target_category": "morning",
+                },
+                {
+                    "preference_kind": "strict",
+                    "day_of_week": 0,
+                    "request_type": "exclude_shift",
+                    "target_category": "evening",
                 },
                 {
                     "preference_kind": "soft",
                     "day_of_week": 1,
-                    "preference_type": "off_day",
+                    "request_type": "day_off",
                 },
             ],
         }
@@ -1816,8 +1832,16 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(owner_read.status_code, 200)
         self.assertEqual(
-            {(rule["preference_kind"], rule["day_of_week"], rule["preference_type"]) for rule in owner_read.json()},
-            {("strict", 0, "only_night"), ("soft", 1, "off_day")},
+            {
+                (rule["preference_kind"], rule["day_of_week"], rule["request_type"], rule["target_category"])
+                for rule in owner_read.json()
+            },
+            {
+                ("strict", 0, "request_shift", "night"),
+                ("strict", 0, "exclude_shift", "morning"),
+                ("strict", 0, "exclude_shift", "evening"),
+                ("soft", 1, "day_off", None),
+            },
         )
 
     def test_employee_schedule_scope_returns_primary_position_team_entries(self):
@@ -2109,11 +2133,11 @@ class ApiRegressionTests(unittest.TestCase):
         service_worker_js = Path("static/service-worker.js").read_text(encoding="utf-8")
         pwa_js = Path("static/js/pwa.js").read_text(encoding="utf-8")
 
-        self.assertIn("20260618-employee-schedule-personal-colors", service_worker_js)
+        self.assertIn("20260619", service_worker_js)
         self.assertIn("/login", service_worker_js)
-        self.assertIn("/static/css/auth.css?v=0.20.3_beta-employee-portal-account", service_worker_js)
-        self.assertIn("/static/js/auth.js?v=0.20.3_beta-portal-entry-employee-mode", service_worker_js)
-        self.assertIn("/static/js/schedule.js?v=0.20.3_beta-employee-schedule-personal-colors", service_worker_js)
+        self.assertIn("/static/css/auth.css?v=0.20.4_beta-employee-portal-account", service_worker_js)
+        self.assertIn("/static/js/auth.js?v=0.20.4_beta-portal-entry-employee-mode", service_worker_js)
+        self.assertIn("/static/js/schedule.js?v=0.20.4_beta-schedule-sync-manual-time", service_worker_js)
         self.assertNotIn("/static/css/style.css?v=0.20.1_beta-generation-modes-rtl", service_worker_js)
         self.assertNotIn("/static/css/schedule.css?v=0.20.1_beta-generation-modes", service_worker_js)
         self.assertIn("registration.update()", pwa_js)
@@ -2625,6 +2649,146 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(len(preferences), 1)
         self.assertEqual(preferences[0]["employee_id"], employee_id)
         self.assertEqual(preferences[0]["preference_type"], "off_day")
+
+    def test_cloud_preference_pull_does_not_queue_imported_rows_for_push(self):
+        employee_id = self._create_employee()
+        cursor = self.connection.cursor()
+        cursor.execute("UPDATE employees SET public_id = 'emp_cloud' WHERE id = ?", (employee_id,))
+        cursor.execute("DELETE FROM desktop_sync_outbox")
+        self.connection.commit()
+
+        cloud_bundle = {
+            "format": "shiftcare.organization.v1",
+            "app_version": "0.20.3_beta",
+            "records": {
+                "employees": [{"id": 7, "public_id": "emp_cloud"}],
+                "employee_preferences": [],
+                "employee_week_preferences": [
+                    {
+                        "id": 11,
+                        "public_id": "wpr_cloud",
+                        "employee_id": 7,
+                        "week_start_date": "2026-05-03",
+                        "preference_date": "2026-05-04",
+                        "preference_type": "off_day",
+                        "request_type": "day_off",
+                        "target_category": None,
+                        "created_at": "2026-05-06T01:00:00",
+                        "updated_at": "2026-05-06T01:00:00",
+                    }
+                ],
+                "employee_recurring_preferences": [
+                    {
+                        "id": 12,
+                        "public_id": "rpr_cloud",
+                        "employee_id": 7,
+                        "preference_kind": "strict",
+                        "day_of_week": 6,
+                        "preference_type": "only_night",
+                        "request_type": "request_shift",
+                        "target_category": "night",
+                        "created_at": "2026-05-06T01:00:00",
+                        "updated_at": "2026-05-06T01:00:00",
+                    }
+                ],
+            },
+        }
+
+        def fake_cloud_request(base_url, path, **kwargs):
+            self.assertEqual(path, "/api/organizations/42/cloud-export")
+            return cloud_bundle
+
+        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+            self.assertTrue(main.sync_cloud_preferences_to_desktop(self.connection, {
+                "cloud_api_base_url": "https://schedule-app-beta.web.app",
+                "cloud_organization_id": "42",
+                "desktop_cloud_access_token": "cloud-token",
+            }))
+        self.connection.commit()
+
+        cursor.execute("SELECT COUNT(*) AS count FROM desktop_sync_outbox")
+        self.assertEqual(cursor.fetchone()["count"], 0)
+        cursor.execute(
+            """
+            SELECT request_type, target_category
+            FROM employee_recurring_preferences
+            WHERE employee_id = ? AND day_of_week = 6
+            """,
+            (employee_id,),
+        )
+        recurring_row = cursor.fetchone()
+        self.assertIsNotNone(recurring_row)
+        self.assertEqual(recurring_row["request_type"], "request_shift")
+        self.assertEqual(recurring_row["target_category"], "night")
+
+    def test_auto_generate_uses_local_preferences_without_cloud_pull(self):
+        position_id = self._create_position(name="Caregiver")
+        self._create_shift_template(position_id=position_id)
+        employee_id = self._create_employee(full_name="Local Employee")
+        response = self.client.post(
+            "/api/employee-positions",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        recurring_response = self.client.post(
+            "/api/employee-recurring-preferences",
+            json={
+                "employee_id": employee_id,
+                "rules": [
+                    {
+                        "preference_kind": "strict",
+                        "day_of_week": 1,
+                        "request_type": "request_shift",
+                        "target_category": "morning",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(recurring_response.status_code, 200)
+        self._save_shift_requirement(position_id=position_id)
+
+        cursor = self.connection.cursor()
+        for key, value in {
+            "cloud_api_base_url": "https://schedule-app-beta.web.app",
+            "cloud_organization_id": "42",
+            "desktop_cloud_access_token": "cloud-token",
+        }.items():
+            cursor.execute(
+                """
+                INSERT INTO app_settings (organization_id, key, value)
+                VALUES (1, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+        cursor.execute("DELETE FROM desktop_sync_outbox")
+        self.connection.commit()
+
+        with patch.object(main, "request_cloud_json", side_effect=AssertionError("generation must not pull cloud preferences")):
+            generate_response = self.client.post(
+                "/api/schedule/auto-generate",
+                json={"position_id": position_id, "week_start_date": "2026-04-20"},
+            )
+
+        self.assertEqual(generate_response.status_code, 200)
+        cursor.execute(
+            """
+            SELECT request_type, target_category
+            FROM employee_recurring_preferences
+            WHERE employee_id = ?
+            """,
+            (employee_id,),
+        )
+        recurring_row = cursor.fetchone()
+        self.assertIsNotNone(recurring_row)
+        self.assertEqual(recurring_row["request_type"], "request_shift")
+        self.assertEqual(recurring_row["target_category"], "morning")
 
     def test_request_cloud_json_retries_transient_network_error(self):
         class FakeResponse:
@@ -3164,6 +3328,63 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/schedule").json(), [])
         self.assertEqual(self.client.get("/api/employee-day-statuses").json(), [])
 
+    def test_schedule_entry_time_override_affects_returned_times_and_coverage(self):
+        employee_id = self._create_employee(sex="female")
+        position_id = self._create_position()
+        template_id = self._create_shift_template(
+            position_id=position_id,
+            start_time="06:30",
+            end_time="15:00",
+        )
+
+        create_response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": template_id,
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        schedule_entry_id = create_response.json()["schedule_entry"]["id"]
+
+        update_response = self.client.patch(
+            f"/api/schedule/{schedule_entry_id}/time",
+            json={"start_time": "06:30", "end_time": "12:00"},
+        )
+        self.assertEqual(update_response.status_code, 200)
+        updated_entry = update_response.json()["schedule_entry"]
+        self.assertEqual(updated_entry["start_time"], "06:30")
+        self.assertEqual(updated_entry["end_time"], "12:00")
+        self.assertEqual(updated_entry["template_end_time"], "15:00")
+        self.assertTrue(updated_entry["time_overridden"])
+
+        entries = self.client.get("/api/schedule").json()
+        before_departure_slot = {"start": 7 * 60, "end": 12 * 60, "required_total": 1, "required_female_min": 0, "required_male_min": 0}
+        after_departure_slot = {"start": 12 * 60, "end": 15 * 60, "required_total": 1, "required_female_min": 0, "required_male_min": 0}
+        self.assertEqual(main.count_slot_coverage(entries, before_departure_slot), (1, 1, 0))
+        self.assertEqual(main.count_slot_coverage(entries, after_departure_slot), (0, 0, 0))
+
+        extend_response = self.client.patch(
+            f"/api/schedule/{schedule_entry_id}/time",
+            json={"start_time": "06:30", "end_time": "20:00"},
+        )
+        self.assertEqual(extend_response.status_code, 200)
+        entries = self.client.get("/api/schedule").json()
+        evening_slot = {"start": 15 * 60, "end": 20 * 60, "required_total": 1, "required_female_min": 0, "required_male_min": 0}
+        self.assertEqual(main.count_slot_coverage(entries, evening_slot), (1, 1, 0))
+
+        reset_response = self.client.patch(
+            f"/api/schedule/{schedule_entry_id}/time",
+            json={"reset": True},
+        )
+        self.assertEqual(reset_response.status_code, 200)
+        reset_entry = reset_response.json()["schedule_entry"]
+        self.assertEqual(reset_entry["start_time"], "06:30")
+        self.assertEqual(reset_entry["end_time"], "15:00")
+        self.assertFalse(reset_entry["time_overridden"])
+
     def test_manual_schedule_edits_keep_day_off_status_in_sync(self):
         employee_id = self._create_employee()
         position_id = self._create_position()
@@ -3493,6 +3714,164 @@ class ApiRegressionTests(unittest.TestCase):
             "2026-04-26",
         })
 
+    def test_single_position_auto_generate_does_not_mark_empty_days_as_day_off(self):
+        generated_position_id = self._create_position(name="Generated Ward")
+        secondary_position_id = self._create_position(name="Secondary Ward")
+        self._create_shift_template(position_id=generated_position_id, name="Generated Morning")
+
+        employee_id = self._create_employee(
+            full_name="Shared Employee",
+            min_shifts_per_week=0,
+            target_shifts_per_week=1,
+            max_shifts_per_week=1,
+        )
+        for position_id, is_primary, priority_score in (
+            (generated_position_id, True, 100),
+            (secondary_position_id, False, 50),
+        ):
+            response = self.client.post(
+                "/api/employee-positions",
+                json={
+                    "employee_id": employee_id,
+                    "position_id": position_id,
+                    "is_primary": is_primary,
+                    "priority_score": priority_score,
+                    "is_fallback_only": False,
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+
+        self._save_shift_requirement(position_id=generated_position_id)
+
+        generate_response = self.client.post(
+            "/api/schedule/auto-generate",
+            json={"position_id": generated_position_id, "week_start_date": "2026-04-20"},
+        )
+        self.assertEqual(generate_response.status_code, 200)
+        payload = generate_response.json()
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["day_off_count"], 0)
+
+        day_statuses = self.client.get("/api/employee-day-statuses").json()
+        self.assertEqual(day_statuses, [])
+
+    def test_auto_generate_preserves_existing_manual_week_schedule(self):
+        position_id = self._create_position(name="Replace Ward")
+        template_id = self._create_shift_template(position_id=position_id, name="Morning")
+        employee_id = self._create_employee(full_name="Employee A")
+        response = self.client.post(
+            "/api/employee-positions",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self._save_shift_requirement(position_id=position_id)
+
+        create_response = self.client.post(
+            "/api/schedule",
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": template_id,
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        existing_entry_id = create_response.json()["schedule_entry"]["id"]
+
+        generate_response = self.client.post(
+            "/api/schedule/auto-generate",
+            json={"position_id": position_id, "week_start_date": "2026-04-20"},
+        )
+        self.assertEqual(generate_response.status_code, 200)
+        payload = generate_response.json()
+        self.assertEqual(payload["created_count"], 4)
+
+        schedule_entries = self.client.get("/api/schedule").json()
+        self.assertIn(existing_entry_id, {entry["id"] for entry in schedule_entries})
+        self.assertEqual(len(schedule_entries), 5)
+        manual_entry = next(entry for entry in schedule_entries if entry["id"] == existing_entry_id)
+        self.assertEqual(manual_entry["date"], "2026-04-20")
+        self.assertEqual(manual_entry["employee_id"], employee_id)
+
+    def test_auto_generate_respects_strict_employee_card_preferences(self):
+        position_id = self._create_position(name="Strict Preference Ward")
+        self._create_shift_template(position_id=position_id, name="Morning")
+
+        strict_employee_id = self._create_employee(
+            full_name="Strict Employee",
+            min_shifts_per_week=0,
+            target_shifts_per_week=3,
+            max_shifts_per_week=5,
+        )
+        backup_employee_id = self._create_employee(
+            full_name="Backup Employee",
+            min_shifts_per_week=0,
+            target_shifts_per_week=3,
+            max_shifts_per_week=5,
+        )
+
+        for assignment in (
+            {
+                "employee_id": strict_employee_id,
+                "position_id": position_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+            {
+                "employee_id": backup_employee_id,
+                "position_id": position_id,
+                "is_primary": False,
+                "priority_score": 10,
+                "is_fallback_only": False,
+            },
+        ):
+            response = self.client.post("/api/employee-positions", json=assignment)
+            self.assertEqual(response.status_code, 200)
+
+        recurring_response = self.client.post(
+            "/api/employee-recurring-preferences",
+            json={
+                "employee_id": strict_employee_id,
+                "rules": [
+                    {
+                        "preference_kind": "strict",
+                        "day_of_week": 1,
+                        "request_type": "request_shift",
+                        "target_category": "night",
+                    },
+                    {
+                        "preference_kind": "strict",
+                        "day_of_week": 1,
+                        "request_type": "exclude_shift",
+                        "target_category": "morning",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(recurring_response.status_code, 200)
+        self._save_shift_requirement(position_id=position_id)
+
+        generate_response = self.client.post(
+            "/api/schedule/auto-generate",
+            json={"position_id": position_id, "week_start_date": "2026-04-19"},
+        )
+        self.assertEqual(generate_response.status_code, 200)
+
+        monday_entries = [
+            entry
+            for entry in self.client.get("/api/schedule").json()
+            if entry["date"] == "2026-04-20"
+        ]
+        self.assertEqual(len(monday_entries), 1)
+        self.assertEqual(monday_entries[0]["employee_id"], backup_employee_id)
+
     def test_auto_generate_all_positions_returns_successes_and_failures(self):
         ward_a_id = self._create_position(name="Ward A")
         ward_b_id = self._create_position(name="Ward B")
@@ -3537,6 +3916,80 @@ class ApiRegressionTests(unittest.TestCase):
 
         schedule_entries = self.client.get("/api/schedule").json()
         self.assertEqual({entry["position_id"] for entry in schedule_entries}, {ward_a_id, ward_b_id})
+
+    def test_auto_generate_all_prioritizes_primary_position_before_secondary_assignment(self):
+        settings_response = self.client.put("/api/app-settings", json={"max_work_days_per_week": 7})
+        self.assertEqual(settings_response.status_code, 200)
+
+        secondary_position_id = self._create_position(name="Secondary Ward")
+        primary_position_id = self._create_position(name="Primary Ward")
+        self._create_shift_template(
+            position_id=secondary_position_id,
+            name="Secondary Evening",
+            category="evening",
+            start_time="14:00",
+            end_time="20:00",
+        )
+        self._create_shift_template(position_id=primary_position_id, name="Primary Morning")
+
+        shared_employee_id = self._create_employee(
+            full_name="Shared Employee",
+            min_shifts_per_week=0,
+            target_shifts_per_week=7,
+            max_shifts_per_week=7,
+        )
+        backup_employee_id = self._create_employee(
+            full_name="Backup Employee",
+            min_shifts_per_week=0,
+            target_shifts_per_week=7,
+            max_shifts_per_week=7,
+        )
+
+        for assignment in (
+            {
+                "employee_id": shared_employee_id,
+                "position_id": secondary_position_id,
+                "is_primary": False,
+                "priority_score": 10,
+                "is_fallback_only": False,
+            },
+            {
+                "employee_id": shared_employee_id,
+                "position_id": primary_position_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+            {
+                "employee_id": backup_employee_id,
+                "position_id": primary_position_id,
+                "is_primary": False,
+                "priority_score": 50,
+                "is_fallback_only": False,
+            },
+        ):
+            response = self.client.post("/api/employee-positions", json=assignment)
+            self.assertEqual(response.status_code, 200)
+
+        self._save_shift_requirement(
+            position_id=secondary_position_id,
+            shift_category="evening",
+        )
+        self._save_shift_requirement(position_id=primary_position_id)
+
+        response = self.client.post(
+            "/api/schedule/auto-generate-all",
+            json={"week_start_date": "2026-04-20"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+        schedule_entries = self.client.get("/api/schedule").json()
+        primary_entries = [entry for entry in schedule_entries if entry["position_id"] == primary_position_id]
+        secondary_entries = [entry for entry in schedule_entries if entry["position_id"] == secondary_position_id]
+
+        self.assertEqual(len(primary_entries), 7)
+        self.assertEqual({entry["employee_name"] for entry in primary_entries}, {"Shared Employee"})
+        self.assertEqual(secondary_entries, [])
 
     def test_auto_generate_spreads_night_shifts_evenly_between_night_staff(self):
         position_id = self._create_position(name="Night Ward")
@@ -4328,6 +4781,62 @@ class ApiRegressionTests(unittest.TestCase):
 
         self.assertFalse(payload["update_available"])
         self.assertIn("No installable", payload["message"])
+
+    def test_update_install_verifies_downloaded_installer_signature_before_launch(self):
+        latest = {
+            "version": "0.15.18-beta",
+            "asset_name": "ShiftCare_Setup_0.15.18-beta.exe",
+            "download_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.18-beta/ShiftCare_Setup_0.15.18-beta.exe",
+        }
+        installer_path = Path(tempfile.gettempdir()) / "ShiftCare_Setup_0.15.18-beta.exe"
+
+        with (
+            patch.object(
+                main,
+                "get_update_status",
+                return_value={"current_version": "0.15.17-beta", "update_available": True, "latest": latest},
+            ),
+            patch.object(main, "download_update_installer", return_value=installer_path),
+            patch.object(main, "verify_windows_installer_signature") as verify_signature,
+            patch.object(main.subprocess, "Popen") as popen,
+            patch.object(main, "schedule_desktop_shutdown") as schedule_shutdown,
+        ):
+            response = self.client.post(
+                "/api/updates/install",
+                json={"download_url": latest["download_url"], "asset_name": latest["asset_name"]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        verify_signature.assert_called_once_with(installer_path)
+        popen.assert_called_once_with([str(installer_path), "/CLOSEAPPLICATIONS"], close_fds=True)
+        schedule_shutdown.assert_called_once()
+
+    def test_windows_installer_signature_rejects_unexpected_publisher(self):
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "Status": "Valid",
+                    "StatusMessage": "Signature verified.",
+                    "Subject": "CN=Other Publisher",
+                    "Thumbprint": "ABC123",
+                }
+            ),
+            stderr="",
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".exe") as installer:
+            with (
+                patch.object(update_service.os, "name", "nt"),
+                patch.object(update_service.subprocess, "run", return_value=completed),
+                patch.dict(os.environ, {"SHIFTCARE_WINDOWS_SIGNER_SUBJECT": "ShiftCare"}),
+            ):
+                with self.assertRaises(HTTPException) as context:
+                    update_service.verify_windows_installer_signature(Path(installer.name))
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("unexpected publisher", context.exception.detail)
 
     def test_download_page_uses_latest_installable_release_only(self):
         releases = [

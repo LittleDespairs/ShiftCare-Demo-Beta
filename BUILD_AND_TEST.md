@@ -115,13 +115,13 @@ See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
 Current spec:
 
 ```text
-ShiftCare_0.20.3_beta.spec
+ShiftCare_0.20.4_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ShiftCare_0.20.3_beta.spec
+.\.venv\Scripts\pyinstaller.exe ShiftCare_0.20.4_beta.spec
 ```
 
 ## Windows Installer
@@ -145,8 +145,30 @@ If Inno Setup is not installed locally:
 Expected installer output:
 
 ```text
-dist\installer\ShiftCare_Setup_0.20.3-beta.exe
-dist\installer\ShiftCare_Demo_Setup_0.20.3-beta.exe
+dist\installer\ShiftCare_Setup_0.20.4-beta.exe
+dist\installer\ShiftCare_Demo_Setup_0.20.4-beta.exe
+```
+
+Customer release build with code signing:
+
+```powershell
+$env:SHIFTCARE_SIGN_CERT_THUMBPRINT = "YOUR_CERT_THUMBPRINT_WITHOUT_SPACES"
+.\tools\build_windows_installer.ps1 -Target ShiftCare -Release -Sign
+```
+
+`-Release` rebuilds with a clean PyInstaller work directory and disables UPX. `-Sign` signs the
+PyInstaller app executable, lets Inno Setup sign the installer and uninstaller, and verifies the
+final app executable and setup signature. If the certificate is selected by subject instead of
+thumbprint, set `SHIFTCARE_SIGN_CERT_SUBJECT`. The release script also checks that the signed
+publisher matches `release_config.py`.
+
+Before the first stable build, set the expected updater publisher in `release_config.py`. It should
+match the legal subject in the code-signing certificate.
+
+Before uploading the installer to GitHub Releases, verify it on a clean Windows machine:
+
+```powershell
+signtool verify /pa /tw /v .\dist\installer\ShiftCare_Setup_0.20.4-beta.exe
 ```
 
 ## Before Committing

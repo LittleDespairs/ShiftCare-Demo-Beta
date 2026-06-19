@@ -298,21 +298,71 @@ class EmployeeRecurringPreferenceRule(BaseModel):
         "not_evening",
         "not_night",
         "no_morning_evening_combo",
-    ]
+    ] | None = None
+    request_type: Literal["request_shift", "exclude_shift", "day_off", "vacation", "no_morning_evening_combo"] | None = None
+    target_category: Literal["morning", "evening", "night"] | None = None
+
+    @model_validator(mode="after")
+    def validate_recurring_preference(self):
+        if not self.request_type:
+            legacy_map = {
+                "off_day": ("day_off", None),
+                "vacation": ("vacation", None),
+                "only_morning": ("request_shift", "morning"),
+                "only_evening": ("request_shift", "evening"),
+                "only_night": ("request_shift", "night"),
+                "not_morning": ("exclude_shift", "morning"),
+                "not_evening": ("exclude_shift", "evening"),
+                "not_night": ("exclude_shift", "night"),
+                "no_morning_evening_combo": ("no_morning_evening_combo", None),
+            }
+            if self.preference_type in legacy_map:
+                self.request_type, self.target_category = legacy_map[self.preference_type]
+        if not self.request_type:
+            raise ValueError("request_type is required")
+        if self.request_type in {"request_shift", "exclude_shift"} and not self.target_category:
+            raise ValueError("target_category is required for shift requests")
+        if self.request_type in {"day_off", "vacation", "no_morning_evening_combo"}:
+            self.target_category = None
+        if self.request_type == "day_off":
+            self.preference_type = "off_day"
+        elif self.request_type == "vacation":
+            self.preference_type = "vacation"
+        elif self.request_type == "no_morning_evening_combo":
+            self.preference_type = "no_morning_evening_combo"
+        elif self.request_type == "request_shift":
+            self.preference_type = f"only_{self.target_category}"
+        elif self.request_type == "exclude_shift":
+            self.preference_type = f"not_{self.target_category}"
+        return self
 
 
 class EmployeeRecurringPreferencesUpdate(BaseModel):
     employee_id: int
-    rules: list[EmployeeRecurringPreferenceRule] = Field(default_factory=list, max_length=14)
+    rules: list[EmployeeRecurringPreferenceRule] = Field(default_factory=list, max_length=126)
 
     @model_validator(mode="after")
     def validate_unique_rules(self):
         seen = set()
+        day_blockers = set()
         for rule in self.rules:
-            key = (rule.preference_kind, rule.day_of_week)
+            if rule.preference_type == "no_preference":
+                continue
+            key = (rule.preference_kind, rule.day_of_week, rule.request_type, rule.target_category)
             if key in seen:
-                raise ValueError("Each permanent preference kind/day pair can appear only once")
+                raise ValueError("Each permanent preference request can appear only once")
             seen.add(key)
+            day_key = (rule.preference_kind, rule.day_of_week)
+            if rule.request_type in {"day_off", "vacation"}:
+                if day_key in day_blockers:
+                    raise ValueError("A permanent preference day can have only one full-day blocker")
+                day_blockers.add(day_key)
+        for rule in self.rules:
+            if rule.preference_type == "no_preference":
+                continue
+            day_key = (rule.preference_kind, rule.day_of_week)
+            if day_key in day_blockers and rule.request_type not in {"day_off", "vacation"}:
+                raise ValueError("Full-day permanent preference blockers cannot be combined with shift requests")
         return self
 
 
@@ -331,6 +381,27 @@ class ScheduleEntryCreate(BaseModel):
 
 class ScheduleEntryStatusUpdate(BaseModel):
     no_show: bool
+
+
+class ScheduleEntryTimeUpdate(BaseModel):
+    start_time: str | None = None
+    end_time: str | None = None
+    is_overnight: bool | None = None
+    reset: bool = False
+
+    @model_validator(mode="after")
+    def validate_time_override(self):
+        if self.reset:
+            return self
+        if not self.start_time or not self.end_time:
+            raise ValueError("start_time and end_time are required unless reset is true")
+        start = parse_time_string(self.start_time)
+        end = parse_time_string(self.end_time)
+        if start == end:
+            raise ValueError("start_time and end_time cannot be the same")
+        self.start_time = start.strftime("%H:%M")
+        self.end_time = end.strftime("%H:%M")
+        return self
 
 
 class AutoGenerateScheduleRequest(BaseModel):

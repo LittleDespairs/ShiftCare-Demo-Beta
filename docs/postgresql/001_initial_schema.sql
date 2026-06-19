@@ -235,6 +235,9 @@ CREATE TABLE IF NOT EXISTS schedule_entries (
     date TEXT NOT NULL,
     shift_template_id BIGINT NOT NULL REFERENCES shift_templates(id) ON DELETE RESTRICT,
     no_show INTEGER NOT NULL DEFAULT 0,
+    start_time_override TEXT,
+    end_time_override TEXT,
+    is_overnight_override INTEGER,
     organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
     public_id TEXT NOT NULL DEFAULT ('sch_' || lower(encode(gen_random_bytes(16), 'hex'))),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -296,12 +299,13 @@ CREATE TABLE IF NOT EXISTS employee_recurring_preferences (
     preference_kind TEXT NOT NULL CHECK (preference_kind IN ('strict', 'soft')),
     day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
     preference_type TEXT NOT NULL CHECK (preference_type IN ('off_day', 'vacation', 'only_morning', 'only_evening', 'only_night', 'not_morning', 'not_evening', 'not_night', 'no_morning_evening_combo')),
+    request_type TEXT NOT NULL DEFAULT 'request_shift',
+    target_category TEXT,
     organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
     public_id TEXT NOT NULL DEFAULT ('rpr_' || lower(encode(gen_random_bytes(16), 'hex'))),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE (employee_id, preference_kind, day_of_week),
     UNIQUE (public_id)
 );
 
@@ -408,5 +412,5 @@ CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position ON coverage_re
 CREATE INDEX IF NOT EXISTS idx_app_settings_organization ON app_settings (organization_id, key);
 
 INSERT INTO schema_metadata (key, value)
-VALUES ('schema_version', '18')
+VALUES ('schema_version', '20')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
