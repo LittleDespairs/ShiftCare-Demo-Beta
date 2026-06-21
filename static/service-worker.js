@@ -1,4 +1,4 @@
-const CACHE_NAME = "shiftcare-0.20.5-beta-startup-update-notifier-20260621";
+const CACHE_NAME = "shiftcare-0.20.6-beta-startup-update-notifier-20260621";
 
 const SHELL_ASSETS = [
   "/",
@@ -6,19 +6,19 @@ const SHELL_ASSETS = [
   "/schedule",
   "/weekly-preferences",
   "/organization",
-  "/static/css/style.css?v=0.20.5_beta-schedule-sync-manual-time",
-  "/static/css/auth.css?v=0.20.5_beta-employee-portal-account",
-  "/static/css/schedule.css?v=0.20.5_beta-schedule-sync-manual-time",
-  "/static/js/i18n.js?v=0.20.5_beta-schedule-sync-manual-time",
-  "/static/js/auth_client.js?v=0.20.5_beta-desktop-local",
-  "/static/js/access_control.js?v=0.20.5_beta-employee-portal-polish",
-  "/static/js/auth_i18n.js?v=0.20.5_beta-employee-portal-account",
-  "/static/js/auth.js?v=0.20.5_beta-portal-entry-employee-mode",
-  "/static/js/schedule.js?v=0.20.5_beta-schedule-sync-manual-time",
-  "/static/js/organization.js?v=0.20.5_beta-employee-portal-account",
-  "/static/js/online_status.js?v=0.20.5_beta",
-  "/static/js/pwa.js?v=0.20.5_beta",
-  "/static/js/update_notifier.js?v=0.20.5_beta-startup-updates",
+  "/static/css/style.css?v=0.20.6_beta-schedule-sync-manual-time",
+  "/static/css/auth.css?v=0.20.6_beta-employee-portal-account",
+  "/static/css/schedule.css?v=0.20.6_beta-schedule-sync-manual-time",
+  "/static/js/i18n.js?v=0.20.6_beta-schedule-sync-manual-time",
+  "/static/js/auth_client.js?v=0.20.6_beta-desktop-local",
+  "/static/js/access_control.js?v=0.20.6_beta-employee-portal-polish",
+  "/static/js/auth_i18n.js?v=0.20.6_beta-employee-portal-account",
+  "/static/js/auth.js?v=0.20.6_beta-portal-entry-employee-mode",
+  "/static/js/schedule.js?v=0.20.6_beta-schedule-sync-manual-time",
+  "/static/js/organization.js?v=0.20.6_beta-employee-portal-account",
+  "/static/js/online_status.js?v=0.20.6_beta",
+  "/static/js/pwa.js?v=0.20.6_beta",
+  "/static/js/update_notifier.js?v=0.20.6_beta-startup-updates",
   "/static/manifest.webmanifest",
   "/static/icons/app-icon.svg"
 ];
