@@ -121,6 +121,7 @@ from update_service import (
     normalize_version,
     release_asset_version,
     schedule_desktop_shutdown,
+    summarize_release_notes,
     verify_windows_installer_signature,
     version_sort_key,
 )
@@ -128,7 +129,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.20.4_beta"
+APP_VERSION = "0.20.5_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -1816,6 +1817,11 @@ LOCAL_ONLY_APP_SETTING_KEYS = {
     "desktop_cloud_last_push_at",
     "desktop_cloud_last_push_error",
     "desktop_sync_suspended",
+    "desktop_pending_update_changelog_body",
+    "desktop_pending_update_changelog_name",
+    "desktop_pending_update_changelog_summary",
+    "desktop_pending_update_changelog_version",
+    "desktop_update_changelog_seen_version",
 }
 
 
@@ -2424,6 +2430,145 @@ def request_github_releases() -> list[dict]:
 
 def request_demo_github_releases() -> list[dict]:
     return update_service.request_github_releases(APP_VERSION, update_service.GITHUB_DEMO_REPO_NAME)
+
+
+PENDING_UPDATE_CHANGELOG_VERSION_KEY = "desktop_pending_update_changelog_version"
+PENDING_UPDATE_CHANGELOG_NAME_KEY = "desktop_pending_update_changelog_name"
+PENDING_UPDATE_CHANGELOG_BODY_KEY = "desktop_pending_update_changelog_body"
+PENDING_UPDATE_CHANGELOG_SUMMARY_KEY = "desktop_pending_update_changelog_summary"
+UPDATE_CHANGELOG_SEEN_VERSION_KEY = "desktop_update_changelog_seen_version"
+
+
+def update_notifications_are_enabled() -> bool:
+    return is_desktop_sqlite_runtime() and not is_demo_mode_enabled()
+
+
+def upsert_local_app_setting(cursor, key: str, value: str, organization_id: int = 1) -> None:
+    cursor.execute(
+        """
+        INSERT INTO app_settings (organization_id, key, value)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key)
+        DO UPDATE SET organization_id = excluded.organization_id,
+                      value = excluded.value
+        """,
+        (organization_id, key, value),
+    )
+
+
+def read_local_app_settings(cursor, keys: set[str], organization_id: int = 1) -> dict[str, str]:
+    if not keys:
+        return {}
+    placeholders = ",".join(["?"] * len(keys))
+    cursor.execute(
+        f"""
+        SELECT key, value
+        FROM app_settings
+        WHERE organization_id = ? AND key IN ({placeholders})
+        """,
+        (organization_id, *sorted(keys)),
+    )
+    return {str(row["key"]): str(row["value"] or "") for row in cursor.fetchall()}
+
+
+def update_changelog_payload_from_release(release: dict) -> dict:
+    body = str(release.get("body") or "")
+    summary = release.get("changelog_summary")
+    if not isinstance(summary, list):
+        summary = summarize_release_notes(body)
+    return {
+        "version": release.get("version") or "",
+        "release_name": release.get("release_name") or release.get("tag_name") or release.get("version") or "",
+        "body": body,
+        "summary": [str(item) for item in summary if str(item).strip()],
+        "html_url": release.get("html_url") or "",
+        "published_at": release.get("published_at") or "",
+    }
+
+
+def remember_pending_update_changelog(release: dict) -> None:
+    if not update_notifications_are_enabled():
+        return
+    payload = update_changelog_payload_from_release(release)
+    if not payload["version"]:
+        return
+
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        upsert_local_app_setting(cursor, PENDING_UPDATE_CHANGELOG_VERSION_KEY, normalize_version(payload["version"]))
+        upsert_local_app_setting(cursor, PENDING_UPDATE_CHANGELOG_NAME_KEY, str(payload["release_name"] or payload["version"]))
+        upsert_local_app_setting(cursor, PENDING_UPDATE_CHANGELOG_BODY_KEY, payload["body"])
+        upsert_local_app_setting(cursor, PENDING_UPDATE_CHANGELOG_SUMMARY_KEY, json.dumps(payload["summary"]))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def read_pending_update_changelog() -> dict | None:
+    if not update_notifications_are_enabled():
+        return None
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        settings = read_local_app_settings(
+            cursor,
+            {
+                PENDING_UPDATE_CHANGELOG_VERSION_KEY,
+                PENDING_UPDATE_CHANGELOG_NAME_KEY,
+                PENDING_UPDATE_CHANGELOG_BODY_KEY,
+                PENDING_UPDATE_CHANGELOG_SUMMARY_KEY,
+                UPDATE_CHANGELOG_SEEN_VERSION_KEY,
+            },
+        )
+    finally:
+        connection.close()
+
+    pending_version = settings.get(PENDING_UPDATE_CHANGELOG_VERSION_KEY) or ""
+    if not pending_version or normalize_version(pending_version) != normalize_version(APP_VERSION):
+        return None
+    if normalize_version(settings.get(UPDATE_CHANGELOG_SEEN_VERSION_KEY) or "") == normalize_version(APP_VERSION):
+        return None
+
+    body = settings.get(PENDING_UPDATE_CHANGELOG_BODY_KEY) or ""
+    try:
+        summary = json.loads(settings.get(PENDING_UPDATE_CHANGELOG_SUMMARY_KEY) or "[]")
+    except json.JSONDecodeError:
+        summary = []
+    if not isinstance(summary, list) or not summary:
+        summary = summarize_release_notes(body)
+
+    return {
+        "version": APP_VERSION,
+        "release_name": settings.get(PENDING_UPDATE_CHANGELOG_NAME_KEY) or APP_VERSION,
+        "summary": [str(item) for item in summary if str(item).strip()],
+        "body": body,
+    }
+
+
+def mark_update_changelog_seen() -> None:
+    if not update_notifications_are_enabled():
+        return
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        upsert_local_app_setting(cursor, UPDATE_CHANGELOG_SEEN_VERSION_KEY, normalize_version(APP_VERSION))
+        cursor.execute(
+            """
+            DELETE FROM app_settings
+            WHERE organization_id = 1
+              AND key IN (?, ?, ?, ?)
+            """,
+            (
+                PENDING_UPDATE_CHANGELOG_VERSION_KEY,
+                PENDING_UPDATE_CHANGELOG_NAME_KEY,
+                PENDING_UPDATE_CHANGELOG_BODY_KEY,
+                PENDING_UPDATE_CHANGELOG_SUMMARY_KEY,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def get_update_status() -> dict:
@@ -5898,6 +6043,52 @@ def check_for_updates():
     return get_update_status()
 
 
+@app.get("/api/updates/startup", tags=["Settings"])
+def get_startup_update_state():
+    if not update_notifications_are_enabled():
+        return {
+            "current_version": APP_VERSION,
+            "updates_enabled": False,
+            "post_update_changelog": None,
+            "update_status": {
+                "current_version": APP_VERSION,
+                "update_available": False,
+            },
+        }
+
+    update_status = {
+        "current_version": APP_VERSION,
+        "update_available": False,
+    }
+    update_error = None
+    try:
+        update_status = get_update_status()
+    except HTTPException as exc:
+        update_error = exc.detail
+    except Exception as exc:
+        update_error = str(exc)
+
+    if update_error:
+        update_status = {
+            "current_version": APP_VERSION,
+            "update_available": False,
+            "error": update_error,
+        }
+
+    return {
+        "current_version": APP_VERSION,
+        "updates_enabled": True,
+        "post_update_changelog": read_pending_update_changelog(),
+        "update_status": update_status,
+    }
+
+
+@app.post("/api/updates/post-install-changelog/ack", tags=["Settings"])
+def acknowledge_post_install_changelog():
+    mark_update_changelog_seen()
+    return {"message": "Update changelog acknowledged.", "current_version": APP_VERSION}
+
+
 @app.post("/api/updates/install", tags=["Settings"])
 def install_update(request_data: UpdateInstallRequest):
     require_not_demo("Update installation")
@@ -5915,6 +6106,7 @@ def install_update(request_data: UpdateInstallRequest):
 
     installer_path = download_update_installer(latest["download_url"], latest["asset_name"])
     verify_windows_installer_signature(installer_path)
+    remember_pending_update_changelog(latest)
     subprocess.Popen([str(installer_path), "/CLOSEAPPLICATIONS"], close_fds=True)
     schedule_desktop_shutdown()
 

@@ -25,6 +25,23 @@ GITHUB_RELEASE_ASSET_PATTERN = re.compile(
 )
 DEFAULT_WINDOWS_SIGNER_SUBJECT = release_config.WINDOWS_SIGNER_SUBJECT
 SIGNATURE_CHECK_TIMEOUT_SECONDS = 15
+CHANGELOG_SECTION_TITLES = {
+    "changes",
+    "changed",
+    "what changed",
+    "what's new",
+    "whats new",
+    "изменения",
+    "что изменилось",
+}
+CHANGELOG_EXCLUDED_PREFIXES = (
+    "sha256:",
+    "`sha256",
+)
+CHANGELOG_EXCLUDED_TEXT = {
+    "windows installers",
+    "verification",
+}
 
 
 def normalize_version(value: str) -> str:
@@ -77,6 +94,57 @@ def release_asset_version(asset_name: str) -> str | None:
     return normalize_version(match.group("version"))
 
 
+def _clean_markdown_inline(value: str) -> str:
+    cleaned = re.sub(r"`([^`]+)`", r"\1", value)
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+    return cleaned.strip()
+
+
+def summarize_release_notes(body: str, max_items: int = 6) -> list[str]:
+    lines = str(body or "").splitlines()
+    selected_lines: list[str] = []
+    in_preferred_section = False
+    saw_preferred_section = False
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        heading = re.match(r"^#{1,6}\s+(.+?)\s*$", line)
+        if heading:
+            heading_text = _clean_markdown_inline(heading.group(1)).strip().lower()
+            normalized_heading = heading_text.rstrip(":")
+            in_preferred_section = normalized_heading in CHANGELOG_SECTION_TITLES
+            if in_preferred_section:
+                saw_preferred_section = True
+            elif saw_preferred_section and selected_lines:
+                break
+            continue
+
+        bullet = re.match(r"^[-*]\s+(.+?)\s*$", line)
+        if not bullet:
+            continue
+        if saw_preferred_section and not in_preferred_section:
+            continue
+
+        item = _clean_markdown_inline(bullet.group(1))
+        lowered = item.lower().strip()
+        if not item:
+            continue
+        if any(lowered.startswith(prefix) for prefix in CHANGELOG_EXCLUDED_PREFIXES):
+            continue
+        if any(excluded in lowered for excluded in CHANGELOG_EXCLUDED_TEXT):
+            continue
+        selected_lines.append(item)
+        if len(selected_lines) >= max_items:
+            break
+
+    return selected_lines[:max_items]
+
+
 def find_latest_installable_release(releases: list[dict]) -> dict | None:
     candidates: list[dict] = []
     for release in releases:
@@ -95,6 +163,7 @@ def find_latest_installable_release(releases: list[dict]) -> dict | None:
                     "release_name": release.get("name") or release.get("tag_name") or asset_version,
                     "tag_name": release.get("tag_name") or "",
                     "body": release.get("body") or "",
+                    "changelog_summary": summarize_release_notes(release.get("body") or ""),
                     "published_at": release.get("published_at") or "",
                     "asset_name": asset.get("name") or "",
                     "download_url": asset.get("browser_download_url") or "",

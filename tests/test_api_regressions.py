@@ -2133,14 +2133,48 @@ class ApiRegressionTests(unittest.TestCase):
         service_worker_js = Path("static/service-worker.js").read_text(encoding="utf-8")
         pwa_js = Path("static/js/pwa.js").read_text(encoding="utf-8")
 
-        self.assertIn("20260619", service_worker_js)
+        self.assertIn("20260621", service_worker_js)
         self.assertIn("/login", service_worker_js)
-        self.assertIn("/static/css/auth.css?v=0.20.4_beta-employee-portal-account", service_worker_js)
-        self.assertIn("/static/js/auth.js?v=0.20.4_beta-portal-entry-employee-mode", service_worker_js)
-        self.assertIn("/static/js/schedule.js?v=0.20.4_beta-schedule-sync-manual-time", service_worker_js)
+        self.assertIn("/static/css/auth.css?v=0.20.5_beta-employee-portal-account", service_worker_js)
+        self.assertIn("/static/js/auth.js?v=0.20.5_beta-portal-entry-employee-mode", service_worker_js)
+        self.assertIn("/static/js/schedule.js?v=0.20.5_beta-schedule-sync-manual-time", service_worker_js)
+        self.assertIn("/static/js/update_notifier.js?v=0.20.5_beta-startup-updates", service_worker_js)
         self.assertNotIn("/static/css/style.css?v=0.20.1_beta-generation-modes-rtl", service_worker_js)
         self.assertNotIn("/static/css/schedule.css?v=0.20.1_beta-generation-modes", service_worker_js)
         self.assertIn("registration.update()", pwa_js)
+
+    def test_update_notifier_script_is_loaded_on_startup_pages(self):
+        for template_name in [
+            "index.html",
+            "login.html",
+            "schedule.html",
+            "settings.html",
+            "employees.html",
+            "weekly_preferences.html",
+            "organization.html",
+            "positions.html",
+            "employee_positions.html",
+            "coverage_requirements.html",
+            "shift_templates.html",
+            "guide.html",
+        ]:
+            with self.subTest(template_name=template_name):
+                html = Path("templates") / template_name
+                self.assertIn("/static/js/update_notifier.js", html.read_text(encoding="utf-8"))
+
+        notifier_js = Path("static/js/update_notifier.js").read_text(encoding="utf-8")
+        self.assertIn('document.body.dataset.demoMode === "1"', notifier_js)
+        self.assertIn('document.body.dataset.employeePortalMode === "1"', notifier_js)
+
+        i18n_js = Path("static/js/i18n.js").read_text(encoding="utf-8")
+        for key in [
+            "common_ok",
+            "updates_modal_title",
+            "updates_modal_install",
+            "updates_changelog_title",
+            "updates_changelog_empty",
+        ]:
+            self.assertEqual(i18n_js.count(f"{key}:"), 3)
 
     def test_read_only_role_does_not_get_weekly_preferences_navigation(self):
         access_control_js = Path("static/js/access_control.js").read_text(encoding="utf-8")
@@ -4741,7 +4775,7 @@ class ApiRegressionTests(unittest.TestCase):
                 "name": "Schedule App 0.13.6-beta",
                 "draft": False,
                 "prerelease": True,
-                "body": "Updater release",
+                "body": "## What Changed\n- Startup update modal\n- Post-install changelog",
                 "published_at": "2026-04-26T00:00:00Z",
                 "html_url": "https://github.com/LittleDespairs/Schedule_app/releases/tag/v0.13.6-beta",
                 "assets": [
@@ -4760,6 +4794,33 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertTrue(payload["update_available"])
         self.assertEqual(payload["latest"]["version"], "0.13.6-beta")
         self.assertEqual(payload["latest"]["asset_name"], "ScheduleApp_Setup_0.13.6-beta.exe")
+        self.assertEqual(payload["latest"]["changelog_summary"], ["Startup update modal", "Post-install changelog"])
+
+    def test_release_notes_summary_prefers_main_change_bullets(self):
+        body = """
+## Verification
+- Windows installers
+- SHA256: abc123
+
+## What Changed
+- Preserves manually assigned shifts during generation
+- Shows an update modal when a newer installer is available
+- Shows the main changelog after the updated app starts
+
+## Details
+- Internal build metadata
+"""
+
+        summary = update_service.summarize_release_notes(body)
+
+        self.assertEqual(
+            summary,
+            [
+                "Preserves manually assigned shifts during generation",
+                "Shows an update modal when a newer installer is available",
+                "Shows the main changelog after the updated app starts",
+            ],
+        )
 
     def test_update_check_ignores_non_installer_assets(self):
         releases = [
@@ -4810,6 +4871,58 @@ class ApiRegressionTests(unittest.TestCase):
         verify_signature.assert_called_once_with(installer_path)
         popen.assert_called_once_with([str(installer_path), "/CLOSEAPPLICATIONS"], close_fds=True)
         schedule_shutdown.assert_called_once()
+
+    def test_update_install_records_changelog_for_next_startup(self):
+        latest = {
+            "version": "0.15.18-beta",
+            "release_name": "ShiftCare 0.15.18 Beta",
+            "asset_name": "ShiftCare_Setup_0.15.18-beta.exe",
+            "download_url": "https://github.com/LittleDespairs/Schedule_app_releases/releases/download/v0.15.18-beta/ShiftCare_Setup_0.15.18-beta.exe",
+            "body": "## Changes\n- Startup update modal\n- Post-install changelog",
+            "changelog_summary": ["Startup update modal", "Post-install changelog"],
+        }
+        installer_path = Path(tempfile.gettempdir()) / "ShiftCare_Setup_0.15.18-beta.exe"
+
+        with (
+            patch.object(main, "update_notifications_are_enabled", return_value=True),
+            patch.object(
+                main,
+                "get_update_status",
+                return_value={"current_version": "0.15.17-beta", "update_available": True, "latest": latest},
+            ),
+            patch.object(main, "download_update_installer", return_value=installer_path),
+            patch.object(main, "verify_windows_installer_signature"),
+            patch.object(main.subprocess, "Popen"),
+            patch.object(main, "schedule_desktop_shutdown"),
+        ):
+            install_response = self.client.post(
+                "/api/updates/install",
+                json={"download_url": latest["download_url"], "asset_name": latest["asset_name"]},
+            )
+
+        self.assertEqual(install_response.status_code, 200)
+
+        with (
+            patch.object(main, "APP_VERSION", "0.15.18_beta"),
+            patch.object(main, "update_notifications_are_enabled", return_value=True),
+            patch.object(
+                main,
+                "get_update_status",
+                return_value={"current_version": "0.15.18_beta", "update_available": False},
+            ),
+        ):
+            startup_response = self.client.get("/api/updates/startup")
+            self.assertEqual(startup_response.status_code, 200)
+            changelog = startup_response.json()["post_update_changelog"]
+            self.assertEqual(changelog["version"], "0.15.18_beta")
+            self.assertEqual(changelog["release_name"], "ShiftCare 0.15.18 Beta")
+            self.assertEqual(changelog["summary"], ["Startup update modal", "Post-install changelog"])
+
+            ack_response = self.client.post("/api/updates/post-install-changelog/ack")
+            self.assertEqual(ack_response.status_code, 200)
+
+            startup_after_ack = self.client.get("/api/updates/startup")
+            self.assertIsNone(startup_after_ack.json()["post_update_changelog"])
 
     def test_windows_installer_signature_rejects_unexpected_publisher(self):
         completed = subprocess.CompletedProcess(

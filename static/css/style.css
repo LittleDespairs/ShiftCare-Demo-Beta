@@ -1661,6 +1661,60 @@ body.rtl .app-footer {
     padding: 16px 20px 20px;
 }
 
+.update-notifier-modal {
+    width: min(520px, 100%);
+}
+
+.update-notifier-lead {
+    margin: 0 0 14px;
+    color: var(--text);
+    font-weight: 600;
+}
+
+.update-notifier-version {
+    margin: 0 0 14px;
+    color: var(--primary);
+    font-weight: 800;
+}
+
+.update-notifier-version-grid {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) auto;
+    gap: 8px 16px;
+    margin: 0 0 16px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-soft);
+    color: var(--muted);
+}
+
+.update-notifier-version-grid strong {
+    color: var(--text);
+    font-weight: 800;
+}
+
+.update-notifier-list {
+    margin: 0;
+    padding-inline-start: 20px;
+    color: var(--text);
+}
+
+.update-notifier-list li + li {
+    margin-top: 8px;
+}
+
+.update-notifier-muted {
+    margin: 0;
+    color: var(--muted);
+}
+
+.update-notifier-error {
+    margin: 0;
+    color: var(--danger);
+    font-weight: 700;
+}
+
 .app-native-select {
     position: absolute !important;
     width: 1px !important;
