@@ -79,12 +79,14 @@ def get_bundled_database_path() -> Path | None:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
-CURRENT_SCHEMA_VERSION = 20
+CURRENT_SCHEMA_VERSION = 23
 POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
 DEMO_SEED_VERSION = "2026-06-14-separated-nursing-demo-v3"
 DEMO_ORGANIZATION_PUBLIC_ID = "shiftcare-demo-center"
 DEMO_USER_EMAIL = "demo@shiftcare.local"
+DEFAULT_DEPARTMENT_NAME = "Main department"
 PUBLIC_ID_TABLE_PREFIXES = {
+    "departments": "dep",
     "employees": "emp",
     "positions": "pos",
     "shift_templates": "tpl",
@@ -110,6 +112,25 @@ class ClosingSQLiteConnection(sqlite3.Connection):
 def _table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
     cursor.execute(f"PRAGMA table_info({table_name})")
     return {row["name"] for row in cursor.fetchall()}
+
+
+def _table_exists(cursor: sqlite3.Cursor, table_name: str) -> bool:
+    cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    )
+    return cursor.fetchone() is not None
+
+
+def _prepare_table_rebuild(cursor: sqlite3.Cursor, table_name: str, old_table_name: str) -> None:
+    if not _table_exists(cursor, old_table_name):
+        return
+
+    if not _table_exists(cursor, table_name):
+        cursor.execute(f"ALTER TABLE {old_table_name} RENAME TO {table_name}")
+        return
+
+    cursor.execute(f"DROP TABLE {old_table_name}")
 
 
 def _add_column_if_missing(cursor: sqlite3.Cursor, table_name: str, column_name: str, definition: str) -> None:
@@ -139,6 +160,51 @@ def _upsert_app_setting(cursor: sqlite3.Cursor, key: str, value: str, organizati
     )
 
 
+def _ensure_default_departments(cursor: sqlite3.Cursor) -> None:
+    now = _current_timestamp()
+    cursor.execute(
+        """
+        INSERT INTO departments (
+            organization_id, public_id, name, description, display_order, is_active, created_at, updated_at
+        )
+        SELECT o.id,
+               'dep_' || lower(hex(randomblob(16))),
+               ?,
+               NULL,
+               0,
+               1,
+               ?,
+               ?
+        FROM organizations o
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM departments d
+            WHERE d.organization_id = o.id
+        )
+        """,
+        (DEFAULT_DEPARTMENT_NAME, now, now),
+    )
+
+
+def _ensure_position_department_links(cursor: sqlite3.Cursor) -> None:
+    _add_column_if_missing(cursor, "positions", "department_id", "INTEGER")
+    _ensure_default_departments(cursor)
+    cursor.execute(
+        """
+        UPDATE positions
+        SET department_id = (
+            SELECT d.id
+            FROM departments d
+            WHERE d.organization_id = positions.organization_id
+            ORDER BY d.display_order, d.id
+            LIMIT 1
+        )
+        WHERE department_id IS NULL
+           OR department_id NOT IN (SELECT id FROM departments)
+        """
+    )
+
+
 def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
     if not is_demo_mode_enabled():
         return
@@ -154,6 +220,7 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
         "auth_password_reset_tokens",
         "auth_email_verification_tokens",
         "auth_audit_events",
+        "feedback_reports",
         "license_activation_attempts",
         "license_events",
         "licenses",
@@ -171,6 +238,7 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
         "shift_templates",
         "employees",
         "positions",
+        "departments",
         "users",
     ):
         cursor.execute(f"DELETE FROM {table_name}")
@@ -218,6 +286,17 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
         (demo_user_id, now, now),
     )
 
+    cursor.execute(
+        """
+        INSERT INTO departments (
+            organization_id, public_id, name, description, display_order, is_active, created_at, updated_at, updated_by
+        )
+        VALUES (1, 'demo-dep-main', 'Main care department', NULL, 0, 1, ?, ?, ?)
+        """,
+        (now, now, demo_user_id),
+    )
+    demo_department_id = int(cursor.lastrowid)
+
     positions = [
         ("demo-pos-nursing", "Nursing", "#dbeafe", 1, 1, 0),
         ("demo-pos-care", "Care Assistants", "#dcfce7", 1, 1, 1),
@@ -228,15 +307,15 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
         cursor.execute(
             """
             INSERT INTO positions (
-                organization_id, public_id, name, color, requires_continuous_coverage,
+                organization_id, department_id, public_id, name, color, requires_continuous_coverage,
                 minimum_staff_presence, allow_same_day_other_positions,
                 max_consecutive_nights, emergency_max_consecutive_nights,
                 max_consecutive_split_days, emergency_max_consecutive_split_days,
                 created_at, updated_at, updated_by
             )
-            VALUES (1, ?, ?, ?, ?, ?, ?, 2, 3, 2, 3, ?, ?, ?)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, 2, 3, 2, 3, ?, ?, ?)
             """,
-            (public_id, name, color, continuous, minimum_presence, allow_same_day, now, now, demo_user_id),
+            (demo_department_id, public_id, name, color, continuous, minimum_presence, allow_same_day, now, now, demo_user_id),
         )
         position_ids[public_id] = int(cursor.lastrowid)
 
@@ -564,6 +643,47 @@ def _ensure_postgres_runtime_schema(connection) -> None:
             ADD COLUMN IF NOT EXISTS can_work_mornings_and_evenings INTEGER NOT NULL DEFAULT 0
         """)
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS departments (
+                id BIGSERIAL PRIMARY KEY,
+                organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+                public_id TEXT UNIQUE,
+                name TEXT NOT NULL,
+                description TEXT,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT,
+                updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+                UNIQUE(organization_id, name)
+            )
+        """)
+        cursor.execute(
+            """
+            INSERT INTO departments (
+                organization_id, public_id, name, description, display_order, is_active, created_at, updated_at
+            )
+            SELECT o.id,
+                   'dep_' || md5(random()::text || clock_timestamp()::text || o.id::text),
+                   %s,
+                   NULL,
+                   0,
+                   1,
+                   CURRENT_TIMESTAMP,
+                   CURRENT_TIMESTAMP
+            FROM organizations o
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM departments d
+                WHERE d.organization_id = o.id
+            )
+            """,
+            (DEFAULT_DEPARTMENT_NAME,),
+        )
+        cursor.execute("""
+            ALTER TABLE positions
+            ADD COLUMN IF NOT EXISTS department_id BIGINT
+        """)
+        cursor.execute("""
             ALTER TABLE positions
             ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '#eff6ff'
         """)
@@ -602,6 +722,25 @@ def _ensure_postgres_runtime_schema(connection) -> None:
         cursor.execute("""
             ALTER TABLE coverage_requirements
             ADD COLUMN IF NOT EXISTS required_male_min INTEGER NOT NULL DEFAULT 0
+        """)
+        cursor.execute("""
+            UPDATE positions
+            SET department_id = (
+                SELECT d.id
+                FROM departments d
+                WHERE d.organization_id = positions.organization_id
+                ORDER BY d.display_order, d.id
+                LIMIT 1
+            )
+            WHERE department_id IS NULL
+        """)
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_org_name
+            ON departments (organization_id, name)
+        """)
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_org_department_name
+            ON positions (organization_id, department_id, name)
         """)
         cursor.execute("""
             ALTER TABLE schedule_entries
@@ -687,6 +826,42 @@ def _ensure_postgres_runtime_schema(connection) -> None:
             ADD CONSTRAINT employee_day_statuses_status_type_check
             CHECK (status_type IN ('sick', 'day_off', 'vacation'))
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS feedback_reports (
+                id BIGSERIAL PRIMARY KEY,
+                public_id TEXT NOT NULL UNIQUE,
+                organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
+                user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+                report_type TEXT NOT NULL CHECK (report_type IN ('bug', 'feature_request')),
+                status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'triaged', 'planned', 'in_progress', 'resolved', 'closed')),
+                severity TEXT NOT NULL DEFAULT 'minor' CHECK (severity IN ('blocking', 'major', 'minor')),
+                area TEXT NOT NULL DEFAULT 'general',
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                steps_to_reproduce TEXT,
+                expected_result TEXT,
+                actual_result TEXT,
+                contact_email TEXT,
+                page_url TEXT,
+                app_version TEXT,
+                runtime_environment TEXT,
+                client_context_json TEXT NOT NULL DEFAULT '{}',
+                server_context_json TEXT NOT NULL DEFAULT '{}',
+                notification_status TEXT NOT NULL DEFAULT 'not_attempted',
+                notification_detail TEXT,
+                forwarded_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_feedback_reports_org_created
+            ON feedback_reports (organization_id, created_at)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_feedback_reports_status_created
+            ON feedback_reports (status, created_at)
+        """)
         connection.commit()
     except Exception:
         connection.rollback()
@@ -701,6 +876,7 @@ def _rebuild_employee_week_preferences_for_multiple_requests(cursor: sqlite3.Cur
     if "UNIQUE(employee_id,preference_date)" not in compact_sql:
         return
 
+    _prepare_table_rebuild(cursor, "employee_week_preferences", "employee_week_preferences_old")
     cursor.execute("ALTER TABLE employee_week_preferences RENAME TO employee_week_preferences_old")
     cursor.execute("""
         CREATE TABLE employee_week_preferences (
@@ -756,6 +932,263 @@ def _rebuild_employee_week_preferences_for_multiple_requests(cursor: sqlite3.Cur
     cursor.execute("DROP TABLE employee_week_preferences_old")
 
 
+def _positions_table_requires_department_rebuild(cursor: sqlite3.Cursor) -> bool:
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'positions'")
+    row = cursor.fetchone()
+    table_sql = (row["sql"] if row else "").lower().replace('"', "").replace("`", "")
+    compact_sql = "".join(table_sql.split())
+    return "nametextnotnullunique" in compact_sql or "unique(name)" in compact_sql
+
+
+def _foreign_key_targets(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
+    return {row["table"] for row in cursor.execute(f"PRAGMA foreign_key_list({table_name})")}
+
+
+def _rebuild_employee_positions_table(cursor: sqlite3.Cursor) -> None:
+    _prepare_table_rebuild(cursor, "employee_positions", "employee_positions_old")
+    cursor.execute("ALTER TABLE employee_positions RENAME TO employee_positions_old")
+    cursor.execute("""
+        CREATE TABLE employee_positions (
+            employee_id INTEGER NOT NULL,
+            position_id INTEGER NOT NULL,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            priority_score INTEGER NOT NULL DEFAULT 50,
+            is_fallback_only INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (employee_id, position_id),
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score, is_fallback_only)
+        SELECT employee_id, position_id, is_primary, priority_score, is_fallback_only
+        FROM employee_positions_old
+    """)
+    cursor.execute("DROP TABLE employee_positions_old")
+
+
+def _rebuild_shift_templates_table(cursor: sqlite3.Cursor, *, drop_old: bool = True) -> None:
+    _prepare_table_rebuild(cursor, "shift_templates", "shift_templates_old")
+    cursor.execute("ALTER TABLE shift_templates RENAME TO shift_templates_old")
+    cursor.execute("""
+        CREATE TABLE shift_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER,
+            category TEXT NOT NULL CHECK (category IN ('morning', 'evening', 'night')),
+            name TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            is_overnight INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            is_split_only INTEGER NOT NULL DEFAULT 0,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            updated_by INTEGER,
+            FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+            UNIQUE(position_id, name)
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO shift_templates (
+            id, position_id, category, name, start_time, end_time, is_overnight, is_active, is_split_only,
+            organization_id, public_id, created_at, updated_at, updated_by
+        )
+        SELECT
+            id, position_id, category, name, start_time, end_time, is_overnight, is_active, is_split_only,
+            organization_id, public_id, created_at, updated_at, updated_by
+        FROM shift_templates_old
+    """)
+    if drop_old:
+        cursor.execute("DROP TABLE shift_templates_old")
+
+
+def _rebuild_schedule_entries_table(cursor: sqlite3.Cursor) -> None:
+    _prepare_table_rebuild(cursor, "schedule_entries", "schedule_entries_old")
+    cursor.execute("ALTER TABLE schedule_entries RENAME TO schedule_entries_old")
+    cursor.execute("""
+        CREATE TABLE schedule_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            position_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            shift_template_id INTEGER NOT NULL,
+            no_show INTEGER NOT NULL DEFAULT 0,
+            start_time_override TEXT,
+            end_time_override TEXT,
+            is_overnight_override INTEGER,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            updated_by INTEGER,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+            FOREIGN KEY (shift_template_id) REFERENCES shift_templates(id) ON DELETE RESTRICT
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO schedule_entries (
+            id, employee_id, position_id, date, shift_template_id, no_show,
+            start_time_override, end_time_override, is_overnight_override,
+            organization_id, public_id, created_at, updated_at, updated_by
+        )
+        SELECT
+            id, employee_id, position_id, date, shift_template_id, no_show,
+            start_time_override, end_time_override, is_overnight_override,
+            organization_id, public_id, created_at, updated_at, updated_by
+        FROM schedule_entries_old
+    """)
+    cursor.execute("DROP TABLE schedule_entries_old")
+
+
+def _rebuild_shift_requirements_table(cursor: sqlite3.Cursor) -> None:
+    _prepare_table_rebuild(cursor, "shift_requirements", "shift_requirements_old")
+    cursor.execute("ALTER TABLE shift_requirements RENAME TO shift_requirements_old")
+    cursor.execute("""
+        CREATE TABLE shift_requirements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER NOT NULL,
+            shift_category TEXT NOT NULL CHECK (shift_category IN ('morning', 'evening', 'night')),
+            required_total INTEGER NOT NULL,
+            required_female_min INTEGER NOT NULL,
+            required_male_min INTEGER NOT NULL DEFAULT 0,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            updated_by INTEGER,
+            UNIQUE(position_id, shift_category),
+            FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO shift_requirements (
+            id, position_id, shift_category, required_total, required_female_min, required_male_min,
+            organization_id, public_id, created_at, updated_at, updated_by
+        )
+        SELECT
+            id, position_id, shift_category, required_total, required_female_min, required_male_min,
+            organization_id, public_id, created_at, updated_at, updated_by
+        FROM shift_requirements_old
+    """)
+    cursor.execute("DROP TABLE shift_requirements_old")
+
+
+def _rebuild_coverage_requirements_table(cursor: sqlite3.Cursor) -> None:
+    _prepare_table_rebuild(cursor, "coverage_requirements", "coverage_requirements_old")
+    cursor.execute("ALTER TABLE coverage_requirements RENAME TO coverage_requirements_old")
+    cursor.execute("""
+        CREATE TABLE coverage_requirements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            required_total INTEGER NOT NULL,
+            required_female_min INTEGER NOT NULL DEFAULT 0,
+            required_male_min INTEGER NOT NULL DEFAULT 0,
+            is_overnight INTEGER NOT NULL DEFAULT 0,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            updated_by INTEGER,
+            FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO coverage_requirements (
+            id, position_id, start_time, end_time, required_total, required_female_min,
+            required_male_min, is_overnight, organization_id, public_id, created_at, updated_at, updated_by
+        )
+        SELECT
+            id, position_id, start_time, end_time, required_total, required_female_min,
+            required_male_min, is_overnight, organization_id, public_id, created_at, updated_at, updated_by
+        FROM coverage_requirements_old
+    """)
+    cursor.execute("DROP TABLE coverage_requirements_old")
+
+
+def _ensure_position_child_foreign_keys(cursor: sqlite3.Cursor, *, force_schedule_rebuild: bool = False) -> None:
+    if "positions_old" in _foreign_key_targets(cursor, "employee_positions"):
+        _rebuild_employee_positions_table(cursor)
+    if "positions_old" in _foreign_key_targets(cursor, "shift_requirements"):
+        _rebuild_shift_requirements_table(cursor)
+    if "positions_old" in _foreign_key_targets(cursor, "coverage_requirements"):
+        _rebuild_coverage_requirements_table(cursor)
+    shift_templates_rebuilt = False
+    if "positions_old" in _foreign_key_targets(cursor, "shift_templates"):
+        _rebuild_shift_templates_table(cursor, drop_old=False)
+        shift_templates_rebuilt = True
+    schedule_targets = _foreign_key_targets(cursor, "schedule_entries")
+    if (
+        force_schedule_rebuild
+        or shift_templates_rebuilt
+        or "positions_old" in schedule_targets
+        or "shift_templates_old" in schedule_targets
+    ):
+        _rebuild_schedule_entries_table(cursor)
+    if shift_templates_rebuilt:
+        cursor.execute("DROP TABLE shift_templates_old")
+
+
+def _rebuild_positions_for_departments(cursor: sqlite3.Cursor) -> None:
+    if not _positions_table_requires_department_rebuild(cursor):
+        return
+
+    _prepare_table_rebuild(cursor, "positions", "positions_old")
+    cursor.execute("ALTER TABLE positions RENAME TO positions_old")
+    cursor.execute("""
+        CREATE TABLE positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            department_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            color TEXT NOT NULL DEFAULT '#eff6ff',
+            requires_continuous_coverage INTEGER NOT NULL DEFAULT 0,
+            minimum_staff_presence INTEGER NOT NULL DEFAULT 0,
+            allow_same_day_other_positions INTEGER NOT NULL DEFAULT 0,
+            max_consecutive_nights INTEGER,
+            emergency_max_consecutive_nights INTEGER,
+            max_consecutive_split_days INTEGER,
+            emergency_max_consecutive_split_days INTEGER,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            updated_by INTEGER,
+            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT,
+            UNIQUE(organization_id, department_id, name)
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO positions (
+            id, department_id, name, color, requires_continuous_coverage, minimum_staff_presence,
+            allow_same_day_other_positions, max_consecutive_nights, emergency_max_consecutive_nights,
+            max_consecutive_split_days, emergency_max_consecutive_split_days,
+            organization_id, public_id, created_at, updated_at, updated_by
+        )
+        SELECT
+            id, department_id, name, color, requires_continuous_coverage, minimum_staff_presence,
+            allow_same_day_other_positions, max_consecutive_nights, emergency_max_consecutive_nights,
+            max_consecutive_split_days, emergency_max_consecutive_split_days,
+            organization_id, public_id, created_at, updated_at, updated_by
+        FROM positions_old
+    """)
+    _ensure_position_child_foreign_keys(cursor, force_schedule_rebuild=True)
+    cursor.execute("DROP TABLE positions_old")
+
+
+def _ensure_position_department_uniqueness(cursor: sqlite3.Cursor) -> None:
+    _ensure_position_department_links(cursor)
+    _rebuild_positions_for_departments(cursor)
+    _ensure_position_department_links(cursor)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_org_department_name
+        ON positions (organization_id, department_id, name)
+    """)
+
+
 def _legacy_recurring_request_rows(preference_type: str) -> list[tuple[str, str, str | None]]:
     if preference_type in ("", "no_preference"):
         return []
@@ -793,6 +1226,7 @@ def _rebuild_employee_recurring_preferences_for_multiple_requests(cursor: sqlite
     if {"request_type", "target_category"}.issubset(columns) and not has_single_day_unique:
         return
 
+    _prepare_table_rebuild(cursor, "employee_recurring_preferences", "employee_recurring_preferences_old")
     cursor.execute("ALTER TABLE employee_recurring_preferences RENAME TO employee_recurring_preferences_old")
     cursor.execute("""
         CREATE TABLE employee_recurring_preferences (
@@ -1416,6 +1850,37 @@ def init_db():
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS feedback_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_id TEXT NOT NULL UNIQUE,
+            organization_id INTEGER,
+            user_id INTEGER,
+            report_type TEXT NOT NULL CHECK (report_type IN ('bug', 'feature_request')),
+            status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'triaged', 'planned', 'in_progress', 'resolved', 'closed')),
+            severity TEXT NOT NULL DEFAULT 'minor' CHECK (severity IN ('blocking', 'major', 'minor')),
+            area TEXT NOT NULL DEFAULT 'general',
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            steps_to_reproduce TEXT,
+            expected_result TEXT,
+            actual_result TEXT,
+            contact_email TEXT,
+            page_url TEXT,
+            app_version TEXT,
+            runtime_environment TEXT,
+            client_context_json TEXT NOT NULL DEFAULT '{}',
+            server_context_json TEXT NOT NULL DEFAULT '{}',
+            notification_status TEXT NOT NULL DEFAULT 'not_attempted',
+            notification_detail TEXT,
+            forwarded_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS desktop_sync_outbox (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             organization_id INTEGER NOT NULL DEFAULT 1,
@@ -1458,6 +1923,14 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_auth_email_verification_tokens_user
         ON auth_email_verification_tokens (user_id, expires_at, used_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_feedback_reports_org_created
+        ON feedback_reports (organization_id, created_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_feedback_reports_status_created
+        ON feedback_reports (status, created_at)
     """)
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_desktop_sync_outbox_pending
@@ -1520,6 +1993,51 @@ def init_db():
     """)
 
     # =========================
+    # Departments / Отделы
+    # =========================
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS departments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT,
+            display_order INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT,
+            updated_at TEXT,
+            updated_by INTEGER,
+            UNIQUE(organization_id, name),
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    _ensure_default_departments(cursor)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_department_access (
+            organization_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            department_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER,
+            PRIMARY KEY (organization_id, user_id, department_id),
+            FOREIGN KEY (organization_id, user_id) REFERENCES organization_memberships(organization_id, user_id) ON DELETE CASCADE,
+            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_department_access_user
+        ON user_department_access (organization_id, user_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_department_access_department
+        ON user_department_access (organization_id, department_id)
+    """)
+
+    # =========================
     # Employees / Сотрудники
     # =========================
     cursor.execute("""
@@ -1544,7 +2062,8 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS positions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
+        department_id INTEGER NOT NULL DEFAULT 1,
+        name TEXT NOT NULL,
         color TEXT NOT NULL DEFAULT '#eff6ff',
         requires_continuous_coverage INTEGER NOT NULL DEFAULT 0,
         minimum_staff_presence INTEGER NOT NULL DEFAULT 0,
@@ -1552,12 +2071,16 @@ def init_db():
         max_consecutive_nights INTEGER,
         emergency_max_consecutive_nights INTEGER,
         max_consecutive_split_days INTEGER,
-        emergency_max_consecutive_split_days INTEGER
+        emergency_max_consecutive_split_days INTEGER,
+        FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT,
+        UNIQUE(department_id, name)
     )
 """)
 
     cursor.execute("PRAGMA table_info(positions)")
     position_columns = {row["name"] for row in cursor.fetchall()}
+    if "department_id" not in position_columns:
+        cursor.execute("ALTER TABLE positions ADD COLUMN department_id INTEGER")
     if "color" not in position_columns:
         cursor.execute("ALTER TABLE positions ADD COLUMN color TEXT NOT NULL DEFAULT '#eff6ff'")
     if "allow_same_day_other_positions" not in position_columns:
@@ -1609,6 +2132,7 @@ def init_db():
     cursor.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shift_templates'")
     shift_templates_sql = cursor.fetchone()["sql"]
     if "position_id" not in shift_templates_sql or "UNIQUE(position_id, name)" not in shift_templates_sql:
+        _prepare_table_rebuild(cursor, "shift_templates", "shift_templates_old")
         cursor.execute("ALTER TABLE shift_templates RENAME TO shift_templates_old")
         cursor.execute("""
         CREATE TABLE shift_templates (
@@ -1672,6 +2196,7 @@ def init_db():
 
     schedule_entry_fk_targets = {row["table"] for row in cursor.execute("PRAGMA foreign_key_list(schedule_entries)")}
     if "shift_templates_old" in schedule_entry_fk_targets:
+        _prepare_table_rebuild(cursor, "schedule_entries", "schedule_entries_old")
         cursor.execute("ALTER TABLE schedule_entries RENAME TO schedule_entries_old")
         cursor.execute("""
             CREATE TABLE schedule_entries (
@@ -1876,6 +2401,7 @@ def init_db():
     cursor.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'employee_day_statuses'")
     day_status_table_sql = cursor.fetchone()["sql"]
     if "vacation" not in day_status_table_sql:
+        _prepare_table_rebuild(cursor, "employee_day_statuses", "employee_day_statuses_old")
         cursor.execute("ALTER TABLE employee_day_statuses RENAME TO employee_day_statuses_old")
         cursor.execute("""
             CREATE TABLE employee_day_statuses (
@@ -1979,6 +2505,7 @@ def init_db():
     """)
 
     organization_owned_tables = (
+        "departments",
         "employees",
         "positions",
         "shift_templates",
@@ -2014,6 +2541,43 @@ def init_db():
         ON positions (organization_id, id)
     """)
     cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_departments_org
+        ON departments (organization_id, display_order, id)
+    """)
+    _ensure_position_department_uniqueness(cursor)
+    for table_name in (
+        "positions",
+        "shift_templates",
+        "schedule_entries",
+        "shift_requirements",
+        "coverage_requirements",
+    ):
+        _ensure_public_ids(cursor, table_name, PUBLIC_ID_TABLE_PREFIXES[table_name])
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_positions_org
+        ON positions (organization_id, id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_schedule_entries_employee_date
+        ON schedule_entries (employee_id, date)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_schedule_entries_position_date
+        ON schedule_entries (position_id, date)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_positions_position_employee
+        ON employee_positions (position_id, employee_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_shift_templates_position_active
+        ON shift_templates (position_id, is_active, category, start_time, end_time)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_coverage_requirements_position
+        ON coverage_requirements (position_id, start_time, end_time)
+    """)
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_shift_templates_org
         ON shift_templates (organization_id, position_id)
     """)
@@ -2040,7 +2604,7 @@ def init_db():
             cursor,
             previous_schema_version,
             CURRENT_SCHEMA_VERSION,
-            "Allow multiple permanent recurring preference requests per day",
+            "Add user feedback report tracking",
         )
         _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
 

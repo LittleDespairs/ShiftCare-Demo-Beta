@@ -14,8 +14,8 @@
         Main shared stylesheet / Основной общий CSS-файл
         Он уже используется новой главной страницей
     -->
-    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-schedule-sync-manual-time">
-    <link rel="stylesheet" href="/static/css/schedule.css?v={{ app_version }}-schedule-sync-manual-time">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-desktop-1080p-readability">
+    <link rel="stylesheet" href="/static/css/schedule.css?v={{ app_version }}-desktop-1080p-readability">
 </head>
 
 <body class="app-shell schedule-board-page ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}" data-employee-portal-mode="{{ '1' if cloud_employee_portal_mode() else '0' }}">
@@ -479,9 +479,9 @@
         It controls language switching and RTL/LTR direction.
         Он управляет языком и направлением интерфейса RTL/LTR.
     -->
-<script src="/static/js/i18n.js?v={{ app_version }}-schedule-sync-manual-time"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-department-access"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-employee-portal-polish"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-department-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
 <script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
     <script src="/static/js/schedule.js?v={{ app_version }}-schedule-sync-manual-time"></script>

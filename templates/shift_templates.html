@@ -10,7 +10,7 @@
     <link rel="manifest" href="/static/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
 
-<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-employee-portal-polish">
+<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-desktop-1080p-readability">
 
     <style>
         .templates-layout {
@@ -622,6 +622,13 @@
             return category;
         }
 
+        function formatPositionLabel(item) {
+            if (!item) return "";
+            const departmentName = item.department_name || t("departments_default_name", "Main department");
+            const positionName = item.position_name || item.name || "";
+            return `${departmentName} / ${positionName}`;
+        }
+
         document.addEventListener("DOMContentLoaded", () => {
             bindSidebarToggle();
             applySidebarState(getSavedSidebarState());
@@ -767,7 +774,7 @@
                     const impact = await impactResponse.json();
                     confirmMessage += formatDeleteImpactList([
                         { label: t("confirm_impact_template", "Template"), value: impact.template_name },
-                        { label: t("schedule_position", "Position"), value: impact.position_name || "?" },
+                        { label: t("schedule_position", "Position"), value: `${impact.department_name || t("departments_default_name", "Main department")} / ${impact.position_name || "?"}` },
                         { label: t("templates_category", "Shift category"), value: categoryLabel(impact.category) },
                         { label: t("confirm_impact_schedule_entries", "Schedule entries"), value: impact.schedule_entries }
                     ]);
@@ -836,7 +843,7 @@
             select.innerHTML = `
                 <option value="">${escapeHtml(t("schedule_select_position", "Select position"))}</option>
                 ${cachedPositions.map(position => `
-                    <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
+                    <option value="${Number(position.id)}">${escapeHtml(formatPositionLabel(position))}</option>
                 `).join("")}
             `;
             if (currentValue) {
@@ -899,7 +906,7 @@
             tableBody.innerHTML = templates.map(template => `
                 <tr data-template-id="${Number(template.id)}">
                     <td>${Number(template.id)}</td>
-                    <td>${escapeHtml(template.position_name || "-")}</td>
+                    <td>${escapeHtml(formatPositionLabel(template) || "-")}</td>
                     <td class="template-name-cell">${escapeHtml(template.name)}</td>
                     <td>${escapeHtml(categoryLabel(template.category))}</td>
                     <td>${escapeHtml(template.start_time)}</td>
@@ -955,9 +962,9 @@
                     <a href="/guide" data-i18n="footer_guide">Guide</a>
                 </div>
             </footer>
-<script src="/static/js/i18n.js?v={{ app_version }}-employee-portal-polish"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-department-access"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-employee-portal-polish"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-department-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
 <script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>

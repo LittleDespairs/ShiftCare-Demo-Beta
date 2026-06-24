@@ -7,6 +7,7 @@
         members: [],
         invitations: [],
         employees: [],
+        departments: [],
         clientConfig: null,
         cloudLink: null,
     };
@@ -17,6 +18,7 @@
     const ALL_MEMBER_ROLES = ["owner", "admin", "scheduler", "manager", "read_only", "employee"];
     const ADMIN_ASSIGNABLE_ROLES = ["scheduler", "manager", "read_only", "employee"];
     const INVITE_ROLES = ["employee", "read_only", "manager", "scheduler", "admin", "owner"];
+    const DEPARTMENT_ACCESS_ROLES = new Set(["admin", "scheduler", "manager", "read_only"]);
     const LOCAL_PORTAL_APPEARANCE_PREFIX = "schedule_app_portal_appearance";
     const LOCAL_CARD_DISPLAY_MODE_PREFIX = "schedule_app_card_display_mode";
     const DEFAULT_PORTAL_APPEARANCE = {
@@ -253,6 +255,15 @@
             && member.role === "employee";
     }
 
+    function canManageMemberDepartmentAccess(member) {
+        if (!canManageInvitations()) return false;
+        if (!member || member.membership_status !== "active") return false;
+        if (Number(member.user_id) === Number(state.user?.id)) return false;
+        if (!DEPARTMENT_ACCESS_ROLES.has(member.role)) return false;
+        if (state.membership?.role !== "owner" && member.role === "admin") return false;
+        return true;
+    }
+
     function roleOptions(currentRole, roles = assignableRolesForCurrentUser()) {
         const roleSet = new Set(roles);
         if (currentRole) roleSet.add(currentRole);
@@ -390,7 +401,7 @@
     function renderMembers(members, emptyMessage = uiText("org_no_members", "No members found.")) {
         state.members = members;
         if (!members.length) {
-            elements.membersBody.innerHTML = `<tr><td colspan="7">${text(emptyMessage)}</td></tr>`;
+            elements.membersBody.innerHTML = `<tr><td colspan="8">${text(emptyMessage)}</td></tr>`;
             return;
         }
         elements.membersBody.innerHTML = members.map((member) => `
@@ -401,6 +412,7 @@
                 <td>${renderMemberRoleCell(member)}</td>
                 <td>${text(formatStatus(member.membership_status))}</td>
                 <td>${text(yesNo(member.email_verified))}</td>
+                <td>${renderMemberDepartmentAccessCell(member)}</td>
                 <td>
                     <div class="organization-table-actions">
                         <button
@@ -433,6 +445,62 @@
             >
                 ${roleOptions(member.role)}
             </select>
+        `;
+    }
+
+    function memberDepartmentAccessIds(member) {
+        return new Set((member.department_access || []).map((department) => Number(department.id)));
+    }
+
+    function departmentAccessSummary(member) {
+        const access = member.department_access || [];
+        if (!access.length) return uiText("org_department_access_all", "All departments");
+        return access.map((department) => department.name).join(", ");
+    }
+
+    function departmentAccessOptions(member) {
+        const selectedIds = memberDepartmentAccessIds(member);
+        return state.departments.map((department) => {
+            const departmentId = Number(department.id);
+            const selected = selectedIds.has(departmentId) ? "selected" : "";
+            return `<option value="${departmentId}" ${selected}>${text(department.name)}</option>`;
+        }).join("");
+    }
+
+    function renderMemberDepartmentAccessCell(member) {
+        if (member.role === "owner") {
+            return text(uiText("org_department_access_all", "All departments"));
+        }
+        if (!DEPARTMENT_ACCESS_ROLES.has(member.role)) {
+            return text("-");
+        }
+        if (!canManageMemberDepartmentAccess(member)) {
+            return text(departmentAccessSummary(member));
+        }
+        if (!state.departments.length) {
+            return `<span class="organization-table-note">${text(uiText("org_no_departments", "No departments found."))}</span>`;
+        }
+        return `
+            <div class="organization-department-access-control">
+                <select
+                    class="organization-table-select organization-department-select"
+                    data-organization-action="member-departments"
+                    data-user-id="${Number(member.user_id)}"
+                    multiple
+                    size="${Math.min(4, Math.max(2, state.departments.length))}"
+                >
+                    ${departmentAccessOptions(member)}
+                </select>
+                <button
+                    class="organization-table-button"
+                    data-organization-action="save-member-departments"
+                    data-user-id="${Number(member.user_id)}"
+                    type="button"
+                >
+                    ${text(uiText("org_save_department_access", "Save"))}
+                </button>
+                <span class="organization-table-note">${text(uiText("org_department_access_hint", "No selection means all departments."))}</span>
+            </div>
         `;
     }
 
@@ -603,6 +671,20 @@
         }
     }
 
+    async function updateMemberDepartmentAccess(userId, departmentIds) {
+        setMessage(uiText("org_msg_updating_department_access", "Updating department access..."), "");
+        try {
+            await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/members/${userId}/department-access`, {
+                method: "PUT",
+                body: JSON.stringify({ department_ids: departmentIds }),
+            });
+            await loadOrganizationData();
+            setMessage(uiText("org_msg_department_access_updated", "Department access updated."), "success");
+        } catch (error) {
+            setMessage(error.message, "error");
+        }
+    }
+
     async function loadOrganizationData() {
         if (!state.organizationId) {
             setMessage(uiText("org_msg_no_active_organization", "Current user has no active organization."), "error");
@@ -612,6 +694,7 @@
         const requests = [];
         if (canViewMembers()) {
             requests.push(window.scheduleAuth.request(`/api/organizations/${state.organizationId}/members`));
+            requests.push(window.scheduleAuth.request("/api/departments"));
         }
         if (canManageInvitations()) {
             requests.push(window.scheduleAuth.request(`/api/organizations/${state.organizationId}/invitations`));
@@ -621,6 +704,8 @@
         let responseIndex = 0;
         if (canViewMembers()) {
             state.members = responses[responseIndex].members || [];
+            responseIndex += 1;
+            state.departments = responses[responseIndex] || [];
             renderMembers(state.members);
             responseIndex += 1;
         }
@@ -1047,6 +1132,16 @@
         });
         elements.cloudUnlink?.addEventListener("click", unlinkCloudOrganization);
         elements.membersBody.addEventListener("click", (event) => {
+            const saveDepartmentsButton = event.target.closest('[data-organization-action="save-member-departments"]');
+            if (saveDepartmentsButton && !saveDepartmentsButton.disabled) {
+                const cell = saveDepartmentsButton.closest("td");
+                const select = cell?.querySelector('[data-organization-action="member-departments"]');
+                const departmentIds = select
+                    ? Array.from(select.selectedOptions).map((option) => Number(option.value)).filter(Boolean)
+                    : [];
+                updateMemberDepartmentAccess(Number(saveDepartmentsButton.dataset.userId), departmentIds);
+                return;
+            }
             const button = event.target.closest('[data-organization-action="remove-member"]');
             if (!button || button.disabled) return;
             removeMember(Number(button.dataset.userId));

@@ -1,33 +1,33 @@
 (function () {
     const ROLE_ACCESS = {
         owner: {
-            pages: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/positions", "/shift-templates", "/employee-positions", "/coverage-requirements", "/support", "/guide", "/docs"]),
-            nav: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization"]),
+            pages: new Set(["/", "/schedule", "/employees", "/departments", "/weekly-preferences", "/settings", "/organization", "/positions", "/shift-templates", "/employee-positions", "/coverage-requirements", "/support", "/feedback", "/guide", "/docs"]),
+            nav: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/feedback"]),
             canEditSchedule: true,
         },
         admin: {
-            pages: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/positions", "/shift-templates", "/employee-positions", "/coverage-requirements", "/support", "/guide", "/docs"]),
-            nav: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization"]),
+            pages: new Set(["/", "/schedule", "/employees", "/departments", "/weekly-preferences", "/settings", "/organization", "/positions", "/shift-templates", "/employee-positions", "/coverage-requirements", "/support", "/feedback", "/guide", "/docs"]),
+            nav: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/feedback"]),
             canEditSchedule: true,
         },
         scheduler: {
-            pages: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/positions", "/shift-templates", "/employee-positions", "/coverage-requirements", "/guide", "/docs"]),
-            nav: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization"]),
+            pages: new Set(["/", "/schedule", "/employees", "/departments", "/weekly-preferences", "/settings", "/organization", "/positions", "/shift-templates", "/employee-positions", "/coverage-requirements", "/feedback", "/guide", "/docs"]),
+            nav: new Set(["/", "/schedule", "/employees", "/weekly-preferences", "/settings", "/organization", "/feedback"]),
             canEditSchedule: true,
         },
         manager: {
-            pages: new Set(["/", "/schedule", "/weekly-preferences", "/organization", "/guide", "/docs"]),
-            nav: new Set(["/", "/schedule", "/weekly-preferences", "/organization"]),
+            pages: new Set(["/", "/schedule", "/weekly-preferences", "/organization", "/feedback", "/guide", "/docs"]),
+            nav: new Set(["/", "/schedule", "/weekly-preferences", "/organization", "/feedback"]),
             canEditSchedule: false,
         },
         read_only: {
-            pages: new Set(["/", "/schedule", "/organization", "/guide", "/docs"]),
-            nav: new Set(["/", "/schedule", "/organization"]),
+            pages: new Set(["/", "/schedule", "/organization", "/feedback", "/guide", "/docs"]),
+            nav: new Set(["/", "/schedule", "/organization", "/feedback"]),
             canEditSchedule: false,
         },
         employee: {
-            pages: new Set(["/", "/schedule", "/weekly-preferences", "/organization", "/guide", "/docs"]),
-            nav: new Set(["/", "/schedule", "/weekly-preferences", "/organization"]),
+            pages: new Set(["/", "/schedule", "/weekly-preferences", "/organization", "/feedback", "/guide", "/docs"]),
+            nav: new Set(["/", "/schedule", "/weekly-preferences", "/organization", "/feedback"]),
             canEditSchedule: false,
         },
     };
@@ -61,7 +61,8 @@
             return baseAccess;
         }
         const pages = new Set(["/", "/schedule", "/organization", "/guide", "/docs"]);
-        const nav = new Set(["/schedule", "/organization"]);
+        const nav = new Set(["/schedule", "/organization", "/feedback"]);
+        pages.add("/feedback");
         if (role === "employee") {
             pages.add("/weekly-preferences");
             nav.add("/weekly-preferences");
@@ -140,6 +141,7 @@
             ["/weekly-preferences", "✦", "nav_requests", "Preferences"],
             ["/organization", "◎", "nav_organization", "Personal account"],
             ["/settings", "⚙", "nav_settings", "Settings"],
+            ["/feedback", "?", "nav_feedback", "Support"],
         ];
         const existing = new Map();
         const duplicates = [];
@@ -179,6 +181,7 @@
             "/weekly-preferences": ["nav_requests", "Preferences"],
             "/settings": ["nav_settings", "Settings"],
             "/organization": ["nav_organization", "Personal account"],
+            "/feedback": ["nav_feedback", "Support"],
         };
         document.querySelectorAll(".nav-list a[href]").forEach((link) => {
             const path = canonicalPath(new URL(link.getAttribute("href"), window.location.origin).pathname);

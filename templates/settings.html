@@ -15,7 +15,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-employee-portal-polish">
+<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-desktop-1080p-readability">
 
     <style>
         /* =========================================================
@@ -857,8 +857,15 @@
                 grid-template-columns: 1fr;
             }
 
-            .settings-section-header {
-                display: block;
+            .settings-section-header,
+            .generation-settings-header,
+            .database-safety-header,
+            .license-status-banner,
+            .preview-day-header,
+            .preview-coverage-strip {
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
             }
 
             .settings-module-row {
@@ -871,6 +878,25 @@
 
             .settings-directory-tab {
                 min-height: 72px;
+            }
+
+            .license-badge,
+            .settings-module-action,
+            .settings-directory-frame-status {
+                white-space: normal;
+            }
+
+            .license-badge {
+                text-align: center;
+            }
+
+            .settings-directory-frame-status {
+                display: grid;
+                gap: 4px;
+            }
+
+            .settings-directory-frame {
+                min-height: 640px;
             }
         }
     </style>
@@ -1217,8 +1243,19 @@
                             </div>
 
                             <div class="settings-directory-tabs" role="tablist" aria-label="Directory sections">
-                                <button class="settings-directory-tab active" type="button" data-directory-module="positions"
-                                    data-directory-src="/positions?embedded=1" aria-selected="true">
+                                <button class="settings-directory-tab active" type="button" data-directory-module="departments"
+                                    data-directory-src="/departments?embedded=1" aria-selected="true">
+                                    <span class="settings-module-icon">D</span>
+                                    <span>
+                                        <span class="settings-module-title" data-i18n="settings_departments_title">Departments</span>
+                                        <span class="settings-module-text" data-i18n="settings_departments_text">
+                                            Separate wards, services, and teams before assigning positions.
+                                        </span>
+                                    </span>
+                                </button>
+
+                                <button class="settings-directory-tab" type="button" data-directory-module="positions"
+                                    data-directory-src="/positions?embedded=1" aria-selected="false">
                                     <span class="settings-module-icon">P</span>
                                     <span>
                                         <span class="settings-module-title" data-i18n="settings_positions_title">Positions</span>
@@ -1264,11 +1301,11 @@
 
                             <div class="settings-directory-frame-shell">
                                 <div class="settings-directory-frame-status">
-                                    <span id="directory-frame-title" data-i18n="settings_positions_title">Positions</span>
+                                    <span id="directory-frame-title" data-i18n="settings_departments_title">Departments</span>
                                     <span data-i18n="settings_directory_inline_hint">Displayed inside Settings</span>
                                 </div>
                                 <iframe id="directory-frame" class="settings-directory-frame" title="Directory editor"
-                                    src="/positions?embedded=1"></iframe>
+                                    src="/departments?embedded=1"></iframe>
                             </div>
                         </div>
                     </section>
@@ -1603,8 +1640,8 @@
         }
 
         function getSavedDirectoryModule() {
-            const saved = localStorage.getItem("scheduleAppDirectoryModule") || "positions";
-            return document.querySelector(`[data-directory-module="${saved}"]`) ? saved : "positions";
+            const saved = localStorage.getItem("scheduleAppDirectoryModule") || "departments";
+            return document.querySelector(`[data-directory-module="${saved}"]`) ? saved : "departments";
         }
 
         function syncDirectoryFrameLanguage() {
@@ -1622,7 +1659,7 @@
 
         function activateDirectoryModule(moduleId) {
             const selectedButton = document.querySelector(`[data-directory-module="${moduleId}"]`)
-                || document.querySelector('[data-directory-module="positions"]');
+                || document.querySelector('[data-directory-module="departments"]');
             if (!selectedButton) return;
 
             const frame = document.getElementById("directory-frame");
@@ -2307,9 +2344,9 @@
             loadLicenseStatus({ silent: true });
         });
     </script>
-<script src="/static/js/i18n.js?v={{ app_version }}-employee-portal-polish"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-department-access"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-employee-portal-polish"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-department-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
 <script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>

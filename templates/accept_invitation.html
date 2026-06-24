@@ -8,8 +8,8 @@
     <title>Accept Invitation - {{ app_name }}</title>
     <link rel="manifest" href="/static/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-employee-portal-polish">
-    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}-employee-portal-account">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-desktop-1080p-readability">
+    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}-desktop-1080p-readability">
 </head>
 
 <body class="app-shell ltr auth-page" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}">
@@ -55,7 +55,7 @@
     </main>
 
     <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-    <script src="/static/js/auth_i18n.js?v={{ app_version }}-employee-portal-account"></script>
+    <script src="/static/js/auth_i18n.js?v={{ app_version }}-department-access"></script>
     <script src="/static/js/accept_invitation.js?v={{ app_version }}-invitation-preview-cloud-token"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>

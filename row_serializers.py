@@ -24,9 +24,25 @@ def row_to_employee_dict(row: sqlite3.Row) -> dict:
     }
 
 
+def row_to_department_dict(row: sqlite3.Row) -> dict:
+    item = {
+        "id": row["id"],
+        "name": row["name"],
+        "description": row["description"] if _has_column(row, "description") else None,
+        "display_order": row["display_order"] if _has_column(row, "display_order") else 0,
+        "is_active": bool(row["is_active"]) if _has_column(row, "is_active") else True,
+    }
+    if _has_column(row, "public_id"):
+        item["public_id"] = row["public_id"]
+    return item
+
+
 def row_to_position_dict(row: sqlite3.Row) -> dict:
     item = {
         "id": row["id"],
+        "department_id": row["department_id"] if _has_column(row, "department_id") else None,
+        "department_public_id": row["department_public_id"] if _has_column(row, "department_public_id") else None,
+        "department_name": row["department_name"] if _has_column(row, "department_name") else None,
         "name": row["name"],
         "color": row["color"] if _has_column(row, "color") and row["color"] else "#eff6ff",
         "requires_continuous_coverage": bool(row["requires_continuous_coverage"]),
@@ -63,6 +79,8 @@ def row_to_shift_template_dict(row: sqlite3.Row) -> dict:
         "position_id": row["position_id"] if _has_column(row, "position_id") else None,
         "position_public_id": row["position_public_id"] if _has_column(row, "position_public_id") else None,
         "position_name": row["position_name"] if _has_column(row, "position_name") else None,
+        "department_id": row["department_id"] if _has_column(row, "department_id") else None,
+        "department_name": row["department_name"] if _has_column(row, "department_name") else None,
         "name": row["name"],
         "category": row["category"],
         "start_time": row["start_time"],
@@ -80,6 +98,8 @@ def row_to_coverage_requirement_dict(row: sqlite3.Row) -> dict:
         "position_id": row["position_id"],
         "position_public_id": row["position_public_id"] if _has_column(row, "position_public_id") else None,
         "position_name": row["position_name"] if _has_column(row, "position_name") else None,
+        "department_id": row["department_id"] if _has_column(row, "department_id") else None,
+        "department_name": row["department_name"] if _has_column(row, "department_name") else None,
         "start_time": row["start_time"],
         "end_time": row["end_time"],
         "required_total": row["required_total"],

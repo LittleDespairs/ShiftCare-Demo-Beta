@@ -1,24 +1,34 @@
-const CACHE_NAME = "shiftcare-0.20.6-beta-startup-update-notifier-20260621";
+const CACHE_NAME = "shiftcare-0.20.9-beta-desktop-1080p-readability-20260624";
 
 const SHELL_ASSETS = [
   "/",
   "/login",
   "/schedule",
+  "/settings",
+  "/employees",
+  "/departments",
+  "/positions",
+  "/employee-positions",
+  "/shift-templates",
+  "/coverage-requirements",
   "/weekly-preferences",
   "/organization",
-  "/static/css/style.css?v=0.20.6_beta-schedule-sync-manual-time",
-  "/static/css/auth.css?v=0.20.6_beta-employee-portal-account",
-  "/static/css/schedule.css?v=0.20.6_beta-schedule-sync-manual-time",
-  "/static/js/i18n.js?v=0.20.6_beta-schedule-sync-manual-time",
-  "/static/js/auth_client.js?v=0.20.6_beta-desktop-local",
-  "/static/js/access_control.js?v=0.20.6_beta-employee-portal-polish",
-  "/static/js/auth_i18n.js?v=0.20.6_beta-employee-portal-account",
-  "/static/js/auth.js?v=0.20.6_beta-portal-entry-employee-mode",
-  "/static/js/schedule.js?v=0.20.6_beta-schedule-sync-manual-time",
-  "/static/js/organization.js?v=0.20.6_beta-employee-portal-account",
-  "/static/js/online_status.js?v=0.20.6_beta",
-  "/static/js/pwa.js?v=0.20.6_beta",
-  "/static/js/update_notifier.js?v=0.20.6_beta-startup-updates",
+  "/feedback",
+  "/guide",
+  "/static/css/style.css?v=0.20.9_beta-desktop-1080p-readability",
+  "/static/css/auth.css?v=0.20.9_beta-desktop-1080p-readability",
+  "/static/css/schedule.css?v=0.20.9_beta-desktop-1080p-readability",
+  "/static/js/i18n.js?v=0.20.9_beta-department-access",
+  "/static/js/auth_client.js?v=0.20.9_beta-desktop-local",
+  "/static/js/access_control.js?v=0.20.9_beta-department-access",
+  "/static/js/auth_i18n.js?v=0.20.9_beta-department-access",
+  "/static/js/auth.js?v=0.20.9_beta-portal-entry-employee-mode",
+  "/static/js/schedule.js?v=0.20.9_beta-schedule-sync-manual-time",
+  "/static/js/organization.js?v=0.20.9_beta-department-access",
+  "/static/js/feedback.js?v=0.20.9_beta-feedback",
+  "/static/js/online_status.js?v=0.20.9_beta",
+  "/static/js/pwa.js?v=0.20.9_beta",
+  "/static/js/update_notifier.js?v=0.20.9_beta-startup-updates",
   "/static/manifest.webmanifest",
   "/static/icons/app-icon.svg"
 ];
@@ -49,6 +59,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (event.request.mode === "navigate") {
+    if (requestUrl.searchParams.get("embedded") === "1") {
+      event.respondWith(fetch(event.request));
+      return;
+    }
+
     event.respondWith(
       fetch(event.request)
         .then((response) => {

@@ -4,12 +4,53 @@
     const ACTIVE_ORGANIZATION_KEY = "schedule_app_active_organization_id";
     const API_BASE_URL_KEY = "schedule_app_api_base_url";
     const API_MODE_KEY = "schedule_app_api_mode";
+    const FRONTEND_ERRORS_KEY = "schedule_app_frontend_errors";
     const CLOUD_API_BASE_URL = "https://schedule-app-beta.web.app";
     const CLOUD_API_FALLBACK_BASE_URL = "https://schedule-app-beta.web.app";
     const IS_DEMO_MODE = document.body?.dataset?.demoMode === "1";
     const DEMO_TOKEN = "shiftcare-demo-session";
     const nativeFetch = window.fetch.bind(window);
     let demoUser = null;
+
+    function readFrontendErrors() {
+        try {
+            const raw = sessionStorage.getItem(FRONTEND_ERRORS_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function rememberFrontendError(payload) {
+        const errors = readFrontendErrors();
+        errors.push({
+            ...payload,
+            captured_at: new Date().toISOString(),
+            page_url: window.location.href,
+        });
+        sessionStorage.setItem(FRONTEND_ERRORS_KEY, JSON.stringify(errors.slice(-20)));
+    }
+
+    window.addEventListener("error", (event) => {
+        rememberFrontendError({
+            kind: "error",
+            message: event.message || "",
+            source: event.filename || "",
+            line: event.lineno || null,
+            column: event.colno || null,
+            stack: event.error?.stack || "",
+        });
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+        const reason = event.reason;
+        rememberFrontendError({
+            kind: "unhandledrejection",
+            message: reason?.message || String(reason || ""),
+            stack: reason?.stack || "",
+        });
+    });
 
     function getDemoUser() {
         if (demoUser) return demoUser;
@@ -288,5 +329,6 @@
         isDesktopLocalOrigin,
         isApiRequest,
         nativeFetch,
+        getFrontendErrors: readFrontendErrors,
     };
 })();

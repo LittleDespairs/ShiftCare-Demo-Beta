@@ -46,7 +46,7 @@ steps:
       - --memory
       - 512Mi
       - --set-env-vars
-      - APP_ENV=staging,DATABASE_ENGINE=postgresql,DATABASE_NAME=${_DATABASE_NAME},DATABASE_USER=${_DATABASE_USER},CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},DATABASE_SSL_MODE=require,PUBLIC_APP_BASE_URL=${_PUBLIC_APP_BASE_URL},SCHEDULE_APP_DEFAULT_API_BASE_URL=${_PUBLIC_APP_BASE_URL},EMAIL_ENABLED=1,EMAIL_FROM=ShiftCare Invitations <invite@shiftcare.co.il>,EMAIL_REPLY_TO=invite@shiftcare.co.il,SMTP_HOST=cp57.box.co.il,SMTP_PORT=465,SMTP_USERNAME=invite@shiftcare.co.il,SMTP_USE_TLS=0,SMTP_USE_SSL=1
+      - APP_ENV=staging,DATABASE_ENGINE=postgresql,DATABASE_NAME=${_DATABASE_NAME},DATABASE_USER=${_DATABASE_USER},CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},DATABASE_SSL_MODE=require,PUBLIC_APP_BASE_URL=${_PUBLIC_APP_BASE_URL},SCHEDULE_APP_DEFAULT_API_BASE_URL=${_PUBLIC_APP_BASE_URL},EMAIL_ENABLED=1,EMAIL_FROM=ShiftCare Invitations <invite@shiftcare.co.il>,EMAIL_REPLY_TO=invite@shiftcare.co.il,SUPPORT_REPORTS_EMAIL=reports@shiftcare.co.il,SMTP_HOST=cp57.box.co.il,SMTP_PORT=465,SMTP_USERNAME=invite@shiftcare.co.il,SMTP_USE_TLS=0,SMTP_USE_SSL=1
       - --set-secrets
       - DATABASE_PASSWORD=schedule-app-db-password:latest,AUTH_TOKEN_SECRET=schedule-app-auth-token-secret:latest,SMTP_PASSWORD=schedule-app-smtp-password:latest
       - --set-cloudsql-instances

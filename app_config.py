@@ -28,6 +28,7 @@ class AppConfig:
     email_enabled: bool
     email_from: str
     email_reply_to: str
+    support_reports_email: str
     smtp_host: str
     smtp_port: int
     smtp_username: str
@@ -64,6 +65,7 @@ def get_app_config() -> AppConfig:
         email_enabled=os.environ.get("EMAIL_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on", "enabled"},
         email_from=os.environ.get("EMAIL_FROM", "").strip(),
         email_reply_to=os.environ.get("EMAIL_REPLY_TO", "").strip(),
+        support_reports_email=os.environ.get("SUPPORT_REPORTS_EMAIL", "reports@shiftcare.co.il").strip(),
         smtp_host=os.environ.get("SMTP_HOST", "").strip(),
         smtp_port=int(os.environ.get("SMTP_PORT", "587").strip() or "587"),
         smtp_username=os.environ.get("SMTP_USERNAME", "").strip(),

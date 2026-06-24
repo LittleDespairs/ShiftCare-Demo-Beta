@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#121820">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Departments - {{ app_name }}</title>
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-desktop-1080p-readability">
+
+    <style>
+        .departments-layout {
+            display: grid;
+            grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
+            gap: 22px;
+        }
+
+        .department-form-panel {
+            position: sticky;
+            top: 28px;
+            align-self: start;
+        }
+
+        .subsection-title {
+            margin: 0 0 14px;
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+
+        .subsection-text {
+            margin: 0 0 18px;
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+
+        .helper-text {
+            font-size: 0.8rem;
+            color: var(--muted);
+            line-height: 1.45;
+            margin-top: 6px;
+        }
+
+        .check-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 0.9rem;
+            line-height: 1.45;
+            color: var(--text);
+        }
+
+        .check-row input[type="checkbox"] {
+            margin-top: 2px;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary);
+            flex-shrink: 0;
+        }
+
+        .departments-table-shell {
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: #fff;
+        }
+
+        .departments-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 820px;
+        }
+
+        .departments-table th,
+        .departments-table td {
+            padding: 14px;
+            border-bottom: 1px solid var(--border);
+            text-align: start;
+            vertical-align: top;
+        }
+
+        .departments-table th {
+            background: #f8fafc;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        body.rtl .departments-table th,
+        body.rtl .departments-table td {
+            text-align: right;
+        }
+
+        body.ltr .departments-table th,
+        body.ltr .departments-table td {
+            text-align: left;
+        }
+
+        .departments-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .strong-cell {
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .muted-cell {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .mini-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            line-height: 1;
+            border: 1px solid transparent;
+        }
+
+        .mini-badge.yes {
+            background: #dcfce7;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .mini-badge.no {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+
+        .table-actions,
+        .list-header {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .list-header {
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .table-btn {
+            border: none;
+            border-radius: 12px;
+            min-height: 36px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 800;
+            transition: transform var(--transition), background var(--transition);
+        }
+
+        .table-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .table-btn.edit {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .table-btn.delete {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        #message-box {
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 1200px) {
+            .departments-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .departments-layout > *,
+            .departments-table-shell {
+                min-width: 0;
+                max-width: 100%;
+            }
+
+            .department-form-panel {
+                position: static;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .departments-table-shell {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .departments-table th,
+            .departments-table td {
+                white-space: normal;
+            }
+        }
+    </style>
+</head>
+
+<body class="app-shell ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-top-row">
+                <div class="brand" style="border-bottom:none; padding:0; flex:1;">
+                    <div class="brand-logo">SC</div>
+                    <div class="brand-text">
+                        <h1 class="brand-title" data-i18n="app_title">{{ app_name }}</h1>
+                        <p class="brand-subtitle" data-i18n="app_subtitle">Thoughtful scheduling for care teams</p>
+                    </div>
+                </div>
+                <button id="sidebar-toggle" class="sidebar-toggle" type="button" data-i18n-title="toggle_sidebar" title="Toggle menu">☰</button>
+            </div>
+
+            <div>
+                <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
+                <nav class="nav-list">
+                    <a href="/" class="nav-item">
+                        <span class="nav-icon">⌂</span>
+                        <span class="nav-label" data-i18n="nav_dashboard">Dashboard</span>
+                    </a>
+                    <a href="/schedule" class="nav-item">
+                        <span class="nav-icon">🗓</span>
+                        <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
+                    </a>
+                    <a href="/employees" class="nav-item">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-label" data-i18n="nav_employees">Employees</span>
+                    </a>
+                    <a href="/weekly-preferences" class="nav-item">
+                        <span class="nav-icon">✦</span>
+                        <span class="nav-label" data-i18n="nav_requests">Preferences</span>
+                    </a>
+                    <a href="/settings" class="nav-item">
+                        <span class="nav-icon">⚙</span>
+                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                    </a>
+                </nav>
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <header class="topbar">
+                <div class="page-heading">
+                    <h2 class="page-title" data-i18n="departments_page_title">Departments</h2>
+                    <p class="page-subtitle" data-i18n="departments_page_subtitle">
+                        Separate teams, wards, and services before creating positions.
+                    </p>
+                </div>
+
+                <div class="topbar-actions">
+                    <div class="lang-switcher">
+                        <button class="lang-btn" type="button" data-lang="he" data-i18n="lang_he">עברית</button>
+                        <button class="lang-btn" type="button" data-lang="en" data-i18n="lang_en">English</button>
+                        <button class="lang-btn" type="button" data-lang="ru" data-i18n="lang_ru">Русский</button>
+                    </div>
+                </div>
+            </header>
+
+            <div id="message-box"></div>
+
+            <div class="departments-layout">
+                <section class="panel department-form-panel">
+                    <div class="panel-body">
+                        <h3 class="subsection-title" data-i18n="departments_form_title">Department form</h3>
+                        <p class="subsection-text" data-i18n="departments_form_subtitle">
+                            Add wards or services so positions can be separated cleanly.
+                        </p>
+
+                        <form id="department-form" class="form-grid">
+                            <div>
+                                <label class="form-label" for="department_name" data-i18n="departments_name">Department name</label>
+                                <input id="department_name" class="input" type="text" required
+                                    data-i18n-placeholder="departments_name_placeholder" placeholder="Example: Ward 1">
+                            </div>
+
+                            <div>
+                                <label class="form-label" for="department_description" data-i18n="departments_description">Description</label>
+                                <textarea id="department_description" class="input" rows="3"
+                                    data-i18n-placeholder="departments_description_placeholder" placeholder="Optional note"></textarea>
+                            </div>
+
+                            <div>
+                                <label class="form-label" for="department_display_order" data-i18n="departments_display_order">Display order</label>
+                                <input id="department_display_order" class="input" type="number" min="0" max="1000" value="0">
+                                <div class="helper-text" data-i18n="departments_display_order_hint">
+                                    Lower numbers appear first in lists and selectors.
+                                </div>
+                            </div>
+
+                            <label class="check-row">
+                                <input id="department_is_active" type="checkbox" checked>
+                                <span data-i18n="departments_is_active">Active department</span>
+                            </label>
+
+                            <button id="department-submit-button" class="btn btn-primary" type="submit" data-i18n="departments_add_button">
+                                Add department
+                            </button>
+                            <button id="reset-department-form-btn" class="btn btn-secondary" type="button" data-i18n="common_reset">
+                                Reset
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <section>
+                    <div class="panel">
+                        <div class="panel-body">
+                            <div class="list-header">
+                                <div>
+                                    <h3 class="subsection-title" style="margin-bottom:6px;" data-i18n="departments_list_title">
+                                        Department list
+                                    </h3>
+                                    <p class="subsection-text" style="margin:0;" data-i18n="departments_list_subtitle">
+                                        Departments available for positions and schedule grouping.
+                                    </p>
+                                </div>
+                                <button id="reload-btn" class="btn btn-secondary" type="button" data-i18n="departments_reload_button">
+                                    Reload
+                                </button>
+                            </div>
+
+                            <div class="departments-table-shell">
+                                <table class="departments-table">
+                                    <thead>
+                                        <tr>
+                                            <th data-i18n="departments_table_id">ID</th>
+                                            <th data-i18n="departments_table_name">Name</th>
+                                            <th data-i18n="departments_table_description">Description</th>
+                                            <th data-i18n="departments_table_order">Order</th>
+                                            <th data-i18n="departments_table_active">Active</th>
+                                            <th data-i18n="departments_table_actions">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="departments-table-body">
+                                        <tr>
+                                            <td colspan="6" class="muted-cell" data-i18n="departments_empty_list">No departments yet</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <footer class="app-footer">
+                <div class="footer-left" data-i18n="footer_version">{{ app_name }} v{{ app_version }}</div>
+                <div class="footer-right">
+                    <a href="/docs" data-i18n="footer_docs">Documentation</a>
+                    <a href="/guide" data-i18n="footer_guide">Guide</a>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <script>
+        let editingDepartmentId = null;
+        let cachedDepartments = [];
+
+        function t(key, fallback = "") {
+            if (typeof translateWithFallback === "function") {
+                return translateWithFallback(key, fallback);
+            }
+            if (typeof translate === "function") {
+                const translated = translate(key);
+                return translated === key ? (fallback || key) : translated;
+            }
+            return fallback || key;
+        }
+
+        function showMessage(text, type = "info") {
+            renderPageMessage("message-box", text, type);
+        }
+
+        function boolBadge(value) {
+            return value
+                ? `<span class="mini-badge yes">${t("common_yes", "Yes")}</span>`
+                : `<span class="mini-badge no">${t("common_no", "No")}</span>`;
+        }
+
+        function getPayload() {
+            return {
+                name: document.getElementById("department_name").value.trim(),
+                description: document.getElementById("department_description").value.trim() || null,
+                display_order: Number(document.getElementById("department_display_order").value || 0),
+                is_active: document.getElementById("department_is_active").checked
+            };
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById("department-form").addEventListener("submit", handleDepartmentSubmit);
+            document.getElementById("reload-btn").addEventListener("click", loadDepartments);
+            document.getElementById("reset-department-form-btn").addEventListener("click", resetDepartmentForm);
+            document.getElementById("departments-table-body").addEventListener("click", handleDepartmentTableClick);
+            loadDepartments();
+        });
+
+        document.addEventListener("app-language-changed", () => {
+            renderDepartmentsTable(cachedDepartments);
+            updateSubmitButtonText();
+        });
+
+        async function loadDepartments() {
+            try {
+                const response = await fetch("/api/departments");
+                if (!response.ok) {
+                    showMessage(t("departments_msg_failed_load", "Failed to load departments."), "danger");
+                    return;
+                }
+                cachedDepartments = await response.json();
+                renderDepartmentsTable(cachedDepartments);
+            } catch (error) {
+                console.error(error);
+                showMessage(t("departments_msg_server_error_load", "Server error while loading departments."), "danger");
+            }
+        }
+
+        async function handleDepartmentSubmit(event) {
+            event.preventDefault();
+            const payload = getPayload();
+            if (!payload.name) {
+                showMessage(t("departments_msg_enter_name", "Please enter department name."), "warning");
+                return;
+            }
+
+            const url = editingDepartmentId === null
+                ? "/api/departments"
+                : `/api/departments/${editingDepartmentId}`;
+            try {
+                const response = await fetch(url, {
+                    method: editingDepartmentId === null ? "POST" : "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    showMessage(error.detail || t("departments_msg_failed_save", "Failed to save department."), "danger");
+                    return;
+                }
+                const result = await response.json();
+                showMessage(result.message, "success");
+                resetDepartmentForm();
+                await loadDepartments();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("departments_msg_server_error_save", "Server error while saving department."), "danger");
+            }
+        }
+
+        function editDepartment(department) {
+            editingDepartmentId = department.id;
+            document.getElementById("department_name").value = department.name || "";
+            document.getElementById("department_description").value = department.description || "";
+            document.getElementById("department_display_order").value = department.display_order ?? 0;
+            document.getElementById("department_is_active").checked = Boolean(department.is_active);
+            updateSubmitButtonText();
+            showMessage(`${t("departments_msg_editing", "Editing department")}: ${department.name}`, "info");
+        }
+
+        async function deleteDepartment(departmentId) {
+            let confirmMessage = `<p>${escapeHtml(t("departments_msg_confirm_delete", "Delete this department?"))}</p>`;
+            try {
+                const impactResponse = await fetch(`/api/departments/${departmentId}/delete-impact`);
+                if (impactResponse.ok) {
+                    const impact = await impactResponse.json();
+                    confirmMessage += `
+                        <ul>
+                            <li><strong>${escapeHtml(t("departments_name", "Department name"))}:</strong> ${escapeHtml(impact.department_name)}</li>
+                            <li><strong>${escapeHtml(t("positions_page_title", "Positions"))}:</strong> ${Number(impact.positions)}</li>
+                        </ul>
+                    `;
+                    if (impact.positions > 0 || impact.is_last_department) {
+                        confirmMessage += `<p>${escapeHtml(t("departments_delete_blocked_hint", "This department cannot be deleted until positions are moved or another department exists."))}</p>`;
+                    }
+                }
+            } catch (error) {
+                console.error(error);
+            }
+
+            const confirmed = await appConfirm(confirmMessage, {
+                confirmText: t("common_delete", "Delete"),
+                html: true
+            });
+            if (!confirmed) return;
+
+            try {
+                const response = await fetch(`/api/departments/${departmentId}`, { method: "DELETE" });
+                if (!response.ok) {
+                    const error = await response.json();
+                    showMessage(error.detail || t("departments_msg_failed_delete", "Failed to delete department."), "danger");
+                    return;
+                }
+                const result = await response.json();
+                const backupSuffix = result.backup_name
+                    ? ` ${t("common_recovery_backup", "Recovery backup")}: ${result.backup_name}`
+                    : "";
+                showMessage(`${result.message}${backupSuffix}`, "success");
+                if (editingDepartmentId === departmentId) {
+                    resetDepartmentForm();
+                }
+                await loadDepartments();
+            } catch (error) {
+                console.error(error);
+                showMessage(t("departments_msg_server_error_delete", "Server error while deleting department."), "danger");
+            }
+        }
+
+        function resetDepartmentForm() {
+            document.getElementById("department-form").reset();
+            document.getElementById("department_display_order").value = 0;
+            document.getElementById("department_is_active").checked = true;
+            editingDepartmentId = null;
+            updateSubmitButtonText();
+        }
+
+        function updateSubmitButtonText() {
+            document.getElementById("department-submit-button").textContent = editingDepartmentId === null
+                ? t("departments_add_button", "Add department")
+                : t("departments_update_button", "Update department");
+        }
+
+        function renderDepartmentsTable(departments) {
+            const body = document.getElementById("departments-table-body");
+            if (departments.length === 0) {
+                body.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="muted-cell">
+                            ${typeof renderEmptyState === "function"
+                                ? renderEmptyState({
+                                    title: t("departments_empty_state_title", "No departments yet"),
+                                    text: t("departments_empty_state_text", "Add a department before creating department-specific positions.")
+                                })
+                                : t("departments_empty_list", "No departments yet")}
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            body.innerHTML = departments.map(department => `
+                <tr data-department-id="${Number(department.id)}">
+                    <td>${Number(department.id)}</td>
+                    <td class="strong-cell">${escapeHtml(department.name)}</td>
+                    <td class="muted-cell">${escapeHtml(department.description || "")}</td>
+                    <td>${Number(department.display_order || 0)}</td>
+                    <td>${boolBadge(department.is_active)}</td>
+                    <td>
+                        <div class="table-actions">
+                            <button class="table-btn edit" type="button" data-action="edit" data-id="${Number(department.id)}">
+                                ${t("common_edit", "Edit")}
+                            </button>
+                            <button class="table-btn delete" type="button" data-action="delete" data-id="${Number(department.id)}">
+                                ${t("common_delete", "Delete")}
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join("");
+        }
+
+        function handleDepartmentTableClick(event) {
+            const button = event.target.closest("[data-action]");
+            if (!button) return;
+            const departmentId = Number(button.dataset.id);
+            const department = cachedDepartments.find(item => item.id === departmentId);
+            if (button.dataset.action === "edit" && department) {
+                editDepartment(department);
+            }
+            if (button.dataset.action === "delete") {
+                deleteDepartment(departmentId);
+            }
+        }
+    </script>
+
+    <script src="/static/js/i18n.js?v={{ app_version }}-department-access"></script>
+    <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
+    <script src="/static/js/access_control.js?v={{ app_version }}-department-access"></script>
+    <script src="/static/js/pwa.js?v={{ app_version }}"></script>
+    <script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
+    <script src="/static/js/online_status.js?v={{ app_version }}"></script>
+</body>
+
+</html>

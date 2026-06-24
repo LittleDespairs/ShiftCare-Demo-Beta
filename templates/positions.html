@@ -15,7 +15,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-employee-portal-polish">
+<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-desktop-1080p-readability">
 
     <style>
         /* =========================================================
@@ -447,6 +447,15 @@
                             </div>
 
                             <div>
+                                <label class="form-label" for="department_id" data-i18n="positions_department">
+                                    Department
+                                </label>
+                                <select id="department_id" class="select" required>
+                                    <option value="" data-i18n="positions_select_department">Select department</option>
+                                </select>
+                            </div>
+
+                            <div>
                                 <label class="form-label" for="position_color" data-i18n="positions_color">
                                     Position color
                                 </label>
@@ -570,6 +579,7 @@
                                         <tr>
                                             <th data-i18n="positions_table_id">ID</th>
                                             <th data-i18n="positions_table_name">Name</th>
+                                            <th data-i18n="positions_table_department">Department</th>
                                             <th data-i18n="positions_table_continuous">Continuous coverage</th>
                                             <th data-i18n="positions_table_min_presence">Minimum presence</th>
                                             <th data-i18n="positions_table_same_day_other_positions">Same-day other positions</th>
@@ -579,7 +589,7 @@
                                     </thead>
                                     <tbody id="positions-table-body">
                                         <tr>
-                                            <td colspan="7" class="muted-cell" data-i18n="positions_empty_list">
+                                            <td colspan="8" class="muted-cell" data-i18n="positions_empty_list">
                                                 No positions yet
                                             </td>
                                         </tr>
@@ -666,6 +676,7 @@
 
         let editingPositionId = null;
         let cachedPositions = [];
+        let cachedDepartments = [];
 
         function t(key, fallback = "") {
             if (typeof translate === "function") {
@@ -733,11 +744,11 @@
             const reloadButton = document.getElementById("reload-btn");
 
             form.addEventListener("submit", handlePositionSubmit);
-            reloadButton.addEventListener("click", loadPositions);
+            reloadButton.addEventListener("click", loadPageData);
             document.getElementById("reset-position-form-btn").addEventListener("click", resetPositionForm);
             document.getElementById("positions-table-body").addEventListener("click", handlePositionsTableClick);
 
-            loadPositions();
+            loadPageData();
         });
 
         /* =========================================================
@@ -757,8 +768,15 @@
             try {
                 const requiresContinuousCoverage = document.getElementById("requires_continuous_coverage").checked;
                 const minimumStaffPresence = Number(document.getElementById("minimum_staff_presence").value);
+                const departmentId = Number(document.getElementById("department_id").value);
+
+                if (!departmentId) {
+                    showMessage(t("msg_select_department", "Please select a department."), "warning");
+                    return;
+                }
 
                 const payload = {
+                    department_id: departmentId,
                     name: positionName,
                     color: document.getElementById("position_color").value || "#eff6ff",
                     requires_continuous_coverage: requiresContinuousCoverage,
@@ -793,7 +811,7 @@
 
                 resetPositionForm();
 
-                await loadPositions();
+                await loadPageData();
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_save_position", "Server error while saving position."), "danger");
@@ -804,21 +822,42 @@
            LOAD POSITIONS / ЗАГРУЗКА ДОЛЖНОСТЕЙ
            ========================================================= */
 
-        async function loadPositions() {
+        async function loadPageData() {
             try {
-                const response = await fetch("/api/positions");
+                const [departmentsResponse, positionsResponse] = await Promise.all([
+                    fetch("/api/departments"),
+                    fetch("/api/positions")
+                ]);
 
-                if (!response.ok) {
+                if (!departmentsResponse.ok || !positionsResponse.ok) {
                     showMessage(t("msg_failed_load_positions", "Failed to load positions."), "danger");
                     return;
                 }
 
-                const positions = await response.json();
-                cachedPositions = positions;
-                renderPositionsTable(positions);
+                cachedDepartments = await departmentsResponse.json();
+                cachedPositions = await positionsResponse.json();
+                renderDepartmentOptions();
+                renderPositionsTable(cachedPositions);
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_load_positions", "Server error while loading positions."), "danger");
+            }
+        }
+
+        function renderDepartmentOptions() {
+            const select = document.getElementById("department_id");
+            const currentValue = select.value;
+            select.innerHTML = `
+                <option value="">${escapeHtml(t("positions_select_department", "Select department"))}</option>
+                ${cachedDepartments.map(department => `
+                    <option value="${Number(department.id)}">${escapeHtml(department.name)}</option>
+                `).join("")}
+            `;
+            if ([...select.options].some(option => option.value === currentValue)) {
+                select.value = currentValue;
+            }
+            if (typeof refreshSelectTrigger === "function") {
+                refreshSelectTrigger(select);
             }
         }
 
@@ -828,6 +867,7 @@
 
         function editPosition(position) {
             editingPositionId = position.id;
+            document.getElementById("department_id").value = position.department_id || "";
             document.getElementById("position_name").value = position.name;
             document.getElementById("position_color").value = position.color || "#eff6ff";
             document.getElementById("requires_continuous_coverage").checked = position.requires_continuous_coverage;
@@ -892,7 +932,7 @@
                     resetPositionForm();
                 }
 
-                await loadPositions();
+                await loadPageData();
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_delete_position", "Server error while deleting position."), "danger");
@@ -901,6 +941,7 @@
 
         function resetPositionForm() {
             document.getElementById("position-form").reset();
+            document.getElementById("department_id").value = "";
             document.getElementById("position_color").value = "#eff6ff";
             document.getElementById("minimum_staff_presence").value = 0;
             document.getElementById("allow_same_day_other_positions").checked = false;
@@ -918,7 +959,7 @@
             if (positions.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="7" class="muted-cell">
+                        <td colspan="8" class="muted-cell">
                             ${typeof renderEmptyState === "function"
                                 ? renderEmptyState({
                                     title: t("positions_empty_state_title", "No positions yet"),
@@ -938,6 +979,7 @@
                         <span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid var(--border);background:${escapeHtml(position.color || "#eff6ff")};margin-inline-end:6px;"></span>
                         ${escapeHtml(position.name)}
                     </td>
+                    <td>${escapeHtml(position.department_name || t("departments_default_name", "Main department"))}</td>
                     <td>${boolBadge(position.requires_continuous_coverage)}</td>
                     <td>${Number(position.minimum_staff_presence)}</td>
                     <td>${boolBadge(position.allow_same_day_other_positions)}</td>
@@ -980,9 +1022,9 @@
                     <a href="/guide" data-i18n="footer_guide">Guide</a>
                 </div>
             </footer>
-<script src="/static/js/i18n.js?v={{ app_version }}-employee-portal-polish"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-department-access"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-employee-portal-polish"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-department-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
 <script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>

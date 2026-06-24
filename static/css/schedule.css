@@ -2400,7 +2400,7 @@
             color: var(--danger);
         }
 
-        @media (max-width: 1380px) {
+        @media (max-width: 1680px) {
             body.schedule-board-page .schedule-toolbar {
                 grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr) auto;
             }
@@ -2619,5 +2619,54 @@
             body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .entry-meta,
             body.schedule-board-page:is(.hosted-employee-schedule, .employee-schedule-view, [data-auth-role="employee"]) .empty-text {
                 font-size: 0.78rem;
+            }
+        }
+
+        @media (max-width: 820px) {
+            body.schedule-board-page .toolbar-actions .btn,
+            body.schedule-board-page .toolbar-modal-btn,
+            body.schedule-board-page .schedule-display-field,
+            body.schedule-board-page .schedule-display-field select {
+                min-width: 0;
+                max-width: 100%;
+                white-space: normal;
+            }
+
+            body.schedule-board-page .schedule-stage-top,
+            body.schedule-board-page .schedule-filter-panel {
+                min-width: 0;
+                max-width: 100%;
+            }
+
+            body.schedule-board-page .schedule-status-value,
+            body.schedule-board-page .empty-state-title,
+            body.schedule-board-page .empty-state-text {
+                overflow: visible;
+                text-overflow: clip;
+                white-space: normal;
+                overflow-wrap: anywhere;
+            }
+        }
+
+        @media (max-width: 700px) {
+            body.schedule-board-page .schedule-shell {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            body.schedule-board-page .schedule-table:has(#schedule-tbody tr:only-child .empty-state) {
+                min-width: 0;
+                width: 100%;
+            }
+
+            body.schedule-board-page .schedule-table:has(#schedule-tbody tr:only-child .empty-state) tr,
+            body.schedule-board-page .schedule-table:has(#schedule-tbody tr:only-child .empty-state) td {
+                display: block;
+                min-width: 0;
+                width: 100%;
+            }
+
+            body.schedule-board-page .schedule-table:has(#schedule-tbody tr:only-child .empty-state) .empty-state {
+                width: 100%;
             }
         }

@@ -105,6 +105,11 @@
             org_table_name: "Name",
             org_table_status: "Status",
             org_email_verified: "Email verified",
+            org_department_access: "Departments",
+            org_department_access_all: "All departments",
+            org_department_access_hint: "No selection means all departments.",
+            org_no_departments: "No departments found.",
+            org_save_department_access: "Save",
             org_table_accepted: "Accepted",
             org_table_actions: "Actions",
             org_remove_member: "Remove",
@@ -128,6 +133,8 @@
             org_msg_role_updated: "Role updated.",
             org_msg_updating_employee_link: "Updating employee link...",
             org_msg_employee_link_updated: "Employee link updated.",
+            org_msg_updating_department_access: "Updating department access...",
+            org_msg_department_access_updated: "Department access updated.",
             org_msg_saving_profile: "Saving profile...",
             org_msg_profile_saved: "Profile saved.",
             org_msg_changing_password: "Changing password...",
@@ -276,6 +283,11 @@
             org_table_name: "Имя",
             org_table_status: "Статус",
             org_email_verified: "Email подтверждён",
+            org_department_access: "Отделы",
+            org_department_access_all: "Все отделы",
+            org_department_access_hint: "Если ничего не выбрано, доступны все отделы.",
+            org_no_departments: "Отделы не найдены.",
+            org_save_department_access: "Сохранить",
             org_table_accepted: "Принято",
             org_table_actions: "Действия",
             org_remove_member: "Удалить",
@@ -299,6 +311,8 @@
             org_msg_role_updated: "Роль обновлена.",
             org_msg_updating_employee_link: "Обновление привязки сотрудника...",
             org_msg_employee_link_updated: "Привязка сотрудника обновлена.",
+            org_msg_updating_department_access: "Обновление доступа к отделам...",
+            org_msg_department_access_updated: "Доступ к отделам обновлён.",
             org_msg_saving_profile: "Сохранение профиля...",
             org_msg_profile_saved: "Профиль сохранён.",
             org_msg_changing_password: "Смена пароля...",
@@ -447,6 +461,11 @@
             org_table_name: "שם",
             org_table_status: "סטטוס",
             org_email_verified: "אימייל אומת",
+            org_department_access: "מחלקות",
+            org_department_access_all: "כל המחלקות",
+            org_department_access_hint: "ללא בחירה המשמעות היא כל המחלקות.",
+            org_no_departments: "לא נמצאו מחלקות.",
+            org_save_department_access: "שמור",
             org_table_accepted: "התקבל",
             org_table_actions: "פעולות",
             org_remove_member: "הסר",
@@ -470,6 +489,8 @@
             org_msg_role_updated: "התפקיד עודכן.",
             org_msg_updating_employee_link: "מעדכן קישור לעובד...",
             org_msg_employee_link_updated: "הקישור לעובד עודכן.",
+            org_msg_updating_department_access: "מעדכן גישה למחלקות...",
+            org_msg_department_access_updated: "גישת המחלקות עודכנה.",
             org_msg_saving_profile: "שומר פרופיל...",
             org_msg_profile_saved: "הפרופיל נשמר.",
             org_msg_changing_password: "משנה סיסמה...",
@@ -646,8 +667,9 @@
         setText("#invitations-panel .settings-section-text", "org_invitations_text");
         setText(".organization-table th:nth-child(1)", "org_table_name");
         setText(".organization-table th:nth-child(4)", "org_table_status");
-        setText(".organization-table:first-of-type th:nth-child(5)", "org_email_verified");
-        setText(".organization-table:first-of-type th:nth-child(6)", "org_table_actions");
+        setText(".organization-table:first-of-type th:nth-child(6)", "org_email_verified");
+        setText(".organization-table:first-of-type th:nth-child(7)", "org_department_access");
+        setText(".organization-table:first-of-type th:nth-child(8)", "org_table_actions");
         setText(".organization-panel-wide .organization-table th:nth-child(2)", "org_employee");
         setText(".organization-panel-wide .organization-table th:nth-child(5)", "org_expires");
         setText(".organization-panel-wide .organization-table th:nth-child(6)", "org_table_accepted");
@@ -656,7 +678,7 @@
         const membersTable = document.getElementById("members-table-body")?.closest("table");
         const invitationsTable = document.getElementById("invitations-table-body")?.closest("table");
         [
-            [membersTable, ["org_table_name", "auth_email", "org_employee", "org_role", "org_table_status", "org_email_verified", "org_table_actions"]],
+            [membersTable, ["org_table_name", "auth_email", "org_employee", "org_role", "org_table_status", "org_email_verified", "org_department_access", "org_table_actions"]],
             [invitationsTable, ["auth_email", "org_employee", "org_role", "org_table_status", "org_expires", "org_table_accepted", "org_table_actions"]],
         ].forEach(([table, keys]) => {
             if (!table) return;

@@ -2,6 +2,61 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.20.9_beta - 2026-06-24
+
+## Release Focus
+
+Add user-submitted bug reports and feature requests, and deploy the feedback endpoint to cloud.
+
+## Changed
+
+- Added a user-facing Support page at `/feedback` for bug reports and feature requests.
+- Added `POST /api/feedback/reports`, `feedback_reports` storage, frontend error context capture, and support report email notifications to `reports@shiftcare.co.il`.
+- Added desktop-to-cloud forwarding for feedback reports when a desktop install is linked to the cloud API.
+- Updated runtime version, service worker cache keys, Android metadata, PyInstaller specs, installer metadata, build docs, and release notes to `0.20.9_beta`.
+
+## Verification
+
+- Automated regression tests passed locally.
+- Cloud deployment smoke checks passed for the feedback endpoint and health checks.
+
+# 0.20.8_beta - 2026-06-24
+
+## Release Focus
+
+Hotfix desktop startup after the `0.20.7_beta` department migration.
+
+## Changed
+
+- Made SQLite table rebuild migrations recover from stale `*_old` tables left by a failed previous launch.
+- Fixed startup failure caused by `sqlite3.OperationalError: there is already another table or index with this name: shift_templates_old`.
+- Added regression coverage for stale `shift_templates_old` recovery during shift template rebuilds.
+- Updated runtime version, service worker cache keys, Android metadata, PyInstaller specs, installer metadata, build docs, and release notes to `0.20.8_beta`.
+
+## Verification
+
+- Verified the hotfix migrates a copy of the broken installed database and preserves shift templates and schedule entries.
+- Automated regression tests passed locally.
+
+# 0.20.7_beta - 2026-06-23
+
+## Release Focus
+
+Add department-aware scheduling controls and restrict administrator access by department.
+
+## Changed
+
+- Added departments as an internal Settings directory so roles, employees, templates, coverage requirements, and schedules can be separated by care team, cleaning, kitchen, or other local units.
+- Removed the standalone Departments item from the global sidebar; departments remain managed from Settings > Directories.
+- Added per-department access for organization administrators, schedulers, managers, and read-only users from the Organization members screen.
+- Enforced department restrictions on schedule reads/writes, generation, directory management, employee assignment, coverage requirements, shift templates, exports, and bulk clear actions.
+- Updated runtime version, service worker cache keys, Android metadata, PyInstaller specs, installer metadata, build docs, and release notes to `0.20.7_beta`.
+
+## Verification
+
+- Automated regression tests passed locally.
+- Added regression coverage for department-scoped administrator access across schedule and directory APIs.
+
 # 0.20.4_beta - 2026-06-19
 
 ## Release Focus

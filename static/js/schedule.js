@@ -665,7 +665,7 @@
                     <div class="generation-summary-muted">
                         ${escapeHtml(t("generation_summary_week", "Week"))}: ${escapeHtml(summary.weekStart)}
                         <br>
-                        ${escapeHtml(t("generation_summary_position", "Position"))}: ${escapeHtml(selectedPosition ? selectedPosition.name : String(summary.positionId))}
+                        ${escapeHtml(t("generation_summary_position", "Position"))}: ${escapeHtml(selectedPosition ? formatPositionLabel(selectedPosition) : String(summary.positionId))}
                         <br>
                         ${escapeHtml(t("schedule_generation_mode", "Generation"))}: ${escapeHtml(getGenerationModeLabel(summary.generationMode || result.generation_mode))}
                         <br>
@@ -1036,7 +1036,7 @@
                 },
                 {
                     label: t("schedule_status_position", "Position"),
-                    value: selectedPosition ? selectedPosition.name : "-"
+                    value: selectedPosition ? formatPositionLabel(selectedPosition) : "-"
                 },
                 {
                     label: t("schedule_status_coverage", "Coverage"),
@@ -1128,7 +1128,7 @@
             runLog.innerHTML = `
                 <div class="schedule-log-line">
                     <strong>${escapeHtml(t("schedule_loaded_log", "Loaded schedule data"))}</strong>
-                    <span>${escapeHtml(selectedPosition ? selectedPosition.name : "-")} · ${escapeHtml(dates[0])} - ${escapeHtml(dates[6])}</span>
+                    <span>${escapeHtml(selectedPosition ? formatPositionLabel(selectedPosition) : "-")} · ${escapeHtml(dates[0])} - ${escapeHtml(dates[6])}</span>
                 </div>
                 <div class="schedule-log-line">
                     <strong>${escapeHtml(t("schedule_status_entries", "Entries"))}: ${Number(visibleEntries.length)}</strong>
@@ -1226,9 +1226,7 @@
 
                 select.innerHTML = `
                     <option value="">${t("schedule_select_position", "Select position")}</option>
-                    ${allPositions.map(position => `
-                        <option value="${Number(position.id)}">${escapeHtml(position.name)}</option>
-                    `).join("")}
+                    ${renderPositionSelectOptions(allPositions)}
                 `;
                 if (isEmployeeUser()) {
                     const preferredPosition = allPositions.find(position => position.is_primary) || allPositions[0];
@@ -1241,6 +1239,33 @@
                 console.error(error);
                 showMessage(t("msg_server_error_load_positions", "Server error while loading positions."), "danger");
             }
+        }
+
+        function getDepartmentNameForPosition(position) {
+            return position?.department_name || t("departments_default_name", "Main department");
+        }
+
+        function formatPositionLabel(position) {
+            if (!position) return "";
+            return `${getDepartmentNameForPosition(position)} / ${position.name}`;
+        }
+
+        function renderPositionSelectOptions(positions) {
+            const groups = new Map();
+            positions.forEach(position => {
+                const departmentName = getDepartmentNameForPosition(position);
+                if (!groups.has(departmentName)) {
+                    groups.set(departmentName, []);
+                }
+                groups.get(departmentName).push(position);
+            });
+            return Array.from(groups.entries()).map(([departmentName, departmentPositions]) => `
+                <optgroup label="${escapeHtml(departmentName)}">
+                    ${departmentPositions.map(position => `
+                        <option value="${Number(position.id)}">${escapeHtml(formatPositionLabel(position))}</option>
+                    `).join("")}
+                </optgroup>
+            `).join("");
         }
 
         function syncScheduleDisplaySelect() {
@@ -2446,7 +2471,7 @@
 
         function getPositionName(positionId) {
             const position = allPositions.find(item => item.id === positionId);
-            return position ? position.name : String(positionId);
+            return position ? formatPositionLabel(position) : String(positionId);
         }
 
         function formatEntryTimeLabel(entry) {

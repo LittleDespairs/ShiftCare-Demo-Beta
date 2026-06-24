@@ -397,6 +397,20 @@
     grid-column: 1 / -1;
 }
 
+.feedback-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.feedback-span {
+    grid-column: 1 / -1;
+}
+
+.feedback-bug-field textarea {
+    min-height: 112px;
+}
+
 .organization-identity {
     display: grid;
     gap: 2px;
@@ -631,6 +645,28 @@ body.rtl .portal-preview-card::before {
 
 .organization-table-select.compact {
     min-width: 130px;
+}
+
+@media (max-width: 760px) {
+    .feedback-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .feedback-span {
+        grid-column: auto;
+    }
+}
+
+.organization-department-access-control {
+    display: grid;
+    gap: 6px;
+    min-width: 190px;
+}
+
+.organization-department-select {
+    min-width: 190px;
+    max-width: 240px;
+    white-space: normal;
 }
 
 .organization-table-note {
@@ -972,5 +1008,41 @@ body.auth-page .organization-table-button.danger {
     body.auth-page .auth-panel,
     body.auth-page.auth-employee-portal-page .auth-panel {
         padding: 16px;
+    }
+}
+
+@media (max-width: 700px) {
+    .organization-table-wrap {
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .organization-table th,
+    .organization-table td {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .organization-table-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .organization-table-select,
+    .organization-table-select.compact,
+    .organization-department-access-control,
+    .organization-department-select,
+    .organization-table-button {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .organization-table-button {
+        white-space: normal;
+        line-height: 1.25;
     }
 }

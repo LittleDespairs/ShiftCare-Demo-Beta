@@ -66,9 +66,29 @@ CREATE TABLE IF NOT EXISTS employees (
 
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS id_card TEXT;
 
+CREATE TABLE IF NOT EXISTS departments (
+    id BIGSERIAL PRIMARY KEY,
+    organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+    public_id TEXT NOT NULL DEFAULT ('dep_' || lower(encode(gen_random_bytes(16), 'hex'))),
+    name TEXT NOT NULL,
+    description TEXT,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE (organization_id, name),
+    UNIQUE (public_id)
+);
+
+INSERT INTO departments (organization_id, public_id, name, description, display_order, is_active)
+VALUES (1, 'dep_00000000000000000000000000000001', 'Main department', NULL, 0, 1)
+ON CONFLICT (organization_id, name) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS positions (
     id BIGSERIAL PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
+    department_id BIGINT NOT NULL DEFAULT 1 REFERENCES departments(id) ON DELETE RESTRICT,
+    name TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT '#eff6ff',
     requires_continuous_coverage INTEGER NOT NULL DEFAULT 0,
     minimum_staff_presence INTEGER NOT NULL DEFAULT 0,
@@ -82,8 +102,11 @@ CREATE TABLE IF NOT EXISTS positions (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE (public_id)
+    UNIQUE (public_id),
+    UNIQUE (organization_id, department_id, name)
 );
+
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS department_id BIGINT;
 
 CREATE TABLE IF NOT EXISTS organization_memberships (
     organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -94,6 +117,17 @@ CREATE TABLE IF NOT EXISTS organization_memberships (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_department_access (
+    organization_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    department_id BIGINT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    PRIMARY KEY (organization_id, user_id, department_id),
+    FOREIGN KEY (organization_id, user_id) REFERENCES organization_memberships(organization_id, user_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS organization_invitations (
@@ -146,6 +180,33 @@ CREATE TABLE IF NOT EXISTS auth_email_verification_tokens (
     expires_at TEXT NOT NULL,
     used_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS feedback_reports (
+    id BIGSERIAL PRIMARY KEY,
+    public_id TEXT NOT NULL UNIQUE,
+    organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
+    user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    report_type TEXT NOT NULL CHECK (report_type IN ('bug', 'feature_request')),
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'triaged', 'planned', 'in_progress', 'resolved', 'closed')),
+    severity TEXT NOT NULL DEFAULT 'minor' CHECK (severity IN ('blocking', 'major', 'minor')),
+    area TEXT NOT NULL DEFAULT 'general',
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    steps_to_reproduce TEXT,
+    expected_result TEXT,
+    actual_result TEXT,
+    contact_email TEXT,
+    page_url TEXT,
+    app_version TEXT,
+    runtime_environment TEXT,
+    client_context_json TEXT NOT NULL DEFAULT '{}',
+    server_context_json TEXT NOT NULL DEFAULT '{}',
+    notification_status TEXT NOT NULL DEFAULT 'not_attempted',
+    notification_detail TEXT,
+    forwarded_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS desktop_sync_outbox (
@@ -384,18 +445,24 @@ ON CONFLICT (key) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON organization_memberships (user_id, organization_id);
+CREATE INDEX IF NOT EXISTS idx_user_department_access_user ON user_department_access (organization_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_user_department_access_department ON user_department_access (organization_id, department_id);
 CREATE INDEX IF NOT EXISTS idx_invitations_org_email_status ON organization_invitations (organization_id, email, status);
 CREATE INDEX IF NOT EXISTS idx_auth_audit_events_org_created ON auth_audit_events (organization_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active ON auth_sessions (user_id, expires_at, revoked_at);
 CREATE INDEX IF NOT EXISTS idx_auth_password_reset_tokens_user ON auth_password_reset_tokens (user_id, expires_at, used_at);
 CREATE INDEX IF NOT EXISTS idx_auth_email_verification_tokens_user ON auth_email_verification_tokens (user_id, expires_at, used_at);
+CREATE INDEX IF NOT EXISTS idx_feedback_reports_org_created ON feedback_reports (organization_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_feedback_reports_status_created ON feedback_reports (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_desktop_sync_outbox_pending ON desktop_sync_outbox (status, next_attempt_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_licenses_org_status ON licenses (organization_id, status, imported_at);
 CREATE INDEX IF NOT EXISTS idx_license_events_org_created ON license_events (organization_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_license_activation_attempts_org_created ON license_activation_attempts (organization_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_departments_org ON departments (organization_id, display_order, id);
 CREATE INDEX IF NOT EXISTS idx_employees_org ON employees (organization_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_org_id_card ON employees (organization_id, id_card) WHERE id_card IS NOT NULL AND id_card <> '';
 CREATE INDEX IF NOT EXISTS idx_positions_org ON positions (organization_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_org_department_name ON positions (organization_id, department_id, name);
 CREATE INDEX IF NOT EXISTS idx_shift_templates_position_active ON shift_templates (position_id, is_active, category, start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_shift_templates_org ON shift_templates (organization_id, position_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_entries_employee_date ON schedule_entries (employee_id, date);
@@ -412,5 +479,5 @@ CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position ON coverage_re
 CREATE INDEX IF NOT EXISTS idx_app_settings_organization ON app_settings (organization_id, key);
 
 INSERT INTO schema_metadata (key, value)
-VALUES ('schema_version', '20')
+VALUES ('schema_version', '23')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;

@@ -30,6 +30,8 @@ class ApiRegressionTests(unittest.TestCase):
         self._reset_database()
         with main.AUTH_LOGIN_ATTEMPTS_LOCK:
             main.AUTH_LOGIN_ATTEMPTS.clear()
+        with main.FEEDBACK_ATTEMPTS_LOCK:
+            main.FEEDBACK_ATTEMPTS.clear()
 
     def tearDown(self):
         self.connection.close()
@@ -41,11 +43,13 @@ class ApiRegressionTests(unittest.TestCase):
             "auth_password_reset_tokens",
             "auth_sessions",
             "auth_audit_events",
+            "feedback_reports",
             "license_activation_attempts",
             "license_events",
             "licenses",
             "desktop_sync_outbox",
             "organization_invitations",
+            "user_department_access",
             "organization_memberships",
             "users",
             "schedule_entries",
@@ -62,6 +66,27 @@ class ApiRegressionTests(unittest.TestCase):
             "employees",
         ):
             cursor.execute(f"DELETE FROM {table}")
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO departments (
+                id, organization_id, public_id, name, description, display_order, is_active
+            )
+            VALUES (1, 1, 'dep_00000000000000000000000000000001', 'Main department', NULL, 0, 1)
+            """
+        )
+        cursor.execute("DELETE FROM departments WHERE id <> 1")
+        cursor.execute(
+            """
+            UPDATE departments
+            SET organization_id = 1,
+                public_id = 'dep_00000000000000000000000000000001',
+                name = 'Main department',
+                description = NULL,
+                display_order = 0,
+                is_active = 1
+            WHERE id = 1
+            """
+        )
         cursor.execute(
             "UPDATE organizations SET name = 'Local Organization', status = 'active', created_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
         )
@@ -141,8 +166,11 @@ class ApiRegressionTests(unittest.TestCase):
             "licenses",
             "license_events",
             "license_activation_attempts",
+            "feedback_reports",
             "schema_metadata",
             "schema_migrations",
+            "departments",
+            "user_department_access",
         ):
             cursor.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -158,6 +186,7 @@ class ApiRegressionTests(unittest.TestCase):
 
         for table_name in (
             "employees",
+            "departments",
             "positions",
             "shift_templates",
             "schedule_entries",
@@ -193,6 +222,83 @@ class ApiRegressionTests(unittest.TestCase):
         migration_row = cursor.fetchone()
         self.assertIsNotNone(migration_row)
         self.assertEqual(migration_row["to_version"], database.CURRENT_SCHEMA_VERSION)
+
+    def test_shift_template_rebuild_recovers_from_stale_old_table(self):
+        connection = sqlite3.connect(":memory:")
+        connection.row_factory = sqlite3.Row
+        cursor = connection.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.execute(
+            """
+            CREATE TABLE positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE shift_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                position_id INTEGER,
+                category TEXT NOT NULL CHECK (category IN ('morning', 'evening', 'night')),
+                name TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                is_overnight INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                is_split_only INTEGER NOT NULL DEFAULT 0,
+                organization_id INTEGER NOT NULL DEFAULT 1,
+                public_id TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                updated_by INTEGER,
+                UNIQUE(position_id, name)
+            )
+            """
+        )
+        cursor.execute("INSERT INTO positions (id, name) VALUES (1, 'Nurse')")
+        cursor.execute(
+            """
+            INSERT INTO shift_templates (
+                id, position_id, category, name, start_time, end_time, is_overnight, is_active,
+                is_split_only, organization_id, public_id, created_at, updated_at, updated_by
+            )
+            VALUES (1, 1, 'morning', 'Morning', '08:00', '16:00', 0, 1, 0, 1, 'tpl_existing', NULL, NULL, NULL)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE shift_templates_old (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                category TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                is_overnight INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                is_split_only INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_templates_old (id, name, category, start_time, end_time)
+            VALUES (99, 'Stale', 'night', '22:00', '06:00')
+            """
+        )
+
+        database._rebuild_shift_templates_table(cursor)
+
+        cursor.execute("SELECT COUNT(*) AS count FROM shift_templates")
+        self.assertEqual(cursor.fetchone()["count"], 1)
+        cursor.execute("SELECT name, public_id FROM shift_templates WHERE id = 1")
+        row = cursor.fetchone()
+        self.assertEqual(row["name"], "Morning")
+        self.assertEqual(row["public_id"], "tpl_existing")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'shift_templates_old'")
+        self.assertIsNone(cursor.fetchone())
+        connection.close()
 
     def test_openapi_exposes_bearer_auth_for_protected_routes(self):
         main.app.openapi_schema = None
@@ -603,6 +709,61 @@ class ApiRegressionTests(unittest.TestCase):
 
         revoked_response = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(revoked_response.status_code, 401)
+
+    def test_feedback_report_endpoint_saves_report_and_sends_notification(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Feedback Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "password123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        token = owner_response.json()["access_token"]
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        with patch("main.send_feedback_report_email", return_value=email_service.EmailSendResult("sent")) as send_email:
+            response = self.client.post(
+                "/api/feedback/reports",
+                headers=headers,
+                json={
+                    "report_type": "bug",
+                    "severity": "major",
+                    "area": "schedule",
+                    "title": "Schedule does not save",
+                    "description": "Saving the schedule returns an error from the API.",
+                    "steps_to_reproduce": "Open schedule\nClick save",
+                    "actual_result": "Error is shown",
+                    "expected_result": "Schedule is saved",
+                    "organization_id": organization_id,
+                    "page_url": "http://testserver/schedule",
+                    "client_context": {"frontend_errors": [{"message": "boom"}]},
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["notification"]["status"], "sent")
+        self.assertTrue(body["report"]["public_id"].startswith("fbr_"))
+        send_email.assert_called_once()
+
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT * FROM feedback_reports WHERE public_id = ?", (body["report"]["public_id"],))
+        report = cursor.fetchone()
+        self.assertIsNotNone(report)
+        self.assertEqual(report["report_type"], "bug")
+        self.assertEqual(report["severity"], "major")
+        self.assertEqual(report["area"], "schedule")
+        self.assertEqual(report["notification_status"], "sent")
+        self.assertIn("boom", report["client_context_json"])
+
+        cursor.execute(
+            "SELECT event_type FROM auth_audit_events WHERE event_type = 'feedback_report_created'"
+        )
+        self.assertIsNotNone(cursor.fetchone())
 
     def test_employee_can_login_with_linked_id_card(self):
         owner_response = self.client.post(
@@ -1662,6 +1823,122 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(regenerate_revoked_response.status_code, 409)
 
+    def test_admin_department_access_limits_schedule_and_directories(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+
+        care_department = self.client.post(
+            "/api/departments",
+            headers=owner_headers,
+            json={"name": "Care teams", "description": "", "display_order": 1, "is_active": True},
+        )
+        self.assertEqual(care_department.status_code, 200)
+        cleaning_department = self.client.post(
+            "/api/departments",
+            headers=owner_headers,
+            json={"name": "Cleaning", "description": "", "display_order": 2, "is_active": True},
+        )
+        self.assertEqual(cleaning_department.status_code, 200)
+        care_department_id = care_department.json()["department"]["id"]
+        cleaning_department_id = cleaning_department.json()["department"]["id"]
+
+        care_position_id = self._create_position(headers=owner_headers, department_id=care_department_id, name="Nurse")
+        cleaning_position_id = self._create_position(headers=owner_headers, department_id=cleaning_department_id, name="Cleaner")
+        employee_id = self._create_employee(headers=owner_headers, full_name="Shared Employee")
+        care_template_id = self._create_shift_template(headers=owner_headers, position_id=care_position_id, name="Care Morning")
+        cleaning_template_id = self._create_shift_template(headers=owner_headers, position_id=cleaning_position_id, name="Clean Morning")
+
+        cursor = self.connection.cursor()
+        now = main.current_utc_timestamp()
+        cursor.execute(
+            """
+            INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
+            VALUES ('scheduler@example.com', 'Senior Nurse', ?, 'active', 1, ?, ?)
+            """,
+            (main.hash_password("SchedulerPass123"), now, now),
+        )
+        scheduler_user_id = cursor.lastrowid
+        cursor.execute(
+            """
+            INSERT INTO organization_memberships (organization_id, user_id, role, status, created_at, updated_at)
+            VALUES (1, ?, 'scheduler', 'active', ?, ?)
+            """,
+            (scheduler_user_id, now, now),
+        )
+        scheduler_session = main.build_auth_response(self.connection, scheduler_user_id)
+        self.connection.commit()
+        scheduler_headers = {"Authorization": f"Bearer {scheduler_session['access_token']}"}
+
+        access_response = self.client.put(
+            f"/api/organizations/1/members/{scheduler_user_id}/department-access",
+            headers=owner_headers,
+            json={"department_ids": [care_department_id]},
+        )
+        self.assertEqual(access_response.status_code, 200)
+        self.assertEqual([item["id"] for item in access_response.json()["department_access"]], [care_department_id])
+
+        departments_response = self.client.get("/api/departments", headers=scheduler_headers)
+        self.assertEqual(departments_response.status_code, 200)
+        self.assertEqual([item["id"] for item in departments_response.json()], [care_department_id])
+
+        positions_response = self.client.get("/api/positions", headers=scheduler_headers)
+        self.assertEqual(positions_response.status_code, 200)
+        self.assertEqual([item["id"] for item in positions_response.json()], [care_position_id])
+
+        forbidden_schedule_response = self.client.post(
+            "/api/schedule",
+            headers=scheduler_headers,
+            json={
+                "employee_id": employee_id,
+                "position_id": cleaning_position_id,
+                "date": "2026-06-23",
+                "shift_template_id": cleaning_template_id,
+            },
+        )
+        self.assertEqual(forbidden_schedule_response.status_code, 403)
+
+        care_schedule_response = self.client.post(
+            "/api/schedule",
+            headers=scheduler_headers,
+            json={
+                "employee_id": employee_id,
+                "position_id": care_position_id,
+                "date": "2026-06-23",
+                "shift_template_id": care_template_id,
+            },
+        )
+        self.assertEqual(care_schedule_response.status_code, 200)
+
+        owner_cleaning_schedule_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_id,
+                "position_id": cleaning_position_id,
+                "date": "2026-06-23",
+                "shift_template_id": cleaning_template_id,
+            },
+        )
+        self.assertEqual(owner_cleaning_schedule_response.status_code, 200)
+
+        schedule_response = self.client.get("/api/schedule", headers=scheduler_headers)
+        self.assertEqual(schedule_response.status_code, 200)
+        self.assertEqual({entry["position_id"] for entry in schedule_response.json()}, {care_position_id})
+
+        members_response = self.client.get("/api/organizations/1/members", headers=owner_headers)
+        self.assertEqual(members_response.status_code, 200)
+        scheduler_member = next(member for member in members_response.json()["members"] if member["user_id"] == scheduler_user_id)
+        self.assertEqual([department["id"] for department in scheduler_member["department_access"]], [care_department_id])
+
     def test_reinvite_purges_legacy_disabled_account_email(self):
         owner_response = self.client.post(
             "/api/auth/bootstrap",
@@ -2133,12 +2410,14 @@ class ApiRegressionTests(unittest.TestCase):
         service_worker_js = Path("static/service-worker.js").read_text(encoding="utf-8")
         pwa_js = Path("static/js/pwa.js").read_text(encoding="utf-8")
 
-        self.assertIn("20260621", service_worker_js)
+        self.assertIn("20260624", service_worker_js)
         self.assertIn("/login", service_worker_js)
-        self.assertIn("/static/css/auth.css?v=0.20.6_beta-employee-portal-account", service_worker_js)
-        self.assertIn("/static/js/auth.js?v=0.20.6_beta-portal-entry-employee-mode", service_worker_js)
-        self.assertIn("/static/js/schedule.js?v=0.20.6_beta-schedule-sync-manual-time", service_worker_js)
-        self.assertIn("/static/js/update_notifier.js?v=0.20.6_beta-startup-updates", service_worker_js)
+        self.assertIn("/departments", service_worker_js)
+        self.assertIn('requestUrl.searchParams.get("embedded") === "1"', service_worker_js)
+        self.assertIn("/static/css/auth.css?v=0.20.9_beta-desktop-1080p-readability", service_worker_js)
+        self.assertIn("/static/js/auth.js?v=0.20.9_beta-portal-entry-employee-mode", service_worker_js)
+        self.assertIn("/static/js/schedule.js?v=0.20.9_beta-schedule-sync-manual-time", service_worker_js)
+        self.assertIn("/static/js/update_notifier.js?v=0.20.9_beta-startup-updates", service_worker_js)
         self.assertNotIn("/static/css/style.css?v=0.20.1_beta-generation-modes-rtl", service_worker_js)
         self.assertNotIn("/static/css/schedule.css?v=0.20.1_beta-generation-modes", service_worker_js)
         self.assertIn("registration.update()", pwa_js)
@@ -2152,6 +2431,8 @@ class ApiRegressionTests(unittest.TestCase):
             "employees.html",
             "weekly_preferences.html",
             "organization.html",
+            "feedback.html",
+            "departments.html",
             "positions.html",
             "employee_positions.html",
             "coverage_requirements.html",
@@ -2176,10 +2457,29 @@ class ApiRegressionTests(unittest.TestCase):
         ]:
             self.assertEqual(i18n_js.count(f"{key}:"), 3)
 
+    def test_departments_page_is_embedded_directory_without_global_sidebar_link(self):
+        settings_response = self.client.get("/settings")
+        self.assertEqual(settings_response.status_code, 200)
+        self.assertNotIn('href="/departments"', settings_response.text)
+        self.assertIn('data-directory-src="/departments?embedded=1"', settings_response.text)
+
+        departments_response = self.client.get("/departments?embedded=1")
+        self.assertEqual(departments_response.status_code, 200)
+        self.assertIn("departments_page_title", departments_response.text)
+        self.assertNotIn("settings_page_title", departments_response.text)
+
+        shared_css = Path("static/css/style.css").read_text(encoding="utf-8")
+        self.assertIn("body.embedded-admin .department-form-panel", shared_css)
+
+        access_control_js = Path("static/js/access_control.js").read_text(encoding="utf-8")
+        self.assertIn('"/departments"', access_control_js)
+        self.assertNotIn('["/departments", "D", "nav_departments", "Departments"]', access_control_js)
+        self.assertNotIn('"/departments": ["nav_departments", "Departments"]', access_control_js)
+
     def test_read_only_role_does_not_get_weekly_preferences_navigation(self):
         access_control_js = Path("static/js/access_control.js").read_text(encoding="utf-8")
-        self.assertIn('read_only: {\n            pages: new Set(["/", "/schedule", "/organization", "/guide", "/docs"])', access_control_js)
-        self.assertIn('nav: new Set(["/", "/schedule", "/organization"])', access_control_js)
+        self.assertIn('read_only: {\n            pages: new Set(["/", "/schedule", "/organization", "/feedback", "/guide", "/docs"])', access_control_js)
+        self.assertIn('nav: new Set(["/", "/schedule", "/organization", "/feedback"])', access_control_js)
 
     def test_organization_pages_return_auth_shells(self):
         organization_response = self.client.get("/organization")
@@ -2245,6 +2545,7 @@ class ApiRegressionTests(unittest.TestCase):
 
             self.assertEqual(self.client.get("/employees").status_code, 404)
             self.assertEqual(self.client.get("/settings").status_code, 404)
+            self.assertEqual(self.client.get("/departments").status_code, 404)
             self.assertEqual(self.client.get("/positions").status_code, 404)
             self.assertEqual(self.client.get("/weekly-preferences").status_code, 200)
             self.assertEqual(self.client.get("/schedule").status_code, 200)
@@ -2376,7 +2677,7 @@ class ApiRegressionTests(unittest.TestCase):
         position_id = self._create_position()
         duplicate_response = self.client.post("/api/positions", json=self._position_payload())
         self.assertEqual(duplicate_response.status_code, 400)
-        self.assertEqual(duplicate_response.json()["detail"], "Position already exists")
+        self.assertEqual(duplicate_response.json()["detail"], "Position already exists in this department")
 
         update_response = self.client.put(
             f"/api/positions/{position_id}",
@@ -2409,6 +2710,43 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(effective_settings["emergency_max_consecutive_nights"], 2)
         self.assertEqual(effective_settings["max_consecutive_split_days"], 3)
         self.assertEqual(effective_settings["emergency_max_consecutive_split_days"], 4)
+
+    def test_same_position_name_is_allowed_in_different_departments(self):
+        default_department = self.client.get("/api/departments").json()[0]
+        second_department_response = self.client.post(
+            "/api/departments",
+            json={
+                "name": "Ward 2",
+                "description": None,
+                "display_order": 2,
+                "is_active": True,
+            },
+        )
+        self.assertEqual(second_department_response.status_code, 200)
+        second_department_id = second_department_response.json()["department"]["id"]
+
+        first_position = self.client.post(
+            "/api/positions",
+            json=self._position_payload(department_id=default_department["id"], name="Nurse"),
+        )
+        self.assertEqual(first_position.status_code, 200)
+        second_position = self.client.post(
+            "/api/positions",
+            json=self._position_payload(department_id=second_department_id, name="Nurse"),
+        )
+        self.assertEqual(second_position.status_code, 200)
+
+        duplicate_in_same_department = self.client.post(
+            "/api/positions",
+            json=self._position_payload(department_id=second_department_id, name="Nurse"),
+        )
+        self.assertEqual(duplicate_in_same_department.status_code, 400)
+
+        positions = self.client.get("/api/positions").json()
+        self.assertEqual(
+            {(position["department_name"], position["name"]) for position in positions},
+            {("Main department", "Nurse"), ("Ward 2", "Nurse")},
+        )
 
     def test_validation_rejects_conflicting_assignment_flags_and_invalid_time_windows(self):
         employee_id = self._create_employee()

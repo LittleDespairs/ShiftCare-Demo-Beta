@@ -162,6 +162,7 @@ body.embedded-admin .panel {
 
 body.embedded-admin .position-form-panel,
 body.embedded-admin .template-form-panel,
+body.embedded-admin .department-form-panel,
 body.embedded-admin .assignment-form-panel {
     top: 0;
 }
@@ -1969,6 +1970,23 @@ body.rtl .app-week-picker {
     }
 }
 
+@media (min-width: 921px) and (max-width: 1600px) {
+    .app-week-picker {
+        grid-template-columns: 38px minmax(170px, 1fr) 38px;
+    }
+
+    .app-week-today {
+        grid-column: 1 / -1;
+    }
+
+    .app-week-range,
+    .app-week-detail {
+        overflow: visible;
+        text-overflow: clip;
+        white-space: normal;
+    }
+}
+
 /* Beta 0.12.1: shared mobile/RTL hardening for data-heavy pages. */
 .table-clean {
     min-width: 720px;
@@ -2029,8 +2047,30 @@ body.rtl input[type="date"] {
 
     .table-actions .table-btn,
     .table-actions .btn {
-        flex: 1 1 0;
+        flex: 1 1 100%;
         min-width: 0;
+        width: 100%;
+        white-space: normal;
+    }
+}
+
+@media (min-width: 921px) and (max-width: 1366px) {
+    .filter-panel {
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+    }
+
+    .filter-panel.compact {
+        grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.7fr);
+    }
+
+    .filter-actions,
+    body.rtl .filter-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+    }
+
+    .filter-results {
+        white-space: normal;
     }
 }
 
@@ -2807,5 +2847,176 @@ body.employee-portal-preferences .notes-box {
     body.employee-portal-shell.app-shell .nav-item {
         min-height: 38px;
         font-size: 0.78rem;
+    }
+}
+
+@media (max-width: 1600px), (max-height: 800px) {
+    body.app-shell .online-status-indicator {
+        position: static;
+        max-width: none;
+        margin-block: 10px;
+        margin-inline-start: calc(var(--sidebar-width) + 16px);
+        margin-inline-end: 16px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        line-height: 1.25;
+        text-align: center;
+    }
+}
+
+@media (max-width: 920px) {
+    body.app-shell .online-status-indicator {
+        margin-inline: 12px;
+    }
+}
+
+/* Small-screen readability hardening across app surfaces. */
+@media (max-width: 700px) {
+    body.app-shell,
+    body.app-shell .app-layout,
+    body.app-shell .main-area,
+    body.app-shell .page-shell,
+    body.app-shell .page-card,
+    body.app-shell .panel,
+    body.app-shell .panel-body,
+    body.app-shell .home-section,
+    body.app-shell .settings-card,
+    body.app-shell .settings-panel-card,
+    body.app-shell .rules-box,
+    body.app-shell .settings-notes,
+    body.app-shell .list-card,
+    body.app-shell .schedule-shell {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    body.app-shell .main-area {
+        overflow-x: clip;
+    }
+
+    body.app-shell .page-title {
+        font-size: 1.65rem;
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+    }
+
+    body.app-shell .page-subtitle,
+    body.app-shell .section-note,
+    body.app-shell .subsection-text,
+    body.app-shell .settings-card-text,
+    body.app-shell .settings-module-text,
+    body.app-shell .home-next-text,
+    body.app-shell .home-action-copy,
+    body.app-shell .home-action-copy strong,
+    body.app-shell .home-action-copy small,
+    body.app-shell .home-metric strong,
+    body.app-shell .entry-title,
+    body.app-shell .employee-name,
+    body.app-shell .empty-state-title,
+    body.app-shell .empty-state-text {
+        overflow: visible !important;
+        text-overflow: clip !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere;
+    }
+
+    body.app-shell .topbar-actions,
+    body.app-shell .lang-switcher {
+        width: 100%;
+        min-width: 0;
+    }
+
+    body.app-shell .lang-switcher {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    body.app-shell .lang-btn {
+        min-width: 0;
+        padding-inline: 8px;
+        white-space: normal;
+        line-height: 1.2;
+    }
+
+    body.app-shell .btn,
+    body.app-shell .table-btn {
+        max-width: 100%;
+        white-space: normal;
+        line-height: 1.25;
+    }
+
+    body.app-shell .form-actions,
+    body.app-shell .toolbar-actions,
+    body.app-shell .table-actions,
+    body.app-shell .settings-actions,
+    body.app-shell .generation-actions,
+    body.app-shell .database-backup-actions,
+    body.app-shell .employee-modal-actions {
+        align-items: stretch;
+    }
+
+    body.app-shell .form-actions .btn,
+    body.app-shell .toolbar-actions .btn,
+    body.app-shell .settings-actions .btn,
+    body.app-shell .generation-actions .btn,
+    body.app-shell .database-backup-actions .btn,
+    body.app-shell .employee-modal-actions .btn {
+        flex: 1 1 100%;
+        width: 100%;
+        justify-content: center;
+    }
+
+    body.app-shell input,
+    body.app-shell select,
+    body.app-shell textarea {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    body.app-shell .empty-state {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    body.app-shell .table-shell,
+    body.app-shell .employees-table-shell,
+    body.app-shell .departments-table-shell,
+    body.app-shell .positions-table-shell,
+    body.app-shell .preferences-table-shell {
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    body.app-shell .online-status-indicator {
+        position: static;
+        max-width: calc(100% - 20px);
+        margin: 10px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        line-height: 1.25;
+        text-align: center;
+    }
+}
+
+@media (max-width: 420px) {
+    body.app-shell .main-area {
+        padding: 10px;
+    }
+
+    body.app-shell .panel-body,
+    body.app-shell .home-section,
+    body.app-shell .settings-card,
+    body.app-shell .settings-panel-card,
+    body.app-shell .rules-box,
+    body.app-shell .settings-notes {
+        padding: 10px;
+    }
+
+    body.app-shell .page-title {
+        font-size: 1.5rem;
     }
 }

@@ -53,12 +53,14 @@ from email_service import (
     email_delivery_is_enabled,
     public_email_status,
     send_email_verification_email,
+    send_feedback_report_email,
     send_invitation_email,
     send_password_reset_email,
 )
 from excel_export import build_all_schedule_export_workbook, build_schedule_export_workbook
 from row_serializers import (
     row_to_coverage_requirement_dict,
+    row_to_department_dict,
     row_to_employee_dict,
     row_to_position_dict,
     row_to_shift_template_dict,
@@ -93,6 +95,7 @@ from schemas import (
     CoverageRequirementCreate,
     DatabaseBackupCreateRequest,
     DatabaseRestoreRequest,
+    DepartmentCreate,
     DesktopCloudLoginRequest,
     EmployeeCreate,
     EmployeeDayStatusCreate,
@@ -100,9 +103,11 @@ from schemas import (
     EmployeePreferenceCreate,
     EmployeeRecurringPreferencesUpdate,
     EmployeeWeekPreferenceCreate,
+    FeedbackReportCreate,
     LicenseActivationCodeRequest,
     LicenseImportRequest,
     OrganizationInvitationCreate,
+    OrganizationMemberDepartmentAccessUpdate,
     OrganizationMemberEmployeeLinkUpdate,
     OrganizationMemberRoleUpdate,
     PositionCreate,
@@ -129,7 +134,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.20.6_beta"
+APP_VERSION = "0.20.9_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -147,6 +152,10 @@ AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT
 AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS = int(os.environ.get("AUTH_LOGIN_RATE_LIMIT_LOCK_SECONDS", "900"))
 AUTH_LOGIN_ATTEMPTS: dict[str, dict] = {}
 AUTH_LOGIN_ATTEMPTS_LOCK = threading.Lock()
+FEEDBACK_RATE_LIMIT_ATTEMPTS = int(os.environ.get("FEEDBACK_RATE_LIMIT_ATTEMPTS", "5"))
+FEEDBACK_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("FEEDBACK_RATE_LIMIT_WINDOW_SECONDS", "600"))
+FEEDBACK_ATTEMPTS: dict[str, list[float]] = {}
+FEEDBACK_ATTEMPTS_LOCK = threading.Lock()
 WEEKLY_PREFERENCE_TYPES = (
     "no_preference",
     "off_day",
@@ -187,6 +196,7 @@ tags_metadata = [
     {"name": "Requirements", "description": "Shift and coverage requirements / Требования"},
     {"name": "Schedule", "description": "Schedule management / Расписание"},
     {"name": "Licensing", "description": "License and support entitlement / Лицензия и поддержка"},
+    {"name": "Feedback", "description": "User bug reports and feature requests / Обращения пользователей"},
 ]
 
 app = FastAPI(
@@ -694,6 +704,7 @@ def upsert_desktop_cloud_user(cursor: sqlite3.Cursor, cloud_user: dict, cloud_me
 DESKTOP_CLOUD_SYNC_ROLES = {"owner", "admin", "scheduler", "manager"}
 ORGANIZATION_MEMBER_ROLES = {"owner", "admin", "scheduler", "manager", "read_only", "employee"}
 OWNER_MANAGED_ROLES = {"owner", "admin"}
+DEPARTMENT_ACCESS_LIMITED_ROLES = {"admin", "scheduler", "manager", "read_only"}
 DESKTOP_CLOUD_LOGIN_BASE_URL = "https://schedule-app-beta.web.app"
 
 
@@ -889,6 +900,23 @@ def clear_login_failures(identifier: str, request: Request) -> None:
     key = login_rate_limit_key(identifier, request)
     with AUTH_LOGIN_ATTEMPTS_LOCK:
         AUTH_LOGIN_ATTEMPTS.pop(key, None)
+
+
+def is_feedback_rate_limited(current_user: dict, request: Request) -> bool:
+    now = monotonic()
+    key = f"{current_user.get('id') or 'anonymous'}|{get_request_ip(request)}"
+    with FEEDBACK_ATTEMPTS_LOCK:
+        attempts = [
+            timestamp
+            for timestamp in FEEDBACK_ATTEMPTS.get(key, [])
+            if now - timestamp <= FEEDBACK_RATE_LIMIT_WINDOW_SECONDS
+        ]
+        if len(attempts) >= FEEDBACK_RATE_LIMIT_ATTEMPTS:
+            FEEDBACK_ATTEMPTS[key] = attempts
+            return True
+        attempts.append(now)
+        FEEDBACK_ATTEMPTS[key] = attempts
+        return False
 
 
 def find_user_for_login(cursor, identifier: str):
@@ -1425,6 +1453,131 @@ def require_employee_position_scope(cursor, employee_id: int, position_id: int |
     return position_id
 
 
+def get_allowed_department_ids(cursor, access_context: dict | None) -> set[int] | None:
+    if not access_context:
+        return None
+    membership = access_context.get("membership") or {}
+    role = membership.get("role")
+    if role not in DEPARTMENT_ACCESS_LIMITED_ROLES:
+        return None
+    organization_id = membership.get("organization_id")
+    user_id = (access_context.get("user") or {}).get("id")
+    if not organization_id or not user_id:
+        return None
+    cursor.execute(
+        """
+        SELECT department_id
+        FROM user_department_access
+        WHERE organization_id = ? AND user_id = ?
+        ORDER BY department_id
+        """,
+        (organization_id, user_id),
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        return None
+    return {int(row["department_id"]) for row in rows}
+
+
+def append_department_access_condition(
+    cursor,
+    access_context: dict | None,
+    conditions: list[str],
+    params: list,
+    column_sql: str = "p.department_id",
+) -> set[int] | None:
+    allowed_department_ids = get_allowed_department_ids(cursor, access_context)
+    if allowed_department_ids is None:
+        return None
+    if not allowed_department_ids:
+        conditions.append("1 = 0")
+        return allowed_department_ids
+    placeholders = ",".join(["?"] * len(allowed_department_ids))
+    conditions.append(f"{column_sql} IN ({placeholders})")
+    params.extend(sorted(allowed_department_ids))
+    return allowed_department_ids
+
+
+def ensure_department_access_for_department(cursor, access_context: dict | None, department_id: int | None) -> None:
+    allowed_department_ids = get_allowed_department_ids(cursor, access_context)
+    if allowed_department_ids is None or department_id is None:
+        return
+    if int(department_id) not in allowed_department_ids:
+        raise HTTPException(status_code=403, detail="Department access is required")
+
+
+def ensure_department_access_for_position(cursor, access_context: dict | None, position_id: int | None) -> None:
+    if position_id is None:
+        return
+    allowed_department_ids = get_allowed_department_ids(cursor, access_context)
+    if allowed_department_ids is None:
+        return
+    organization_id = access_context["membership"]["organization_id"] if access_context else None
+    cursor.execute(
+        """
+        SELECT department_id, organization_id
+        FROM positions
+        WHERE id = ?
+        """,
+        (position_id,),
+    )
+    row = cursor.fetchone()
+    if not row or (organization_id is not None and int(row["organization_id"]) != int(organization_id)):
+        raise HTTPException(status_code=404, detail="Position not found")
+    if int(row["department_id"]) not in allowed_department_ids:
+        raise HTTPException(status_code=403, detail="Department access is required")
+
+
+def ensure_department_access_for_employee(cursor, access_context: dict | None, employee_id: int | None) -> None:
+    if employee_id is None:
+        return
+    allowed_department_ids = get_allowed_department_ids(cursor, access_context)
+    if allowed_department_ids is None:
+        return
+    if not allowed_department_ids:
+        raise HTTPException(status_code=403, detail="Department access is required")
+    organization_id = access_context["membership"]["organization_id"] if access_context else None
+    placeholders = ",".join(["?"] * len(allowed_department_ids))
+    cursor.execute(
+        f"""
+        SELECT 1
+        FROM employee_positions ep
+        JOIN positions p ON p.id = ep.position_id
+        WHERE ep.employee_id = ?
+          AND p.department_id IN ({placeholders})
+          AND (? IS NULL OR p.organization_id = ?)
+        LIMIT 1
+        """,
+        (employee_id, *sorted(allowed_department_ids), organization_id, organization_id),
+    )
+    if not cursor.fetchone():
+        raise HTTPException(status_code=403, detail="Department access is required")
+
+
+def build_member_department_access(cursor, organization_id: int) -> dict[int, list[dict]]:
+    cursor.execute(
+        """
+        SELECT uda.user_id, d.id, d.public_id, d.name, d.display_order
+        FROM user_department_access uda
+        JOIN departments d ON d.id = uda.department_id
+        WHERE uda.organization_id = ?
+        ORDER BY uda.user_id, d.display_order, d.id
+        """,
+        (organization_id,),
+    )
+    result: dict[int, list[dict]] = {}
+    for row in cursor.fetchall():
+        result.setdefault(int(row["user_id"]), []).append(
+            {
+                "id": row["id"],
+                "public_id": row["public_id"],
+                "name": row["name"],
+                "display_order": row["display_order"],
+            }
+        )
+    return result
+
+
 def require_employee_preference_scope(preference_context: dict | None, employee_id: int) -> None:
     if not preference_context or preference_context["scope"] == "all":
         return
@@ -1769,6 +1922,195 @@ def audit_context_from_user(current_user: dict | None) -> tuple[int | None, int 
     return current_user["id"], membership["organization_id"] if membership else None
 
 
+def feedback_membership_for_user(current_user: dict, organization_id: int | None) -> dict:
+    active_memberships = [
+        membership
+        for membership in current_user.get("memberships", [])
+        if membership.get("status") == "active"
+    ]
+    if organization_id:
+        membership = next(
+            (item for item in active_memberships if int(item.get("organization_id") or 0) == organization_id),
+            None,
+        )
+        if not membership:
+            raise HTTPException(status_code=403, detail="Active organization access is required")
+        return membership
+    if not active_memberships:
+        raise HTTPException(status_code=403, detail="Active organization access is required")
+    return active_memberships[0]
+
+
+def serialize_feedback_context(value: Any, max_chars: int = 12000) -> str:
+    payload = value if isinstance(value, dict) else {"value": value}
+    try:
+        serialized = json.dumps(payload, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        serialized = json.dumps({"unserializable": True}, ensure_ascii=False)
+    if len(serialized) <= max_chars:
+        return serialized
+    return json.dumps(
+        {
+            "truncated": True,
+            "original_length": len(serialized),
+            "preview": serialized[: max_chars - 120],
+        },
+        ensure_ascii=False,
+    )
+
+
+def feedback_runtime_environment() -> str:
+    config = get_app_config()
+    if is_demo_mode_enabled():
+        return "demo"
+    if is_desktop_sqlite_runtime():
+        return "desktop"
+    if config.is_cloud_run:
+        return "cloud_run"
+    return config.app_env or "development"
+
+
+def insert_feedback_report(
+    cursor,
+    request_data: FeedbackReportCreate,
+    request: Request,
+    current_user: dict,
+    membership: dict,
+) -> dict:
+    now = current_utc_timestamp()
+    public_id = f"fbr_{secrets.token_hex(16)}"
+    user_id = int(current_user["id"]) if int(current_user.get("id") or 0) > 0 else None
+    organization_id = int(membership["organization_id"])
+    contact_email = str(request_data.contact_email or current_user.get("email") or "").strip() or None
+    server_context = {
+        "request_ip": get_request_ip(request),
+        "user_agent": request.headers.get("user-agent", ""),
+        "source_public_id": request_data.source_public_id,
+        "database_engine": get_app_config().database_engine,
+        "is_desktop_sqlite_runtime": is_desktop_sqlite_runtime(),
+        "is_cloud_run": get_app_config().is_cloud_run,
+        "demo_mode": is_demo_mode_enabled(),
+    }
+    client_context_json = serialize_feedback_context(request_data.client_context)
+    server_context_json = serialize_feedback_context(server_context)
+    cursor.execute(
+        """
+        INSERT INTO feedback_reports (
+            public_id, organization_id, user_id, report_type, status, severity, area,
+            title, description, steps_to_reproduce, expected_result, actual_result,
+            contact_email, page_url, app_version, runtime_environment,
+            client_context_json, server_context_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            public_id,
+            organization_id,
+            user_id,
+            request_data.report_type,
+            request_data.severity,
+            request_data.area,
+            request_data.title,
+            request_data.description,
+            request_data.steps_to_reproduce,
+            request_data.expected_result,
+            request_data.actual_result,
+            contact_email,
+            request_data.page_url,
+            APP_VERSION,
+            feedback_runtime_environment(),
+            client_context_json,
+            server_context_json,
+            now,
+            now,
+        ),
+    )
+    return {
+        "id": cursor.lastrowid,
+        "public_id": public_id,
+        "organization_id": organization_id,
+        "user_id": user_id,
+        "report_type": request_data.report_type,
+        "status": "new",
+        "severity": request_data.severity,
+        "area": request_data.area,
+        "title": request_data.title,
+        "description": request_data.description,
+        "steps_to_reproduce": request_data.steps_to_reproduce,
+        "expected_result": request_data.expected_result,
+        "actual_result": request_data.actual_result,
+        "contact_email": contact_email,
+        "page_url": request_data.page_url,
+        "app_version": APP_VERSION,
+        "runtime_environment": feedback_runtime_environment(),
+        "client_context_json": client_context_json,
+        "server_context_json": server_context_json,
+        "created_at": now,
+        "updated_at": now,
+        "user_name": current_user.get("full_name") or "",
+        "user_email": current_user.get("email") or "",
+        "organization_name": membership.get("organization_name") or "",
+        "role": membership.get("role") or "",
+    }
+
+
+def update_feedback_notification_status(
+    cursor,
+    public_id: str,
+    status: str,
+    detail: str = "",
+    *,
+    forwarded: bool = False,
+) -> None:
+    now = current_utc_timestamp()
+    if forwarded:
+        cursor.execute(
+            """
+            UPDATE feedback_reports
+            SET notification_status = ?,
+                notification_detail = ?,
+                forwarded_at = ?,
+                updated_at = ?
+            WHERE public_id = ?
+            """,
+            (status, detail[:500] if detail else None, now, now, public_id),
+        )
+        return
+    cursor.execute(
+        """
+        UPDATE feedback_reports
+        SET notification_status = ?,
+            notification_detail = ?,
+            updated_at = ?
+        WHERE public_id = ?
+        """,
+        (status, detail[:500] if detail else None, now, public_id),
+    )
+
+
+def forward_desktop_feedback_to_cloud(
+    cursor,
+    report: dict,
+    request_data: FeedbackReportCreate,
+    membership: dict,
+) -> dict[str, Any] | None:
+    if not is_desktop_sqlite_runtime():
+        return None
+    settings = read_desktop_cloud_sync_settings(cursor, int(membership["organization_id"]))
+    if not desktop_cloud_sync_is_ready(settings):
+        return None
+    payload = request_data.model_dump(mode="json")
+    payload["organization_id"] = int(settings["cloud_organization_id"])
+    payload["source_public_id"] = report["public_id"]
+    return request_cloud_json(
+        settings["cloud_api_base_url"],
+        "/api/feedback/reports",
+        method="POST",
+        payload=payload,
+        token=settings["desktop_cloud_access_token"],
+    )
+
+
 def create_recovery_backup(label: str) -> str:
     if is_demo_mode_enabled():
         return ""
@@ -1781,6 +2123,7 @@ def create_recovery_backup(label: str) -> str:
 
 
 ORGANIZATION_EXPORT_TABLES = (
+    "departments",
     "employees",
     "positions",
     "shift_templates",
@@ -1807,6 +2150,7 @@ ORGANIZATION_IMPORT_DELETE_ORDER = (
     "employee_positions",
     "shift_templates",
     "positions",
+    "departments",
     "employees",
     "app_settings",
 )
@@ -1915,21 +2259,100 @@ def _insert_employee_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organ
     return id_map
 
 
-def _insert_position_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organization_id: int, now: str) -> dict[int, int]:
+def get_default_department_id(cursor: sqlite3.Cursor, organization_id: int) -> int:
+    cursor.execute(
+        """
+        SELECT id
+        FROM departments
+        WHERE organization_id = ?
+        ORDER BY display_order, id
+        LIMIT 1
+        """,
+        (organization_id,),
+    )
+    row = cursor.fetchone()
+    if row:
+        return int(row["id"])
+    cursor.execute(
+        """
+        INSERT INTO departments (organization_id, name, description, display_order, is_active, created_at, updated_at)
+        VALUES (?, ?, NULL, 0, 1, ?, ?)
+        """,
+        (organization_id, database_module.DEFAULT_DEPARTMENT_NAME, now_iso := current_utc_timestamp(), now_iso),
+    )
+    return int(cursor.lastrowid)
+
+
+def _insert_department_bundle_rows(cursor: sqlite3.Cursor, rows: list[dict], organization_id: int, now: str) -> dict[int, int]:
     id_map = {}
+    if not rows:
+        default_id = get_default_department_id(cursor, organization_id)
+        id_map[1] = default_id
+        return id_map
     for row in rows:
         cursor.execute(
             """
+            INSERT INTO departments (
+                organization_id, public_id, name, description, display_order, is_active, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(organization_id, name)
+            DO UPDATE SET description = excluded.description,
+                          display_order = excluded.display_order,
+                          is_active = excluded.is_active,
+                          updated_at = excluded.updated_at,
+                          updated_by = excluded.updated_by
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                row.get("name") or database_module.DEFAULT_DEPARTMENT_NAME,
+                row.get("description"),
+                int(row.get("display_order") or 0),
+                int(row.get("is_active") if row.get("is_active") is not None else 1),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+            ),
+        )
+        cursor.execute(
+            "SELECT id FROM departments WHERE organization_id = ? AND name = ?",
+            (organization_id, row.get("name") or database_module.DEFAULT_DEPARTMENT_NAME),
+        )
+        department_id = int(cursor.fetchone()["id"])
+        id_map[int(row["id"])] = department_id
+    return id_map
+
+
+def _insert_position_bundle_rows(
+    cursor: sqlite3.Cursor,
+    rows: list[dict],
+    organization_id: int,
+    now: str,
+    department_id_map: dict[int, int] | None = None,
+) -> dict[int, int]:
+    id_map = {}
+    default_department_id = get_default_department_id(cursor, organization_id)
+    for row in rows:
+        source_department_id = row.get("department_id")
+        department_id = (
+            department_id_map.get(int(source_department_id))
+            if source_department_id is not None and department_id_map
+            else default_department_id
+        )
+        cursor.execute(
+            """
             INSERT INTO positions (
-                organization_id, public_id, name, color, requires_continuous_coverage, minimum_staff_presence,
+                organization_id, department_id, public_id, name, color, requires_continuous_coverage, minimum_staff_presence,
                 allow_same_day_other_positions,
                 max_consecutive_nights, emergency_max_consecutive_nights,
                 max_consecutive_split_days, emergency_max_consecutive_split_days, created_at, updated_at, updated_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 organization_id,
+                department_id,
                 row.get("public_id"),
                 row.get("name"),
                 row.get("color") or DEFAULT_POSITION_COLOR,
@@ -2116,13 +2539,20 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
         (organization.get("name") or "Imported Organization", now, organization_id),
     )
 
+    department_id_map = _insert_department_bundle_rows(cursor, records.get("departments") or [], organization_id, now)
     employee_id_map = _insert_employee_bundle_rows(cursor, records.get("employees") or [], organization_id, now)
     employee_id_by_public_id = {
         str(row.get("public_id")): employee_id_map[int(row["id"])]
         for row in records.get("employees") or []
         if row.get("public_id") and int(row["id"]) in employee_id_map
     }
-    position_id_map = _insert_position_bundle_rows(cursor, records.get("positions") or [], organization_id, now)
+    position_id_map = _insert_position_bundle_rows(
+        cursor,
+        records.get("positions") or [],
+        organization_id,
+        now,
+        department_id_map,
+    )
     license_count = _insert_license_bundle_rows(cursor, records.get("licenses") or [], organization_id, now)
     employees_by_public_id = _source_rows_by_public_id(records.get("employees") or [])
     positions_by_public_id = _source_rows_by_public_id(records.get("positions") or [])
@@ -2411,6 +2841,7 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
         "source_organization_public_id": organization.get("public_id"),
         "imported": {
             "employees": len(employee_id_map),
+            "departments": len(department_id_map),
             "positions": len(position_id_map),
             "shift_templates": len(shift_template_id_map),
             "schedule_entries": len(records.get("schedule_entries") or []),
@@ -4883,6 +5314,99 @@ def get_support_accounts(_support: dict = Depends(require_developer_support_acce
         connection.close()
 
 
+@app.post("/api/feedback/reports", tags=["Feedback"])
+def create_feedback_report(
+    request_data: FeedbackReportCreate,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    if is_feedback_rate_limited(current_user, request):
+        raise HTTPException(status_code=429, detail="Too many reports. Please try again later.")
+
+    membership = feedback_membership_for_user(current_user, request_data.organization_id)
+    connection = get_connection()
+    report: dict[str, Any] | None = None
+    notification: dict[str, Any] = {"status": "not_attempted"}
+    try:
+        cursor = connection.cursor()
+        report = insert_feedback_report(cursor, request_data, request, current_user, membership)
+        write_auth_audit_event(
+            cursor,
+            "feedback_report_created",
+            user_id=report["user_id"],
+            organization_id=report["organization_id"],
+            metadata={
+                "public_id": report["public_id"],
+                "report_type": report["report_type"],
+                "severity": report["severity"],
+                "area": report["area"],
+            },
+        )
+        connection.commit()
+
+        try:
+            cloud_response = forward_desktop_feedback_to_cloud(cursor, report, request_data, membership)
+            if cloud_response is not None:
+                cloud_report = cloud_response.get("report") or {}
+                cloud_notification = cloud_response.get("notification") or {}
+                notification = {
+                    "status": "forwarded",
+                    "detail": (
+                        f"Forwarded to cloud report {cloud_report.get('public_id') or '-'}; "
+                        f"cloud notification: {cloud_notification.get('status') or 'unknown'}"
+                    ),
+                    "cloud_report_public_id": cloud_report.get("public_id"),
+                    "cloud_notification": cloud_notification,
+                }
+                update_feedback_notification_status(
+                    cursor,
+                    report["public_id"],
+                    "forwarded",
+                    notification["detail"],
+                    forwarded=True,
+                )
+            else:
+                email_result = send_feedback_report_email(report=report)
+                notification = email_result.as_public_dict()
+                update_feedback_notification_status(
+                    cursor,
+                    report["public_id"],
+                    email_result.status,
+                    email_result.detail,
+                )
+            connection.commit()
+        except Exception as exc:
+            connection.rollback()
+            notification = {"status": "failed", "detail": str(exc)[:500]}
+            cursor = connection.cursor()
+            update_feedback_notification_status(
+                cursor,
+                report["public_id"],
+                "failed",
+                notification["detail"],
+            )
+            connection.commit()
+
+        return {
+            "message": "Report submitted successfully",
+            "report": {
+                "id": report["id"],
+                "public_id": report["public_id"],
+                "status": report["status"],
+                "type": report["report_type"],
+            },
+            "notification": notification,
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 @app.get("/api/organizations/{organization_id}/members", tags=["Auth"])
 def get_organization_members(organization_id: int, current_user: dict = Depends(get_current_user)):
     require_organization_role(current_user, organization_id, {"owner", "admin", "scheduler", "manager"})
@@ -4938,6 +5462,8 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
             """,
             (organization_id,),
         )
+        member_rows = cursor.fetchall()
+        department_access_by_user = build_member_department_access(cursor, organization_id)
         return {
             "members": [
                 {
@@ -4951,12 +5477,113 @@ def get_organization_members(organization_id: int, current_user: dict = Depends(
                     "employee_id": row["employee_id"],
                     "employee_public_id": row["employee_public_id"],
                     "employee_name": row["employee_name"],
+                    "department_access": department_access_by_user.get(int(row["id"]), []),
                     "created_at": row["created_at"],
                     "updated_at": row["updated_at"],
                 }
-                for row in cursor.fetchall()
+                for row in member_rows
             ]
         }
+    finally:
+        connection.close()
+
+
+@app.put("/api/organizations/{organization_id}/members/{user_id}/department-access", tags=["Auth"])
+def update_organization_member_department_access(
+    organization_id: int,
+    user_id: int,
+    request_data: OrganizationMemberDepartmentAccessUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    actor_membership = require_organization_role(current_user, organization_id, {"owner", "admin"})
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="You cannot change your own department access")
+
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT om.role, om.status, u.email, u.full_name
+            FROM organization_memberships om
+            JOIN users u ON u.id = om.user_id
+            WHERE om.organization_id = ? AND om.user_id = ?
+            """,
+            (organization_id, user_id),
+        )
+        target = cursor.fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="Organization member not found")
+        if target["status"] != "active":
+            raise HTTPException(status_code=409, detail="Organization member is not active")
+
+        target_role = str(target["role"])
+        actor_role = str(actor_membership["role"])
+        if target_role == "owner":
+            raise HTTPException(status_code=400, detail="Owners always have access to all departments")
+        if target_role == "admin" and actor_role != "owner":
+            raise HTTPException(status_code=403, detail="Only owners can change administrator department access")
+        if target_role not in DEPARTMENT_ACCESS_LIMITED_ROLES:
+            raise HTTPException(status_code=400, detail="Department access can be limited only for administrators and schedule viewers")
+
+        department_ids = request_data.department_ids
+        if department_ids:
+            placeholders = ",".join(["?"] * len(department_ids))
+            cursor.execute(
+                f"""
+                SELECT id
+                FROM departments
+                WHERE organization_id = ?
+                  AND id IN ({placeholders})
+                """,
+                (organization_id, *department_ids),
+            )
+            existing_department_ids = {int(row["id"]) for row in cursor.fetchall()}
+            missing_department_ids = sorted(set(department_ids) - existing_department_ids)
+            if missing_department_ids:
+                raise HTTPException(status_code=404, detail="Department not found")
+
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            DELETE FROM user_department_access
+            WHERE organization_id = ? AND user_id = ?
+            """,
+            (organization_id, user_id),
+        )
+        for department_id in department_ids:
+            cursor.execute(
+                """
+                INSERT INTO user_department_access (
+                    organization_id, user_id, department_id, created_at, updated_at, updated_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (organization_id, user_id, department_id, now, now, current_user["id"]),
+            )
+
+        write_auth_audit_event(
+            cursor,
+            "member_department_access_updated",
+            user_id=current_user["id"],
+            organization_id=organization_id,
+            metadata={
+                "target_user_id": user_id,
+                "target_email": target["email"],
+                "target_role": target_role,
+                "department_ids": department_ids,
+            },
+        )
+        connection.commit()
+        department_access_by_user = build_member_department_access(cursor, organization_id)
+        return {
+            "message": "Organization member department access updated",
+            "user_id": user_id,
+            "department_access": department_access_by_user.get(user_id, []),
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 
@@ -5636,6 +6263,14 @@ def update_organization_member_role(
             """,
             (new_role, employee_id, now, organization_id, user_id),
         )
+        if new_role not in DEPARTMENT_ACCESS_LIMITED_ROLES:
+            cursor.execute(
+                """
+                DELETE FROM user_department_access
+                WHERE organization_id = ? AND user_id = ?
+                """,
+                (organization_id, user_id),
+            )
         cursor.execute(
             """
             UPDATE auth_sessions
@@ -6303,6 +6938,11 @@ def support_page(request: Request):
     return templates.TemplateResponse(request=request, name="support.html", context={})
 
 
+@app.get("/feedback", tags=["Pages"])
+def feedback_page(request: Request):
+    return templates.TemplateResponse(request=request, name="feedback.html", context={})
+
+
 @app.get("/accept-invitation", tags=["Pages"])
 def accept_invitation_page(request: Request):
     return templates.TemplateResponse(request=request, name="accept_invitation.html", context={})
@@ -6326,6 +6966,11 @@ def employees_page(request: Request):
 @app.get("/positions", tags=["Pages"])
 def positions_page(request: Request):
     return desktop_only_page_or_404("positions.html", request)
+
+
+@app.get("/departments", tags=["Pages"])
+def departments_page(request: Request):
+    return desktop_only_page_or_404("departments.html", request)
 
 
 @app.get("/employee-positions", tags=["Pages"])
@@ -6395,6 +7040,7 @@ def get_employees(
         elif employee_filter:
             cursor.execute("SELECT * FROM employees WHERE id = ? ORDER BY id", (employee_filter,))
         elif organization_filter and position_id is not None:
+            ensure_department_access_for_position(cursor, access_context, position_id)
             cursor.execute(
                 """
                 SELECT DISTINCT e.*
@@ -6406,7 +7052,25 @@ def get_employees(
                 (organization_filter, position_id),
             )
         elif organization_filter:
-            cursor.execute("SELECT * FROM employees WHERE organization_id = ? ORDER BY id", (organization_filter,))
+            allowed_department_ids = get_allowed_department_ids(cursor, access_context)
+            if allowed_department_ids is None:
+                cursor.execute("SELECT * FROM employees WHERE organization_id = ? ORDER BY id", (organization_filter,))
+            elif not allowed_department_ids:
+                cursor.execute("SELECT * FROM employees WHERE 1 = 0")
+            else:
+                placeholders = ",".join(["?"] * len(allowed_department_ids))
+                cursor.execute(
+                    f"""
+                    SELECT DISTINCT e.*
+                    FROM employees e
+                    JOIN employee_positions ep ON ep.employee_id = e.id
+                    JOIN positions p ON p.id = ep.position_id
+                    WHERE e.organization_id = ?
+                      AND p.department_id IN ({placeholders})
+                    ORDER BY e.id
+                    """,
+                    (organization_filter, *sorted(allowed_department_ids)),
+                )
         elif position_id is not None:
             cursor.execute(
                 """
@@ -6580,6 +7244,192 @@ def get_employee_delete_impact(employee_id: int, _access: dict | None = Depends(
         connection.close()
 
 
+@app.get("/api/departments", tags=["Departments"])
+def get_departments(access_context: dict | None = Depends(require_schedule_view_if_auth_initialized)):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id = access_context["membership"]["organization_id"] if access_context else None
+        if organization_id is not None:
+            conditions = ["organization_id = ?"]
+            params: list = [organization_id]
+            append_department_access_condition(cursor, access_context, conditions, params, "id")
+            cursor.execute(
+                f"""
+                SELECT *
+                FROM departments
+                WHERE {" AND ".join(conditions)}
+                ORDER BY display_order, id
+                """,
+                params,
+            )
+        else:
+            cursor.execute("SELECT * FROM departments ORDER BY organization_id, display_order, id")
+        return [row_to_department_dict(row) for row in cursor.fetchall()]
+    finally:
+        connection.close()
+
+
+@app.post("/api/departments", tags=["Departments"])
+def add_department(
+    department: DepartmentCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
+    now = current_utc_timestamp()
+    user_id = _access["user"]["id"] if _access else None
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        if get_allowed_department_ids(cursor, _access) is not None:
+            raise HTTPException(status_code=403, detail="Only users with access to all departments can create departments")
+        try:
+            cursor.execute(
+                """
+                INSERT INTO departments (
+                    organization_id, name, description, display_order, is_active, created_at, updated_at, updated_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    organization_id,
+                    department.name,
+                    department.description,
+                    department.display_order,
+                    int(department.is_active),
+                    now,
+                    now,
+                    user_id,
+                ),
+            )
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="Department already exists")
+        connection.commit()
+        return {"message": "Department added successfully", "department": {"id": cursor.lastrowid, **department.model_dump()}}
+    finally:
+        connection.close()
+
+
+@app.put("/api/departments/{department_id}", tags=["Departments"])
+def update_department(
+    department_id: int,
+    department: DepartmentCreate,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
+    now = current_utc_timestamp()
+    user_id = _access["user"]["id"] if _access else None
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM departments WHERE id = ? AND organization_id = ?",
+            (department_id, organization_id),
+            "Department not found",
+        )
+        ensure_department_access_for_department(cursor, _access, department_id)
+        try:
+            cursor.execute(
+                """
+                UPDATE departments
+                SET name = ?, description = ?, display_order = ?, is_active = ?, updated_at = ?, updated_by = ?
+                WHERE id = ? AND organization_id = ?
+                """,
+                (
+                    department.name,
+                    department.description,
+                    department.display_order,
+                    int(department.is_active),
+                    now,
+                    user_id,
+                    department_id,
+                    organization_id,
+                ),
+            )
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="Department already exists")
+        connection.commit()
+        return {"message": "Department updated successfully", "department": {"id": department_id, **department.model_dump()}}
+    finally:
+        connection.close()
+
+
+@app.delete("/api/departments/{department_id}", tags=["Departments"])
+def delete_department(
+    department_id: int,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        department_row = fetch_one_or_404(
+            cursor,
+            "SELECT id, name FROM departments WHERE id = ? AND organization_id = ?",
+            (department_id, organization_id),
+            "Department not found",
+        )
+        ensure_department_access_for_department(cursor, _access, department_id)
+        department_count = fetch_count(
+            cursor,
+            "SELECT COUNT(*) FROM departments WHERE organization_id = ?",
+            (organization_id,),
+        )
+        if department_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last department")
+        linked_position_count = fetch_count(
+            cursor,
+            "SELECT COUNT(*) FROM positions WHERE department_id = ? AND organization_id = ?",
+            (department_id, organization_id),
+        )
+        if linked_position_count:
+            raise HTTPException(status_code=400, detail="Cannot delete department with positions")
+        backup_name = create_recovery_backup("delete_department")
+        cursor.execute(
+            "DELETE FROM departments WHERE id = ? AND organization_id = ?",
+            (department_row["id"], organization_id),
+        )
+        connection.commit()
+        return {"message": "Department deleted successfully", "backup_name": backup_name}
+    finally:
+        connection.close()
+
+
+@app.get("/api/departments/{department_id}/delete-impact", tags=["Departments"])
+def get_department_delete_impact(
+    department_id: int,
+    _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
+):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        department_row = fetch_one_or_404(
+            cursor,
+            "SELECT id, name FROM departments WHERE id = ? AND organization_id = ?",
+            (department_id, organization_id),
+            "Department not found",
+        )
+        ensure_department_access_for_department(cursor, _access, department_id)
+        return {
+            "department_id": department_row["id"],
+            "department_name": department_row["name"],
+            "positions": fetch_count(
+                cursor,
+                "SELECT COUNT(*) FROM positions WHERE department_id = ? AND organization_id = ?",
+                (department_id, organization_id),
+            ),
+            "is_last_department": fetch_count(
+                cursor,
+                "SELECT COUNT(*) FROM departments WHERE organization_id = ?",
+                (organization_id,),
+            ) <= 1,
+        }
+    finally:
+        connection.close()
+
+
 @app.get("/api/positions", tags=["Positions"])
 def get_positions(access_context: dict | None = Depends(require_schedule_view_if_auth_initialized)):
     connection = get_connection()
@@ -6590,18 +7440,39 @@ def get_positions(access_context: dict | None = Depends(require_schedule_view_if
         if employee_id is not None:
             cursor.execute(
                 """
-                SELECT p.*, ep.is_primary, ep.priority_score, ep.is_fallback_only
+                SELECT p.*, d.public_id AS department_public_id, d.name AS department_name,
+                       ep.is_primary, ep.priority_score, ep.is_fallback_only
                 FROM positions p
+                LEFT JOIN departments d ON d.id = p.department_id
                 JOIN employee_positions ep ON ep.position_id = p.id
                 WHERE ep.employee_id = ?
-                ORDER BY ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, p.id
+                ORDER BY d.display_order, d.id, ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, p.id
                 """,
                 (employee_id,),
             )
         elif organization_id is not None:
-            cursor.execute("SELECT * FROM positions WHERE organization_id = ? ORDER BY id", (organization_id,))
+            conditions = ["p.organization_id = ?"]
+            params: list = [organization_id]
+            append_department_access_condition(cursor, access_context, conditions, params)
+            cursor.execute(
+                f"""
+                SELECT p.*, d.public_id AS department_public_id, d.name AS department_name
+                FROM positions p
+                LEFT JOIN departments d ON d.id = p.department_id
+                WHERE {" AND ".join(conditions)}
+                ORDER BY d.display_order, d.id, p.id
+                """,
+                params,
+            )
         else:
-            cursor.execute("SELECT * FROM positions ORDER BY id")
+            cursor.execute(
+                """
+                SELECT p.*, d.public_id AS department_public_id, d.name AS department_name
+                FROM positions p
+                LEFT JOIN departments d ON d.id = p.department_id
+                ORDER BY p.organization_id, d.display_order, d.id, p.id
+                """
+            )
         return [row_to_position_dict(row) for row in cursor.fetchall()]
     finally:
         connection.close()
@@ -6613,19 +7484,28 @@ def add_position(position: PositionCreate, _access: dict | None = Depends(requir
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        department_id = position.department_id or get_default_department_id(cursor, organization_id)
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM departments WHERE id = ? AND organization_id = ?",
+            (department_id, organization_id),
+            "Department not found",
+        )
+        ensure_department_access_for_department(cursor, _access, department_id)
         try:
             cursor.execute(
                 """
                 INSERT INTO positions (
-                    organization_id, name, color, requires_continuous_coverage, minimum_staff_presence,
+                    organization_id, department_id, name, color, requires_continuous_coverage, minimum_staff_presence,
                     allow_same_day_other_positions,
                     max_consecutive_nights, emergency_max_consecutive_nights,
                     max_consecutive_split_days, emergency_max_consecutive_split_days
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     organization_id,
+                    department_id,
                     position.name,
                     position.color,
                     int(position.requires_continuous_coverage),
@@ -6638,9 +7518,12 @@ def add_position(position: PositionCreate, _access: dict | None = Depends(requir
                 ),
             )
         except sqlite3.IntegrityError:
-            raise HTTPException(status_code=400, detail="Position already exists")
+            raise HTTPException(status_code=400, detail="Position already exists in this department")
         connection.commit()
-        return {"message": "Position added successfully", "position": {"id": cursor.lastrowid, **position.model_dump()}}
+        return {
+            "message": "Position added successfully",
+            "position": {"id": cursor.lastrowid, **position.model_dump(), "department_id": department_id},
+        }
     finally:
         connection.close()
 
@@ -6651,21 +7534,40 @@ def update_position(
     position: PositionCreate,
     _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
 ):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (position_id,), "Position not found")
+        ensure_department_access_for_position(cursor, _access, position_id)
+        position_row = fetch_one_or_404(
+            cursor,
+            "SELECT id, organization_id FROM positions WHERE id = ?",
+            (position_id,),
+            "Position not found",
+        )
+        if _access and int(position_row["organization_id"]) != int(organization_id):
+            raise HTTPException(status_code=404, detail="Position not found")
+        department_id = position.department_id or get_default_department_id(cursor, organization_id)
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM departments WHERE id = ? AND organization_id = ?",
+            (department_id, organization_id),
+            "Department not found",
+        )
+        ensure_department_access_for_position(cursor, _access, position_id)
+        ensure_department_access_for_department(cursor, _access, department_id)
         try:
             cursor.execute(
                 """
                 UPDATE positions
-                SET name = ?, color = ?, requires_continuous_coverage = ?, minimum_staff_presence = ?,
+                SET department_id = ?, name = ?, color = ?, requires_continuous_coverage = ?, minimum_staff_presence = ?,
                     allow_same_day_other_positions = ?,
                     max_consecutive_nights = ?, emergency_max_consecutive_nights = ?,
                     max_consecutive_split_days = ?, emergency_max_consecutive_split_days = ?
                 WHERE id = ?
                 """,
                 (
+                    department_id,
                     position.name,
                     position.color,
                     int(position.requires_continuous_coverage),
@@ -6679,9 +7581,12 @@ def update_position(
                 ),
             )
         except sqlite3.IntegrityError:
-            raise HTTPException(status_code=400, detail="Position already exists")
+            raise HTTPException(status_code=400, detail="Position already exists in this department")
         connection.commit()
-        return {"message": "Position updated successfully", "position": {"id": position_id, **position.model_dump()}}
+        return {
+            "message": "Position updated successfully",
+            "position": {"id": position_id, **position.model_dump(), "department_id": department_id},
+        }
     finally:
         connection.close()
 
@@ -6691,7 +7596,15 @@ def delete_position(position_id: int, _access: dict | None = Depends(require_set
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (position_id,), "Position not found")
+        position_row = fetch_one_or_404(
+            cursor,
+            "SELECT id, organization_id FROM positions WHERE id = ?",
+            (position_id,),
+            "Position not found",
+        )
+        if _access and int(position_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Position not found")
+        ensure_department_access_for_position(cursor, _access, position_id)
         backup_name = create_recovery_backup("delete_position")
         cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
         connection.commit()
@@ -6710,13 +7623,22 @@ def get_position_delete_impact(
         cursor = connection.cursor()
         position_row = fetch_one_or_404(
             cursor,
-            "SELECT id, name FROM positions WHERE id = ?",
+            """
+            SELECT p.id, p.name, p.organization_id, d.name AS department_name
+            FROM positions p
+            LEFT JOIN departments d ON d.id = p.department_id
+            WHERE p.id = ?
+            """,
             (position_id,),
             "Position not found",
         )
+        if _access and int(position_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Position not found")
+        ensure_department_access_for_position(cursor, _access, position_id)
         return {
             "position_id": position_row["id"],
             "position_name": position_row["name"],
+            "department_name": position_row["department_name"],
             "assignments": fetch_count(cursor, "SELECT COUNT(*) FROM employee_positions WHERE position_id = ?", (position_id,)),
             "schedule_entries": fetch_count(cursor, "SELECT COUNT(*) FROM schedule_entries WHERE position_id = ?", (position_id,)),
             "shift_requirements": fetch_count(cursor, "SELECT COUNT(*) FROM shift_requirements WHERE position_id = ?", (position_id,)),
@@ -6749,16 +7671,26 @@ def get_employee_positions(
             where_sql = "WHERE ep.employee_id = ?"
             params = (employee_id,)
         elif position_id is not None:
+            ensure_department_access_for_position(cursor, access_context, position_id)
             where_sql = "WHERE ep.position_id = ?"
             params = (position_id,)
+        else:
+            conditions = []
+            params_list: list = []
+            append_department_access_condition(cursor, access_context, conditions, params_list)
+            if conditions:
+                where_sql = f"WHERE {' AND '.join(conditions)}"
+                params = tuple(params_list)
         cursor.execute(
             f"""
-            SELECT ep.*, e.full_name AS employee_name, p.name AS position_name
+            SELECT ep.*, e.full_name AS employee_name, p.name AS position_name,
+                   p.department_id, d.name AS department_name
             FROM employee_positions ep
             JOIN employees e ON e.id = ep.employee_id
             JOIN positions p ON p.id = ep.position_id
+            LEFT JOIN departments d ON d.id = p.department_id
             {where_sql}
-            ORDER BY ep.employee_id, ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, ep.position_id
+            ORDER BY ep.employee_id, d.display_order, d.id, ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, ep.position_id
             """,
             params,
         )
@@ -6779,8 +7711,24 @@ def assign_employee_to_position(
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (assignment.employee_id,), "Employee not found")
-        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (assignment.position_id,), "Position not found")
+        organization_id = _access["membership"]["organization_id"] if _access else None
+        if organization_id:
+            fetch_one_or_404(
+                cursor,
+                "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+                (assignment.employee_id, organization_id),
+                "Employee not found",
+            )
+            fetch_one_or_404(
+                cursor,
+                "SELECT id FROM positions WHERE id = ? AND organization_id = ?",
+                (assignment.position_id, organization_id),
+                "Position not found",
+            )
+        else:
+            fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (assignment.employee_id,), "Employee not found")
+            fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (assignment.position_id,), "Position not found")
+        ensure_department_access_for_position(cursor, _access, assignment.position_id)
         try:
             cursor.execute(
                 """
@@ -6811,8 +7759,24 @@ def update_employee_position(
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (assignment.employee_id,), "Employee not found")
-        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (assignment.position_id,), "Position not found")
+        organization_id = _access["membership"]["organization_id"] if _access else None
+        if organization_id:
+            fetch_one_or_404(
+                cursor,
+                "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+                (assignment.employee_id, organization_id),
+                "Employee not found",
+            )
+            fetch_one_or_404(
+                cursor,
+                "SELECT id FROM positions WHERE id = ? AND organization_id = ?",
+                (assignment.position_id, organization_id),
+                "Position not found",
+            )
+        else:
+            fetch_one_or_404(cursor, "SELECT id FROM employees WHERE id = ?", (assignment.employee_id,), "Employee not found")
+            fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (assignment.position_id,), "Position not found")
+        ensure_department_access_for_position(cursor, _access, assignment.position_id)
         cursor.execute(
             """
             UPDATE employee_positions
@@ -6844,6 +7808,7 @@ def delete_employee_position(
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        ensure_department_access_for_position(cursor, _access, position_id)
         backup_name = create_recovery_backup("delete_assignment")
         cursor.execute("DELETE FROM employee_positions WHERE employee_id = ? AND position_id = ?", (employee_id, position_id))
         if cursor.rowcount == 0:
@@ -6866,20 +7831,26 @@ def get_employee_position_delete_impact(
         assignment_row = fetch_one_or_404(
             cursor,
             """
-            SELECT ep.employee_id, ep.position_id, e.full_name AS employee_name, p.name AS position_name
+            SELECT ep.employee_id, ep.position_id, e.full_name AS employee_name,
+                   p.name AS position_name, p.organization_id, d.name AS department_name
             FROM employee_positions ep
             JOIN employees e ON e.id = ep.employee_id
             JOIN positions p ON p.id = ep.position_id
+            LEFT JOIN departments d ON d.id = p.department_id
             WHERE ep.employee_id = ? AND ep.position_id = ?
             """,
             (employee_id, position_id),
             "Assignment not found",
         )
+        if _access and int(assignment_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        ensure_department_access_for_position(cursor, _access, position_id)
         return {
             "employee_id": assignment_row["employee_id"],
             "position_id": assignment_row["position_id"],
             "employee_name": assignment_row["employee_name"],
             "position_name": assignment_row["position_name"],
+            "department_name": assignment_row["department_name"],
             "schedule_entries": fetch_count(
                 cursor,
                 "SELECT COUNT(*) FROM schedule_entries WHERE employee_id = ? AND position_id = ?",
@@ -6917,19 +7888,26 @@ def get_shift_templates(
                 row = cursor.fetchone()
                 position_id = int(row["position_id"]) if row else -1
         base_query = """
-            SELECT st.*, p.name AS position_name
+            SELECT st.*, p.name AS position_name, p.department_id, d.name AS department_name
             FROM shift_templates st
             LEFT JOIN positions p ON p.id = st.position_id
+            LEFT JOIN departments d ON d.id = p.department_id
         """
         conditions = []
         params: list[int] = []
+        if access_context:
+            conditions.append("st.organization_id = ?")
+            params.append(access_context["membership"]["organization_id"])
         if active_only:
             conditions.append("st.is_active = 1")
         if position_id is not None:
+            ensure_department_access_for_position(cursor, access_context, position_id)
             conditions.append("st.position_id = ?")
             params.append(position_id)
+        elif employee_id is None:
+            append_department_access_condition(cursor, access_context, conditions, params)
         where_sql = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        query = f"{base_query}{where_sql} ORDER BY COALESCE(st.position_id, 0), st.category, st.start_time, st.end_time"
+        query = f"{base_query}{where_sql} ORDER BY d.display_order, COALESCE(st.position_id, 0), st.category, st.start_time, st.end_time"
         cursor.execute(query, params)
         return [row_to_shift_template_dict(row) for row in cursor.fetchall()]
     finally:
@@ -6953,6 +7931,7 @@ def add_shift_template(
             (template.position_id, organization_id),
             "Position not found",
         )
+        ensure_department_access_for_position(cursor, _access, template.position_id)
         try:
             cursor.execute(
                 """
@@ -6992,8 +7971,29 @@ def update_shift_template(
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM shift_templates WHERE id = ?", (template_id,), "Shift template not found")
-        fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (template.position_id,), "Position not found")
+        template_row = fetch_one_or_404(
+            cursor,
+            """
+            SELECT st.id, st.position_id, st.organization_id
+            FROM shift_templates st
+            WHERE st.id = ?
+            """,
+            (template_id,),
+            "Shift template not found",
+        )
+        if _access and int(template_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Shift template not found")
+        ensure_department_access_for_position(cursor, _access, template_row["position_id"])
+        if _access:
+            fetch_one_or_404(
+                cursor,
+                "SELECT id FROM positions WHERE id = ? AND organization_id = ?",
+                (template.position_id, _access["membership"]["organization_id"]),
+                "Position not found",
+            )
+        else:
+            fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (template.position_id,), "Position not found")
+        ensure_department_access_for_position(cursor, _access, template.position_id)
         try:
             cursor.execute(
                 """
@@ -7029,6 +8029,15 @@ def delete_shift_template(
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        template_row = fetch_one_or_404(
+            cursor,
+            "SELECT position_id, organization_id FROM shift_templates WHERE id = ?",
+            (template_id,),
+            "Shift template not found",
+        )
+        if _access and int(template_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Shift template not found")
+        ensure_department_access_for_position(cursor, _access, template_row["position_id"])
         backup_name = create_recovery_backup("delete_shift_template")
         cursor.execute("DELETE FROM shift_templates WHERE id = ?", (template_id,))
         if cursor.rowcount == 0:
@@ -7053,20 +8062,26 @@ def get_shift_template_delete_impact(
         template_row = fetch_one_or_404(
             cursor,
             """
-            SELECT st.id, st.name, st.category, st.position_id, p.name AS position_name
+            SELECT st.id, st.name, st.category, st.position_id,
+                   st.organization_id, p.name AS position_name, d.name AS department_name
             FROM shift_templates st
             LEFT JOIN positions p ON p.id = st.position_id
+            LEFT JOIN departments d ON d.id = p.department_id
             WHERE st.id = ?
             """,
             (template_id,),
             "Shift template not found",
         )
+        if _access and int(template_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Shift template not found")
+        ensure_department_access_for_position(cursor, _access, template_row["position_id"])
         return {
             "template_id": template_row["id"],
             "template_name": template_row["name"],
             "category": template_row["category"],
             "position_id": template_row["position_id"],
             "position_name": template_row["position_name"],
+            "department_name": template_row["department_name"],
             "schedule_entries": fetch_count(
                 cursor,
                 "SELECT COUNT(*) FROM schedule_entries WHERE shift_template_id = ?",
@@ -7088,25 +8103,40 @@ def get_shift_requirements(
         employee_id = employee_scope_from_access(access_context)
         if employee_id is not None and position_id is not None:
             require_employee_position_scope(cursor, employee_id, position_id)
+        elif position_id is not None:
+            ensure_department_access_for_position(cursor, access_context, position_id)
         if position_id is None:
+            conditions = []
+            params: list = []
+            if employee_id is None:
+                append_department_access_condition(cursor, access_context, conditions, params)
+            if access_context:
+                conditions.append("sr.organization_id = ?")
+                params.append(access_context["membership"]["organization_id"])
+            where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
             cursor.execute(
-                """
-            SELECT sr.*, p.name AS position_name
+                f"""
+            SELECT sr.*, p.name AS position_name, p.department_id, d.name AS department_name
             FROM shift_requirements sr
             JOIN positions p ON p.id = sr.position_id
-            ORDER BY sr.position_id, sr.shift_category
-                """
+            LEFT JOIN departments d ON d.id = p.department_id
+            {where_sql}
+            ORDER BY d.display_order, d.id, sr.position_id, sr.shift_category
+                """,
+                params,
             )
         else:
             cursor.execute(
                 """
-                SELECT sr.*, p.name AS position_name
+                SELECT sr.*, p.name AS position_name, p.department_id, d.name AS department_name
                 FROM shift_requirements sr
                 JOIN positions p ON p.id = sr.position_id
+                LEFT JOIN departments d ON d.id = p.department_id
                 WHERE sr.position_id = ?
+                  AND (? IS NULL OR sr.organization_id = ?)
                 ORDER BY sr.shift_category
                 """,
-                (position_id,),
+                (position_id, access_context["membership"]["organization_id"] if access_context else None, access_context["membership"]["organization_id"] if access_context else None),
             )
         return [dict(row) for row in cursor.fetchall()]
     finally:
@@ -7128,6 +8158,7 @@ def save_shift_requirement(
             (requirement.position_id, organization_id),
             "Position not found",
         )
+        ensure_department_access_for_position(cursor, _access, requirement.position_id)
         cursor.execute(
             """
             INSERT INTO shift_requirements (
@@ -7165,25 +8196,40 @@ def get_coverage_requirements(
         employee_id = employee_scope_from_access(access_context)
         if employee_id is not None and position_id is not None:
             require_employee_position_scope(cursor, employee_id, position_id)
+        elif position_id is not None:
+            ensure_department_access_for_position(cursor, access_context, position_id)
         if position_id is None:
+            conditions = []
+            params: list = []
+            if employee_id is None:
+                append_department_access_condition(cursor, access_context, conditions, params)
+            if access_context:
+                conditions.append("cr.organization_id = ?")
+                params.append(access_context["membership"]["organization_id"])
+            where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
             cursor.execute(
-                """
-                SELECT cr.*, p.name AS position_name
+                f"""
+                SELECT cr.*, p.name AS position_name, p.department_id, d.name AS department_name
                 FROM coverage_requirements cr
                 JOIN positions p ON p.id = cr.position_id
-                ORDER BY cr.position_id, cr.start_time, cr.end_time
-                """
+                LEFT JOIN departments d ON d.id = p.department_id
+                {where_sql}
+                ORDER BY d.display_order, d.id, cr.position_id, cr.start_time, cr.end_time
+                """,
+                params,
             )
         else:
             cursor.execute(
                 """
-                SELECT cr.*, p.name AS position_name
+                SELECT cr.*, p.name AS position_name, p.department_id, d.name AS department_name
                 FROM coverage_requirements cr
                 JOIN positions p ON p.id = cr.position_id
+                LEFT JOIN departments d ON d.id = p.department_id
                 WHERE cr.position_id = ?
+                  AND (? IS NULL OR cr.organization_id = ?)
                 ORDER BY cr.start_time, cr.end_time
                 """,
-                (position_id,),
+                (position_id, access_context["membership"]["organization_id"] if access_context else None, access_context["membership"]["organization_id"] if access_context else None),
             )
         return [row_to_coverage_requirement_dict(row) for row in cursor.fetchall()]
     finally:
@@ -7247,6 +8293,7 @@ def add_coverage_requirement(
             (requirement.position_id, organization_id),
             "Position not found",
         )
+        ensure_department_access_for_position(cursor, _access, requirement.position_id)
         cursor.execute(
             """
             INSERT INTO coverage_requirements
@@ -7279,7 +8326,26 @@ def update_coverage_requirement(
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        fetch_one_or_404(cursor, "SELECT id FROM coverage_requirements WHERE id = ?", (requirement_id,), "Coverage requirement not found")
+        existing_requirement = fetch_one_or_404(
+            cursor,
+            "SELECT position_id, organization_id FROM coverage_requirements WHERE id = ?",
+            (requirement_id,),
+            "Coverage requirement not found",
+        )
+        if _access and int(existing_requirement["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Coverage requirement not found")
+        ensure_department_access_for_position(cursor, _access, existing_requirement["position_id"])
+        organization_id = _access["membership"]["organization_id"] if _access else None
+        if organization_id:
+            fetch_one_or_404(
+                cursor,
+                "SELECT id FROM positions WHERE id = ? AND organization_id = ?",
+                (requirement.position_id, organization_id),
+                "Position not found",
+            )
+        else:
+            fetch_one_or_404(cursor, "SELECT id FROM positions WHERE id = ?", (requirement.position_id,), "Position not found")
+        ensure_department_access_for_position(cursor, _access, requirement.position_id)
         cursor.execute(
             """
             UPDATE coverage_requirements
@@ -7311,6 +8377,15 @@ def delete_coverage_requirement(
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        requirement_row = fetch_one_or_404(
+            cursor,
+            "SELECT position_id, organization_id FROM coverage_requirements WHERE id = ?",
+            (requirement_id,),
+            "Coverage requirement not found",
+        )
+        if _access and int(requirement_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Coverage requirement not found")
+        ensure_department_access_for_position(cursor, _access, requirement_row["position_id"])
         cursor.execute("DELETE FROM coverage_requirements WHERE id = ?", (requirement_id,))
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Coverage requirement not found")
@@ -7695,6 +8770,7 @@ def get_employee_day_statuses(
             where_sql = "WHERE eds.employee_id = ?"
             params = (employee_id,)
         elif position_id is not None:
+            ensure_department_access_for_position(cursor, access_context, position_id)
             where_sql = """
             WHERE eds.employee_id IN (
                 SELECT ep.employee_id
@@ -7703,6 +8779,32 @@ def get_employee_day_statuses(
             )
             """
             params = (position_id,)
+        else:
+            conditions = []
+            params_list: list = []
+            allowed_department_ids = get_allowed_department_ids(cursor, access_context)
+            if allowed_department_ids is not None:
+                if not allowed_department_ids:
+                    conditions.append("1 = 0")
+                else:
+                    placeholders = ",".join(["?"] * len(allowed_department_ids))
+                    conditions.append(
+                        f"""
+                        eds.employee_id IN (
+                            SELECT DISTINCT ep.employee_id
+                            FROM employee_positions ep
+                            JOIN positions p ON p.id = ep.position_id
+                            WHERE p.department_id IN ({placeholders})
+                        )
+                        """
+                    )
+                    params_list.extend(sorted(allowed_department_ids))
+            if access_context:
+                conditions.append("eds.organization_id = ?")
+                params_list.append(access_context["membership"]["organization_id"])
+            if conditions:
+                where_sql = f"WHERE {' AND '.join(conditions)}"
+                params = tuple(params_list)
         cursor.execute(
             f"""
             SELECT eds.*, e.full_name AS employee_name
@@ -7733,6 +8835,7 @@ def save_employee_day_status(
             (status.employee_id, organization_id),
             "Employee not found",
         )
+        ensure_department_access_for_employee(cursor, _access, status.employee_id)
         cursor.execute(
             """
             INSERT INTO employee_day_statuses (organization_id, employee_id, date, status_type)
@@ -7758,6 +8861,7 @@ def delete_employee_day_status(
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        ensure_department_access_for_employee(cursor, _access, employee_id)
         cursor.execute("DELETE FROM employee_day_statuses WHERE employee_id = ? AND date = ?", (employee_id, date))
         connection.commit()
         return {"message": "Employee day status deleted successfully"}
@@ -7901,6 +9005,7 @@ def get_schedule_entries(
     dates: list[str] | None = None,
     employee_id: int | None = None,
     organization_id: int | None = None,
+    department_ids: set[int] | None = None,
 ) -> list[dict]:
     cursor = connection.cursor()
     clauses = []
@@ -7917,6 +9022,13 @@ def get_schedule_entries(
     if employee_id is not None:
         clauses.append("se.employee_id = ?")
         params.append(employee_id)
+    if department_ids is not None:
+        if not department_ids:
+            clauses.append("1 = 0")
+        else:
+            placeholders = ",".join(["?"] * len(department_ids))
+            clauses.append(f"p.department_id IN ({placeholders})")
+            params.extend(sorted(department_ids))
     where_sql = "WHERE " + " AND ".join(clauses) if clauses else ""
     cursor.execute(
         f"""
@@ -7941,11 +9053,14 @@ def get_schedule_entries(
             st.is_split_only,
             p.name AS position_name,
             p.color AS position_color,
+            p.department_id AS department_id,
+            d.name AS department_name,
             e.full_name AS employee_name,
             e.sex AS employee_sex
         FROM schedule_entries se
         JOIN shift_templates st ON st.id = se.shift_template_id
         JOIN positions p ON p.id = se.position_id
+        LEFT JOIN departments d ON d.id = p.department_id
         JOIN employees e ON e.id = se.employee_id
         {where_sql}
         ORDER BY se.date, se.employee_id, se.position_id, COALESCE(se.start_time_override, st.start_time)
@@ -7981,11 +9096,15 @@ def get_schedule(
         if employee_id is not None and position_id is not None:
             require_employee_position_scope(cursor, employee_id, position_id)
             return get_schedule_entries(connection, position_id=position_id, organization_id=organization_id)
+        if employee_id is None and position_id is not None:
+            ensure_department_access_for_position(cursor, access_context, position_id)
+        allowed_department_ids = None if employee_id is not None else get_allowed_department_ids(cursor, access_context)
         return get_schedule_entries(
             connection,
             position_id=position_id,
             employee_id=employee_id,
             organization_id=organization_id,
+            department_ids=allowed_department_ids,
         )
     finally:
         connection.close()
@@ -7998,6 +9117,19 @@ def add_schedule_entry(entry: ScheduleEntryCreate, _access: dict | None = Depend
         validate_manual_schedule_entry_basics(connection, entry)
         cursor = connection.cursor()
         organization_id = _access["membership"]["organization_id"] if _access else 1
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM positions WHERE id = ? AND organization_id = ?",
+            (entry.position_id, organization_id),
+            "Position not found",
+        )
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM employees WHERE id = ? AND organization_id = ?",
+            (entry.employee_id, organization_id),
+            "Employee not found",
+        )
+        ensure_department_access_for_position(cursor, _access, entry.position_id)
         require_license_capability(cursor, "can_create_shift", organization_id)
         require_demo_schedule_entry_slot(cursor)
         cursor.execute(
@@ -8024,10 +9156,13 @@ def delete_schedule_entry(
         cursor = connection.cursor()
         entry_row = fetch_one_or_404(
             cursor,
-            "SELECT employee_id, date FROM schedule_entries WHERE id = ?",
+            "SELECT employee_id, position_id, date, organization_id FROM schedule_entries WHERE id = ?",
             (schedule_entry_id,),
             "Schedule entry not found",
         )
+        if _access and int(entry_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Schedule entry not found")
+        ensure_department_access_for_position(cursor, _access, entry_row["position_id"])
         cursor.execute("DELETE FROM schedule_entries WHERE id = ?", (schedule_entry_id,))
         sync_employee_day_off_status_for_date(connection, cursor, entry_row["employee_id"], entry_row["date"])
         connection.commit()
@@ -8045,6 +9180,15 @@ def update_schedule_entry_status(
     connection = get_connection()
     try:
         cursor = connection.cursor()
+        entry_row = fetch_one_or_404(
+            cursor,
+            "SELECT position_id, organization_id FROM schedule_entries WHERE id = ?",
+            (schedule_entry_id,),
+            "Schedule entry not found",
+        )
+        if _access and int(entry_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Schedule entry not found")
+        ensure_department_access_for_position(cursor, _access, entry_row["position_id"])
         cursor.execute(
             "UPDATE schedule_entries SET no_show = ? WHERE id = ?",
             (int(status.no_show), schedule_entry_id),
@@ -8068,12 +9212,13 @@ def update_schedule_entry_time(
         cursor = connection.cursor()
         entry_row = fetch_one_or_404(
             cursor,
-            "SELECT employee_id, date, organization_id FROM schedule_entries WHERE id = ?",
+            "SELECT employee_id, position_id, date, organization_id FROM schedule_entries WHERE id = ?",
             (schedule_entry_id,),
             "Schedule entry not found",
         )
         if _access and int(entry_row["organization_id"]) != int(_access["membership"]["organization_id"]):
             raise HTTPException(status_code=404, detail="Schedule entry not found")
+        ensure_department_access_for_position(cursor, _access, entry_row["position_id"])
 
         now = current_utc_timestamp()
         user_id = _access["user"]["id"] if _access else None
@@ -8131,46 +9276,90 @@ def clear_week_schedule_records(
     *,
     position_id: int | None = None,
     employee_ids: list[int] | None = None,
+    organization_id: int | None = None,
+    department_ids: set[int] | None = None,
 ) -> tuple[int, int]:
     date_placeholders = ",".join(["?"] * len(week_dates))
     if position_id is None:
+        schedule_clauses = [f"date IN ({date_placeholders})"]
+        schedule_params: list = [*week_dates]
+        if organization_id is not None:
+            schedule_clauses.append("organization_id = ?")
+            schedule_params.append(organization_id)
+        if department_ids is not None:
+            if not department_ids:
+                return 0, 0
+            department_placeholders = ",".join(["?"] * len(department_ids))
+            schedule_clauses.append(
+                f"position_id IN (SELECT id FROM positions WHERE department_id IN ({department_placeholders}))"
+            )
+            schedule_params.extend(sorted(department_ids))
         cursor.execute(
             f"""
             DELETE FROM schedule_entries
-            WHERE date IN ({date_placeholders})
+            WHERE {" AND ".join(schedule_clauses)}
             """,
-            week_dates,
+            schedule_params,
         )
         deleted_count = cursor.rowcount
+        day_status_clauses = ["status_type = 'day_off'", f"date IN ({date_placeholders})"]
+        day_status_params: list = [*week_dates]
+        if organization_id is not None:
+            day_status_clauses.append("organization_id = ?")
+            day_status_params.append(organization_id)
+        if department_ids is not None:
+            department_placeholders = ",".join(["?"] * len(department_ids))
+            day_status_clauses.append(
+                """
+                employee_id IN (
+                    SELECT DISTINCT ep.employee_id
+                    FROM employee_positions ep
+                    JOIN positions p ON p.id = ep.position_id
+                    WHERE p.department_id IN (""" + department_placeholders + """)
+                )
+                """
+            )
+            day_status_params.extend(sorted(department_ids))
         cursor.execute(
             f"""
             DELETE FROM employee_day_statuses
-            WHERE status_type = 'day_off'
-              AND date IN ({date_placeholders})
+            WHERE {" AND ".join(day_status_clauses)}
             """,
-            week_dates,
+            day_status_params,
         )
         return deleted_count, cursor.rowcount
 
+    schedule_clauses = [f"position_id = ?", f"date IN ({date_placeholders})"]
+    schedule_params: list = [position_id, *week_dates]
+    if organization_id is not None:
+        schedule_clauses.append("organization_id = ?")
+        schedule_params.append(organization_id)
     cursor.execute(
         f"""
         DELETE FROM schedule_entries
-        WHERE position_id = ? AND date IN ({date_placeholders})
+        WHERE {" AND ".join(schedule_clauses)}
         """,
-        [position_id, *week_dates],
+        schedule_params,
     )
     deleted_count = cursor.rowcount
     day_off_deleted_count = 0
     if employee_ids:
         employee_placeholders = ",".join(["?"] * len(employee_ids))
+        day_status_clauses = [
+            "status_type = 'day_off'",
+            f"employee_id IN ({employee_placeholders})",
+            f"date IN ({date_placeholders})",
+        ]
+        day_status_params: list = [*employee_ids, *week_dates]
+        if organization_id is not None:
+            day_status_clauses.append("organization_id = ?")
+            day_status_params.append(organization_id)
         cursor.execute(
             f"""
             DELETE FROM employee_day_statuses
-            WHERE status_type = 'day_off'
-              AND employee_id IN ({employee_placeholders})
-              AND date IN ({date_placeholders})
+            WHERE {" AND ".join(day_status_clauses)}
             """,
-            [*employee_ids, *week_dates],
+            day_status_params,
         )
         day_off_deleted_count = cursor.rowcount
     return deleted_count, day_off_deleted_count
@@ -8185,6 +9374,8 @@ def clear_week_schedule(
     try:
         week_dates = build_week_dates(request_data.week_start_date)
         cursor = connection.cursor()
+        organization_id = _access["membership"]["organization_id"] if _access else None
+        ensure_department_access_for_position(cursor, _access, request_data.position_id)
         backup_name = create_recovery_backup("clear_week")
         employees = load_position_employees(connection, request_data.position_id)
         employee_ids = [employee["id"] for employee in employees]
@@ -8193,6 +9384,7 @@ def clear_week_schedule(
             week_dates,
             position_id=request_data.position_id,
             employee_ids=employee_ids,
+            organization_id=organization_id,
         )
         connection.commit()
         return {
@@ -8217,10 +9409,13 @@ def get_clear_week_schedule_preview(
         cursor = connection.cursor()
         position_row = fetch_one_or_404(
             cursor,
-            "SELECT id, name FROM positions WHERE id = ?",
+            "SELECT id, name, organization_id FROM positions WHERE id = ?",
             (position_id,),
             "Position not found",
         )
+        if _access and int(position_row["organization_id"]) != int(_access["membership"]["organization_id"]):
+            raise HTTPException(status_code=404, detail="Position not found")
+        ensure_department_access_for_position(cursor, _access, position_id)
         employees = load_position_employees(connection, position_id)
         employee_ids = [employee["id"] for employee in employees]
         day_status_count = 0
@@ -8267,8 +9462,15 @@ def clear_all_week_schedules(
     try:
         week_dates = build_week_dates(request_data.week_start_date)
         cursor = connection.cursor()
+        organization_id = _access["membership"]["organization_id"] if _access else None
+        allowed_department_ids = get_allowed_department_ids(cursor, _access)
         backup_name = create_recovery_backup("clear_week_all")
-        deleted_count, day_off_deleted_count = clear_week_schedule_records(cursor, week_dates)
+        deleted_count, day_off_deleted_count = clear_week_schedule_records(
+            cursor,
+            week_dates,
+            organization_id=organization_id,
+            department_ids=allowed_department_ids,
+        )
         connection.commit()
         return {
             "message": "All week schedules cleared successfully",
@@ -8289,27 +9491,66 @@ def get_clear_all_week_schedules_preview(
     try:
         week_dates = build_week_dates(week_start_date)
         cursor = connection.cursor()
+        organization_id = _access["membership"]["organization_id"] if _access else None
+        allowed_department_ids = get_allowed_department_ids(cursor, _access)
+        position_conditions = []
+        position_params: list = []
+        schedule_conditions = [f"date IN ({','.join(['?'] * len(week_dates))})"]
+        schedule_params: list = [*week_dates]
+        day_status_conditions = ["status_type = 'day_off'", f"date IN ({','.join(['?'] * len(week_dates))})"]
+        day_status_params: list = [*week_dates]
+        if organization_id is not None:
+            position_conditions.append("organization_id = ?")
+            position_params.append(organization_id)
+            schedule_conditions.append("organization_id = ?")
+            schedule_params.append(organization_id)
+            day_status_conditions.append("organization_id = ?")
+            day_status_params.append(organization_id)
+        if allowed_department_ids is not None:
+            if not allowed_department_ids:
+                position_conditions.append("1 = 0")
+                schedule_conditions.append("1 = 0")
+                day_status_conditions.append("1 = 0")
+            else:
+                placeholders = ",".join(["?"] * len(allowed_department_ids))
+                position_conditions.append(f"department_id IN ({placeholders})")
+                position_params.extend(sorted(allowed_department_ids))
+                schedule_conditions.append(
+                    f"position_id IN (SELECT id FROM positions WHERE department_id IN ({placeholders}))"
+                )
+                schedule_params.extend(sorted(allowed_department_ids))
+                day_status_conditions.append(
+                    f"""
+                    employee_id IN (
+                        SELECT DISTINCT ep.employee_id
+                        FROM employee_positions ep
+                        JOIN positions p ON p.id = ep.position_id
+                        WHERE p.department_id IN ({placeholders})
+                    )
+                    """
+                )
+                day_status_params.extend(sorted(allowed_department_ids))
+        position_where = f"WHERE {' AND '.join(position_conditions)}" if position_conditions else ""
         return {
             "week_start_date": week_start_date,
-            "positions": fetch_count(cursor, "SELECT COUNT(*) FROM positions"),
+            "positions": fetch_count(cursor, f"SELECT COUNT(*) FROM positions {position_where}", tuple(position_params)),
             "schedule_entries": fetch_count(
                 cursor,
                 f"""
                 SELECT COUNT(*)
                 FROM schedule_entries
-                WHERE date IN ({','.join(['?'] * len(week_dates))})
+                WHERE {" AND ".join(schedule_conditions)}
                 """,
-                tuple(week_dates),
+                tuple(schedule_params),
             ),
             "day_off_statuses": fetch_count(
                 cursor,
                 f"""
                 SELECT COUNT(*)
                 FROM employee_day_statuses
-                WHERE status_type = 'day_off'
-                  AND date IN ({','.join(['?'] * len(week_dates))})
+                WHERE {" AND ".join(day_status_conditions)}
                 """,
-                tuple(week_dates),
+                tuple(day_status_params),
             ),
         }
     finally:
@@ -8342,9 +9583,10 @@ def load_active_templates(connection, position_id: int) -> list[dict]:
     cursor = connection.cursor()
     cursor.execute(
         """
-        SELECT st.*, p.name AS position_name
+        SELECT st.*, p.name AS position_name, p.department_id, d.name AS department_name
         FROM shift_templates st
         JOIN positions p ON p.id = st.position_id
+        LEFT JOIN departments d ON d.id = p.department_id
         WHERE st.position_id = ? AND st.is_active = 1
         ORDER BY st.start_time, st.end_time, st.category
         """,
@@ -9950,7 +11192,17 @@ def run_auto_generate_for_position(
 ) -> dict:
     generation_mode = normalize_generation_mode(generation_mode)
     cursor = connection.cursor()
-    position_row = fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (position_id,), "Position not found")
+    position_row = fetch_one_or_404(
+        cursor,
+        """
+        SELECT p.*, d.public_id AS department_public_id, d.name AS department_name
+        FROM positions p
+        LEFT JOIN departments d ON d.id = p.department_id
+        WHERE p.id = ?
+        """,
+        (position_id,),
+        "Position not found",
+    )
     position = row_to_position_dict(position_row)
     week_dates = build_week_dates(week_start_date)
     employees = load_position_employees(connection, position_id)
@@ -10052,12 +11304,31 @@ def run_auto_generate_for_position(
     }
 
 
-def load_positions_for_auto_generation(cursor) -> list[dict]:
+def load_positions_for_auto_generation(
+    cursor,
+    organization_id: int | None = None,
+    department_ids: set[int] | None = None,
+) -> list[dict]:
+    conditions = []
+    params: list = []
+    if organization_id is not None:
+        conditions.append("p.organization_id = ?")
+        params.append(organization_id)
+    if department_ids is not None:
+        if not department_ids:
+            conditions.append("1 = 0")
+        else:
+            placeholders = ",".join(["?"] * len(department_ids))
+            conditions.append(f"p.department_id IN ({placeholders})")
+            params.extend(sorted(department_ids))
+    where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     cursor.execute(
-        """
+        f"""
         SELECT
             p.id,
             p.name,
+            p.department_id,
+            d.name AS department_name,
             COALESCE(MAX(CASE
                 WHEN ep.is_primary = 1 AND ep.is_fallback_only = 0 THEN 1
                 ELSE 0
@@ -10072,15 +11343,20 @@ def load_positions_for_auto_generation(cursor) -> list[dict]:
             END), -1) AS best_regular_priority,
             COUNT(ep.employee_id) AS assignment_count
         FROM positions p
+        LEFT JOIN departments d ON d.id = p.department_id
         LEFT JOIN employee_positions ep ON ep.position_id = p.id
-        GROUP BY p.id, p.name
+        {where_sql}
+        GROUP BY p.id, p.name, p.department_id, d.name, d.display_order, d.id
         ORDER BY
+            d.display_order,
+            d.id,
             has_primary_regular_staff DESC,
             best_primary_priority DESC,
             best_regular_priority DESC,
             assignment_count DESC,
             p.id
-        """
+        """,
+        params,
     )
     return [dict(row) for row in cursor.fetchall()]
 
@@ -10094,6 +11370,13 @@ def auto_generate_schedule(
     try:
         cursor = connection.cursor()
         organization_id = _access["membership"]["organization_id"] if _access else 1
+        fetch_one_or_404(
+            cursor,
+            "SELECT id FROM positions WHERE id = ? AND organization_id = ?",
+            (request_data.position_id, organization_id),
+            "Position not found",
+        )
+        ensure_department_access_for_position(cursor, _access, request_data.position_id)
         require_license_capability(cursor, "can_generate_schedule", organization_id)
         result = run_auto_generate_for_position(
             connection,
@@ -10118,7 +11401,11 @@ def auto_generate_all_schedules(
         organization_id = _access["membership"]["organization_id"] if _access else 1
         cursor = connection.cursor()
         require_license_capability(cursor, "can_generate_schedule", organization_id)
-        positions = load_positions_for_auto_generation(cursor)
+        positions = load_positions_for_auto_generation(
+            cursor,
+            organization_id=organization_id,
+            department_ids=get_allowed_department_ids(cursor, _access),
+        )
         if not positions:
             raise HTTPException(status_code=400, detail="No positions found")
 
@@ -10186,7 +11473,22 @@ def export_schedule_excel(
             lang = "en"
         week_dates = build_week_dates(week_start_date)
         cursor = connection.cursor()
-        position_row = fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (position_id,), "Position not found")
+        position_row = fetch_one_or_404(
+            cursor,
+            """
+            SELECT p.*, d.public_id AS department_public_id, d.name AS department_name
+            FROM positions p
+            LEFT JOIN departments d ON d.id = p.department_id
+            WHERE p.id = ?
+              AND (? IS NULL OR p.organization_id = ?)
+            """,
+            (
+                position_id,
+                access_context["membership"]["organization_id"] if access_context else None,
+                access_context["membership"]["organization_id"] if access_context else None,
+            ),
+            "Position not found",
+        )
         position = row_to_position_dict(position_row)
         employee_scope = employee_scope_from_access(access_context)
         employees = [
@@ -10196,7 +11498,12 @@ def export_schedule_excel(
         employee_ids = {employee["id"] for employee in employees}
         entries = [
             entry
-            for entry in get_schedule_entries(connection, dates=week_dates, employee_id=employee_scope)
+            for entry in get_schedule_entries(
+                connection,
+                dates=week_dates,
+                employee_id=employee_scope,
+                organization_id=access_context["membership"]["organization_id"] if access_context else None,
+            )
             if entry["employee_id"] in employee_ids
         ]
         day_status_map = get_employee_day_status_map(connection, [employee["id"] for employee in employees], week_dates)
@@ -10251,16 +11558,34 @@ def export_all_schedules_excel(
         if employee_scope is not None:
             cursor.execute(
                 """
-                SELECT p.*, ep.is_primary, ep.priority_score, ep.is_fallback_only
+                SELECT p.*, d.public_id AS department_public_id, d.name AS department_name,
+                       ep.is_primary, ep.priority_score, ep.is_fallback_only
                 FROM positions p
+                LEFT JOIN departments d ON d.id = p.department_id
                 JOIN employee_positions ep ON ep.position_id = p.id
                 WHERE ep.employee_id = ?
-                ORDER BY ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, p.id
+                ORDER BY d.display_order, d.id, ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, p.id
                 """,
                 (employee_scope,),
             )
         else:
-            cursor.execute("SELECT * FROM positions ORDER BY id")
+            conditions = []
+            params: list = []
+            if access_context:
+                conditions.append("p.organization_id = ?")
+                params.append(access_context["membership"]["organization_id"])
+            append_department_access_condition(cursor, access_context, conditions, params)
+            where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+            cursor.execute(
+                f"""
+                SELECT p.*, d.public_id AS department_public_id, d.name AS department_name
+                FROM positions p
+                LEFT JOIN departments d ON d.id = p.department_id
+                {where_sql}
+                ORDER BY d.display_order, d.id, p.id
+                """,
+                params,
+            )
         positions = [row_to_position_dict(row) for row in cursor.fetchall()]
         employees_by_position = {
             position["id"]: [
@@ -10274,7 +11599,13 @@ def export_all_schedules_excel(
             for employees in employees_by_position.values()
             for employee in employees
         })
-        entries = get_schedule_entries(connection, dates=week_dates, employee_id=employee_scope)
+        entries = get_schedule_entries(
+            connection,
+            dates=week_dates,
+            employee_id=employee_scope,
+            organization_id=access_context["membership"]["organization_id"] if access_context else None,
+            department_ids=None if employee_scope is not None else get_allowed_department_ids(cursor, access_context),
+        )
         day_status_map = get_employee_day_status_map(connection, employee_ids, week_dates) if employee_ids else {}
         output = build_all_schedule_export_workbook(
             positions=positions,
@@ -10322,7 +11653,23 @@ def export_schedule_word(
             lang = "en"
         week_dates = build_week_dates(week_start_date)
         cursor = connection.cursor()
-        position_row = fetch_one_or_404(cursor, "SELECT * FROM positions WHERE id = ?", (position_id,), "Position not found")
+        ensure_department_access_for_position(cursor, access_context, position_id)
+        position_row = fetch_one_or_404(
+            cursor,
+            """
+            SELECT p.*, d.public_id AS department_public_id, d.name AS department_name
+            FROM positions p
+            LEFT JOIN departments d ON d.id = p.department_id
+            WHERE p.id = ?
+              AND (? IS NULL OR p.organization_id = ?)
+            """,
+            (
+                position_id,
+                access_context["membership"]["organization_id"] if access_context else None,
+                access_context["membership"]["organization_id"] if access_context else None,
+            ),
+            "Position not found",
+        )
         position = row_to_position_dict(position_row)
         employee_scope = employee_scope_from_access(access_context)
         employees = [
@@ -10332,7 +11679,12 @@ def export_schedule_word(
         employee_ids = {employee["id"] for employee in employees}
         entries = [
             entry
-            for entry in get_schedule_entries(connection, dates=week_dates, employee_id=employee_scope)
+            for entry in get_schedule_entries(
+                connection,
+                dates=week_dates,
+                employee_id=employee_scope,
+                organization_id=access_context["membership"]["organization_id"] if access_context else None,
+            )
             if entry["employee_id"] in employee_ids
         ]
         day_status_map = get_employee_day_status_map(connection, [employee["id"] for employee in employees], week_dates)
@@ -10387,16 +11739,34 @@ def export_all_schedules_word(
         if employee_scope is not None:
             cursor.execute(
                 """
-                SELECT p.*, ep.is_primary, ep.priority_score, ep.is_fallback_only
+                SELECT p.*, d.public_id AS department_public_id, d.name AS department_name,
+                       ep.is_primary, ep.priority_score, ep.is_fallback_only
                 FROM positions p
+                LEFT JOIN departments d ON d.id = p.department_id
                 JOIN employee_positions ep ON ep.position_id = p.id
                 WHERE ep.employee_id = ?
-                ORDER BY ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, p.id
+                ORDER BY d.display_order, d.id, ep.is_primary DESC, ep.is_fallback_only ASC, ep.priority_score DESC, p.id
                 """,
                 (employee_scope,),
             )
         else:
-            cursor.execute("SELECT * FROM positions ORDER BY id")
+            conditions = []
+            params: list = []
+            if access_context:
+                conditions.append("p.organization_id = ?")
+                params.append(access_context["membership"]["organization_id"])
+            append_department_access_condition(cursor, access_context, conditions, params)
+            where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+            cursor.execute(
+                f"""
+                SELECT p.*, d.public_id AS department_public_id, d.name AS department_name
+                FROM positions p
+                LEFT JOIN departments d ON d.id = p.department_id
+                {where_sql}
+                ORDER BY d.display_order, d.id, p.id
+                """,
+                params,
+            )
         positions = [row_to_position_dict(row) for row in cursor.fetchall()]
         employees_by_position = {
             position["id"]: [
@@ -10410,7 +11780,13 @@ def export_all_schedules_word(
             for employees in employees_by_position.values()
             for employee in employees
         })
-        entries = get_schedule_entries(connection, dates=week_dates, employee_id=employee_scope)
+        entries = get_schedule_entries(
+            connection,
+            dates=week_dates,
+            employee_id=employee_scope,
+            organization_id=access_context["membership"]["organization_id"] if access_context else None,
+            department_ids=None if employee_scope is not None else get_allowed_department_ids(cursor, access_context),
+        )
         day_status_map = get_employee_day_status_map(connection, employee_ids, week_dates) if employee_ids else {}
         output = build_all_schedule_export_document(
             positions=positions,

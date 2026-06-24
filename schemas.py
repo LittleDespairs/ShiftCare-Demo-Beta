@@ -90,6 +90,15 @@ class OrganizationMemberEmployeeLinkUpdate(BaseModel):
     employee_public_id: str | None = Field(default=None, min_length=2, max_length=120)
 
 
+class OrganizationMemberDepartmentAccessUpdate(BaseModel):
+    department_ids: list[int] = Field(default_factory=list, max_length=200)
+
+    @model_validator(mode="after")
+    def normalize_department_ids(self):
+        self.department_ids = sorted({int(department_id) for department_id in self.department_ids if int(department_id) > 0})
+        return self
+
+
 class CloudOrganizationImportRequest(BaseModel):
     bundle: dict[str, Any]
     replace_existing: bool = True
@@ -128,7 +137,22 @@ class EmployeeCreate(BaseModel):
         return self
 
 
+class DepartmentCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    display_order: int = Field(ge=0, le=1000, default=0)
+    is_active: bool = True
+
+    @model_validator(mode="after")
+    def normalize_department(self):
+        self.name = self.name.strip()
+        if self.description is not None:
+            self.description = self.description.strip() or None
+        return self
+
+
 class PositionCreate(BaseModel):
+    department_id: int | None = Field(default=None, ge=1)
     name: str = Field(min_length=2, max_length=100)
     color: str = Field(default="#eff6ff", pattern=r"^#[0-9A-Fa-f]{6}$")
     requires_continuous_coverage: bool = False
@@ -463,6 +487,53 @@ class LicenseImportRequest(BaseModel):
 
 class LicenseActivationCodeRequest(BaseModel):
     activation_code: str = Field(min_length=8, max_length=512)
+
+
+class FeedbackReportCreate(BaseModel):
+    report_type: Literal["bug", "feature_request"]
+    severity: Literal["blocking", "major", "minor"] = "minor"
+    area: Literal[
+        "general",
+        "schedule",
+        "employees",
+        "preferences",
+        "auth",
+        "settings",
+        "updates",
+        "license",
+        "cloud_sync",
+        "other",
+    ] = "general"
+    title: str = Field(min_length=3, max_length=160)
+    description: str = Field(min_length=10, max_length=4000)
+    steps_to_reproduce: str | None = Field(default=None, max_length=2000)
+    expected_result: str | None = Field(default=None, max_length=2000)
+    actual_result: str | None = Field(default=None, max_length=2000)
+    contact_email: EmailStr | None = None
+    organization_id: int | None = Field(default=None, ge=1)
+    page_url: str | None = Field(default=None, max_length=2048)
+    client_context: dict[str, Any] = Field(default_factory=dict)
+    source_public_id: str | None = Field(default=None, max_length=80)
+
+    @model_validator(mode="after")
+    def normalize_text(self):
+        for field_name in (
+            "title",
+            "description",
+            "steps_to_reproduce",
+            "expected_result",
+            "actual_result",
+            "page_url",
+            "source_public_id",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                setattr(self, field_name, value.strip() or None)
+        if not self.title:
+            raise ValueError("title is required")
+        if not self.description:
+            raise ValueError("description is required")
+        return self
 
 
 class AppSettingsUpdate(BaseModel):
