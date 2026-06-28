@@ -135,7 +135,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.20.11_beta"
+APP_VERSION = "0.20.12_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -4987,12 +4987,64 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
                 ),
             )
 
-        cursor.execute("DELETE FROM employee_week_preferences WHERE organization_id = 1")
+        cloud_week_preference_public_ids = {
+            str(row.get("public_id"))
+            for row in records.get("employee_week_preferences") or []
+            if row.get("public_id")
+        }
+        if cloud_week_preference_public_ids:
+            placeholders = ",".join(["?"] * len(cloud_week_preference_public_ids))
+            cursor.execute(
+                f"""
+                DELETE FROM employee_week_preferences
+                WHERE organization_id = 1
+                  AND public_id IS NOT NULL
+                  AND public_id NOT IN ({placeholders})
+                """,
+                tuple(sorted(cloud_week_preference_public_ids)),
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE FROM employee_week_preferences
+                WHERE organization_id = 1 AND public_id IS NOT NULL
+                """
+            )
         for row in records.get("employee_week_preferences") or []:
             public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
             local_employee_id = local_employee_ids.get(str(public_id))
             if not local_employee_id:
                 continue
+            row_public_id = row.get("public_id")
+            row_values = (
+                local_employee_id,
+                row.get("week_start_date"),
+                row.get("preference_date"),
+                row.get("preference_type"),
+                row.get("request_type") or "request_shift",
+                row.get("target_category"),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+            )
+            if row_public_id:
+                cursor.execute(
+                    """
+                    UPDATE employee_week_preferences
+                    SET employee_id = ?,
+                        week_start_date = ?,
+                        preference_date = ?,
+                        preference_type = ?,
+                        request_type = ?,
+                        target_category = ?,
+                        created_at = ?,
+                        updated_at = ?,
+                        updated_by = NULL
+                    WHERE organization_id = 1 AND public_id = ?
+                    """,
+                    (*row_values, row_public_id),
+                )
+                if cursor.rowcount > 0:
+                    continue
             cursor.execute(
                 """
                 INSERT INTO employee_week_preferences (
@@ -5001,27 +5053,73 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    1,
-                    row.get("public_id"),
-                    local_employee_id,
-                    row.get("week_start_date"),
-                    row.get("preference_date"),
-                    row.get("preference_type"),
-                    row.get("request_type") or "request_shift",
-                    row.get("target_category"),
-                    row.get("created_at") or now,
-                    row.get("updated_at") or now,
-                    None,
-                ),
+                (1, row_public_id, *row_values, None),
             )
 
-        cursor.execute("DELETE FROM employee_week_preference_requests WHERE organization_id = 1")
+        cloud_week_request_public_ids = {
+            str(row.get("public_id"))
+            for row in records.get("employee_week_preference_requests") or []
+            if row.get("public_id")
+        }
+        if cloud_week_request_public_ids:
+            placeholders = ",".join(["?"] * len(cloud_week_request_public_ids))
+            cursor.execute(
+                f"""
+                DELETE FROM employee_week_preference_requests
+                WHERE organization_id = 1
+                  AND public_id IS NOT NULL
+                  AND public_id NOT IN ({placeholders})
+                """,
+                tuple(sorted(cloud_week_request_public_ids)),
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE FROM employee_week_preference_requests
+                WHERE organization_id = 1 AND public_id IS NOT NULL
+                """
+            )
         for row in records.get("employee_week_preference_requests") or []:
             public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
             local_employee_id = local_employee_ids.get(str(public_id))
             if not local_employee_id:
                 continue
+            row_public_id = row.get("public_id")
+            row_values = (
+                local_employee_id,
+                row.get("week_start_date"),
+                row.get("preference_date"),
+                row.get("preference_type"),
+                row.get("request_type") or "request_shift",
+                row.get("target_category"),
+                row.get("status") if row.get("status") in {"pending", "approved", "rejected"} else "pending",
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("reviewed_at"),
+                row.get("reviewed_by"),
+            )
+            if row_public_id:
+                cursor.execute(
+                    """
+                    UPDATE employee_week_preference_requests
+                    SET employee_id = ?,
+                        week_start_date = ?,
+                        preference_date = ?,
+                        preference_type = ?,
+                        request_type = ?,
+                        target_category = ?,
+                        status = ?,
+                        created_at = ?,
+                        updated_at = ?,
+                        updated_by = NULL,
+                        reviewed_at = ?,
+                        reviewed_by = ?
+                    WHERE organization_id = 1 AND public_id = ?
+                    """,
+                    (*row_values, row_public_id),
+                )
+                if cursor.rowcount > 0:
+                    continue
             cursor.execute(
                 """
                 INSERT INTO employee_week_preference_requests (
@@ -5031,22 +5129,7 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    1,
-                    row.get("public_id"),
-                    local_employee_id,
-                    row.get("week_start_date"),
-                    row.get("preference_date"),
-                    row.get("preference_type"),
-                    row.get("request_type") or "request_shift",
-                    row.get("target_category"),
-                    row.get("status") if row.get("status") in {"pending", "approved", "rejected"} else "pending",
-                    row.get("created_at") or now,
-                    row.get("updated_at") or now,
-                    None,
-                    row.get("reviewed_at"),
-                    row.get("reviewed_by"),
-                ),
+                (1, row_public_id, *row_values[:9], None, *row_values[9:]),
             )
 
         cursor.execute("DELETE FROM employee_recurring_preferences WHERE organization_id = 1")
@@ -8769,6 +8852,7 @@ def get_employee_week_preferences(
 def get_employee_week_preference_requests(
     week_start_date: str | None = None,
     status: str | None = None,
+    skip_cloud_pull: bool = False,
     preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
 ):
     if status and status not in {"pending", "approved", "rejected"}:
@@ -8776,8 +8860,9 @@ def get_employee_week_preference_requests(
     organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
     connection = get_connection()
     try:
-        pull_cloud_preferences_for_desktop_generation(connection)
-        connection.commit()
+        if not skip_cloud_pull:
+            pull_cloud_preferences_for_desktop_generation(connection)
+            connection.commit()
         cursor = connection.cursor()
         filters = ["ewpr.organization_id = ?"]
         params: list = [organization_id]

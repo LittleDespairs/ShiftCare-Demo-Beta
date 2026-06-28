@@ -2427,10 +2427,10 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("/login", service_worker_js)
         self.assertIn("/departments", service_worker_js)
         self.assertIn('requestUrl.searchParams.get("embedded") === "1"', service_worker_js)
-        self.assertIn("/static/css/auth.css?v=0.20.11_beta-desktop-1080p-readability", service_worker_js)
-        self.assertIn("/static/js/auth.js?v=0.20.11_beta-portal-entry-employee-mode", service_worker_js)
-        self.assertIn("/static/js/schedule.js?v=0.20.11_beta-schedule-sync-manual-time", service_worker_js)
-        self.assertIn("/static/js/update_notifier.js?v=0.20.11_beta-startup-updates", service_worker_js)
+        self.assertIn("/static/css/auth.css?v=0.20.12_beta-desktop-1080p-readability", service_worker_js)
+        self.assertIn("/static/js/auth.js?v=0.20.12_beta-portal-entry-employee-mode", service_worker_js)
+        self.assertIn("/static/js/schedule.js?v=0.20.12_beta-schedule-sync-manual-time", service_worker_js)
+        self.assertIn("/static/js/update_notifier.js?v=0.20.12_beta-startup-updates", service_worker_js)
         self.assertNotIn("/static/css/style.css?v=0.20.1_beta-generation-modes-rtl", service_worker_js)
         self.assertNotIn("/static/css/schedule.css?v=0.20.1_beta-generation-modes", service_worker_js)
         self.assertIn("registration.update()", pwa_js)
@@ -3263,7 +3263,7 @@ class ApiRegressionTests(unittest.TestCase):
 
         cloud_bundle = {
             "format": "shiftcare.organization.v1",
-            "app_version": "0.20.11_beta",
+            "app_version": "0.20.12_beta",
             "records": {
                 "employees": [{"id": 7, "public_id": "emp_cloud"}],
                 "employee_preferences": [],
@@ -3304,6 +3304,18 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(requests[0]["employee_id"], employee_id)
         self.assertEqual(requests[0]["preference_date"], "2026-05-05")
         self.assertEqual(requests[0]["status"], "pending")
+        first_request_id = requests[0]["id"]
+
+        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+            response = self.client.get(
+                "/api/employee-week-preference-requests",
+                params={"week_start_date": "2026-05-03", "status": "pending"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        requests = response.json()
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0]["id"], first_request_id)
 
     def test_cloud_preference_pull_does_not_queue_imported_rows_for_push(self):
         employee_id = self._create_employee()

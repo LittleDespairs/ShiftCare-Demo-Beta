@@ -1664,15 +1664,16 @@
 
             try {
                 const requestStatusParam = isEmployeePortalPreferencesMode() ? "" : "&status=pending";
-                const [preferences, requests] = await Promise.all([
-                    window.scheduleAuth.request(`/api/employee-week-preferences?week_start_date=${encodeURIComponent(weekStart)}`),
-                    window.scheduleAuth.request(`/api/employee-week-preference-requests?week_start_date=${encodeURIComponent(weekStart)}${requestStatusParam}`)
-                        .catch(error => {
-                            console.error(error);
-                            showMessage(t("msg_server_error_load_preference_requests", "Server error while loading preference requests."), "warning");
-                            return [];
-                        }),
-                ]);
+                const preferences = await window.scheduleAuth.request(
+                    `/api/employee-week-preferences?week_start_date=${encodeURIComponent(weekStart)}`
+                );
+                const requests = await window.scheduleAuth.request(
+                    `/api/employee-week-preference-requests?week_start_date=${encodeURIComponent(weekStart)}${requestStatusParam}&skip_cloud_pull=1`
+                ).catch(error => {
+                    console.error(error);
+                    showMessage(t("msg_server_error_load_preference_requests", "Server error while loading preference requests."), "warning");
+                    return [];
+                });
 
                 preferencesMap = {};
                 preferences.forEach(item => {

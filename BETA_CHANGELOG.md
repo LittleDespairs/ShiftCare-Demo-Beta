@@ -2,6 +2,23 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.20.12_beta - 2026-06-28
+
+## Release Focus
+
+Fix approval of extra weekly preference requests after desktop cloud pull.
+
+## Fixed
+
+- Kept local SQLite IDs stable for cloud-imported weekly preferences and pending approval requests by updating rows through `public_id` instead of deleting and reinserting them.
+- Prevented the weekly preferences page from running two cloud pulls during one load, reducing delay and avoiding stale approval button IDs.
+- Added regression coverage for repeated cloud pulls returning the same pending request `id`.
+
+## Verification
+
+- Full API and schema regression suite passed locally.
+- Local server on port `8006` was restarted with the fix.
+
 # 0.20.11_beta - 2026-06-28
 
 ## Release Focus

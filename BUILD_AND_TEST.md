@@ -115,13 +115,13 @@ See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
 Current spec:
 
 ```text
-ShiftCare_0.20.11_beta.spec
+ShiftCare_0.20.12_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ShiftCare_0.20.11_beta.spec
+.\.venv\Scripts\pyinstaller.exe ShiftCare_0.20.12_beta.spec
 ```
 
 ## Windows Installer
@@ -145,8 +145,8 @@ If Inno Setup is not installed locally:
 Expected installer output:
 
 ```text
-dist\installer\ShiftCare_Setup_0.20.11-beta.exe
-dist\installer\ShiftCare_Demo_Setup_0.20.11-beta.exe
+dist\installer\ShiftCare_Setup_0.20.12-beta.exe
+dist\installer\ShiftCare_Demo_Setup_0.20.12-beta.exe
 ```
 
 Customer release build with code signing:
@@ -168,7 +168,7 @@ match the legal subject in the code-signing certificate.
 Before uploading the installer to GitHub Releases, verify it on a clean Windows machine:
 
 ```powershell
-signtool verify /pa /tw /v .\dist\installer\ShiftCare_Setup_0.20.11-beta.exe
+signtool verify /pa /tw /v .\dist\installer\ShiftCare_Setup_0.20.12-beta.exe
 ```
 
 ## Before Committing
