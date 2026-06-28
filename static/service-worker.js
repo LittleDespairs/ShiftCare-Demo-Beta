@@ -1,4 +1,4 @@
-const CACHE_NAME = "shiftcare-0.20.9-beta-desktop-1080p-readability-20260624";
+const CACHE_NAME = "shiftcare-0.20.10-beta-weekly-preference-approval-20260628";
 
 const SHELL_ASSETS = [
   "/",
@@ -15,20 +15,20 @@ const SHELL_ASSETS = [
   "/organization",
   "/feedback",
   "/guide",
-  "/static/css/style.css?v=0.20.9_beta-desktop-1080p-readability",
-  "/static/css/auth.css?v=0.20.9_beta-desktop-1080p-readability",
-  "/static/css/schedule.css?v=0.20.9_beta-desktop-1080p-readability",
-  "/static/js/i18n.js?v=0.20.9_beta-department-access",
-  "/static/js/auth_client.js?v=0.20.9_beta-desktop-local",
-  "/static/js/access_control.js?v=0.20.9_beta-department-access",
-  "/static/js/auth_i18n.js?v=0.20.9_beta-department-access",
-  "/static/js/auth.js?v=0.20.9_beta-portal-entry-employee-mode",
-  "/static/js/schedule.js?v=0.20.9_beta-schedule-sync-manual-time",
-  "/static/js/organization.js?v=0.20.9_beta-department-access",
-  "/static/js/feedback.js?v=0.20.9_beta-feedback",
-  "/static/js/online_status.js?v=0.20.9_beta",
-  "/static/js/pwa.js?v=0.20.9_beta",
-  "/static/js/update_notifier.js?v=0.20.9_beta-startup-updates",
+  "/static/css/style.css?v=0.20.10_beta-desktop-1080p-readability",
+  "/static/css/auth.css?v=0.20.10_beta-desktop-1080p-readability",
+  "/static/css/schedule.css?v=0.20.10_beta-desktop-1080p-readability",
+  "/static/js/i18n.js?v=0.20.10_beta-department-access",
+  "/static/js/auth_client.js?v=0.20.10_beta-desktop-local",
+  "/static/js/access_control.js?v=0.20.10_beta-department-access",
+  "/static/js/auth_i18n.js?v=0.20.10_beta-department-access",
+  "/static/js/auth.js?v=0.20.10_beta-portal-entry-employee-mode",
+  "/static/js/schedule.js?v=0.20.10_beta-schedule-sync-manual-time",
+  "/static/js/organization.js?v=0.20.10_beta-department-access",
+  "/static/js/feedback.js?v=0.20.10_beta-feedback",
+  "/static/js/online_status.js?v=0.20.10_beta",
+  "/static/js/pwa.js?v=0.20.10_beta",
+  "/static/js/update_notifier.js?v=0.20.10_beta-startup-updates",
   "/static/manifest.webmanifest",
   "/static/icons/app-icon.svg"
 ];

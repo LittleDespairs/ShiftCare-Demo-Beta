@@ -2,6 +2,27 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.20.10_beta - 2026-06-28
+
+## Release Focus
+
+Ship the employee weekly-preference approval workflow as a proper update release.
+
+## Changed
+
+- Added a two-day direct weekly preference limit for employees.
+- Queued additional weekly preference days for department administrator approval instead of saving them directly.
+- Added administrator approve, reject, and delete actions for queued weekly preference requests.
+- Added employee-side deletion for pending and rejected weekly preference requests.
+- Fixed PostgreSQL weekly preference saves after pending-request cleanup.
+- Updated runtime version, service worker cache keys, Android metadata, PyInstaller specs, installer metadata, build docs, and release notes to `0.20.10_beta`.
+
+## Verification
+
+- Automated API and schema regression tests passed locally.
+- Windows ShiftCare and ShiftCare Demo installers were rebuilt for the update feed.
+- Cloud deployment smoke checks passed for the employee portal and health checks.
+
 # 0.20.9_beta - 2026-06-24
 
 ## Release Focus
