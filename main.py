@@ -1731,9 +1731,10 @@ def save_confirmed_week_preference(
             user_id,
         ),
     )
+    preference_id = int(cursor.lastrowid)
     if cleanup_pending:
         delete_matching_pending_week_preference_requests(cursor, organization_id, preference)
-    return int(cursor.lastrowid)
+    return preference_id
 
 
 def queue_week_preference_request(
