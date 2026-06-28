@@ -354,6 +354,25 @@ CREATE TABLE IF NOT EXISTS employee_week_preferences (
     UNIQUE (public_id)
 );
 
+CREATE TABLE IF NOT EXISTS employee_week_preference_requests (
+    id BIGSERIAL PRIMARY KEY,
+    employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    week_start_date TEXT NOT NULL,
+    preference_date TEXT NOT NULL,
+    preference_type TEXT NOT NULL,
+    request_type TEXT NOT NULL DEFAULT 'request_shift',
+    target_category TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+    public_id TEXT NOT NULL DEFAULT ('wqr_' || lower(encode(gen_random_bytes(16), 'hex'))),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at TEXT,
+    reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE (public_id)
+);
+
 CREATE TABLE IF NOT EXISTS employee_recurring_preferences (
     id BIGSERIAL PRIMARY KEY,
     employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -472,6 +491,8 @@ CREATE INDEX IF NOT EXISTS idx_employee_positions_position_employee ON employee_
 CREATE INDEX IF NOT EXISTS idx_employee_day_statuses_employee_date ON employee_day_statuses (employee_id, date);
 CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_employee_week ON employee_week_preferences (employee_id, week_start_date, preference_date);
 CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_org_week ON employee_week_preferences (organization_id, week_start_date, preference_date);
+CREATE INDEX IF NOT EXISTS idx_employee_week_preference_requests_org_week_status ON employee_week_preference_requests (organization_id, week_start_date, status, preference_date);
+CREATE INDEX IF NOT EXISTS idx_employee_week_preference_requests_employee_week ON employee_week_preference_requests (employee_id, week_start_date, status, preference_date);
 CREATE INDEX IF NOT EXISTS idx_employee_recurring_preferences_employee ON employee_recurring_preferences (employee_id, preference_kind, day_of_week);
 CREATE INDEX IF NOT EXISTS idx_employee_recurring_preferences_org_employee ON employee_recurring_preferences (organization_id, employee_id, preference_kind, day_of_week);
 CREATE INDEX IF NOT EXISTS idx_coverage_requirements_position ON coverage_requirements (position_id, start_time, end_time);
@@ -479,5 +500,5 @@ CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position ON coverage_re
 CREATE INDEX IF NOT EXISTS idx_app_settings_organization ON app_settings (organization_id, key);
 
 INSERT INTO schema_metadata (key, value)
-VALUES ('schema_version', '23')
+VALUES ('schema_version', '24')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;

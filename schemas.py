@@ -308,6 +308,10 @@ class EmployeeWeekPreferenceCreate(BaseModel):
         return self
 
 
+class EmployeeWeekPreferenceRequestDecision(BaseModel):
+    status: Literal["approved", "rejected"]
+
+
 class EmployeeRecurringPreferenceRule(BaseModel):
     preference_kind: Literal["strict", "soft"]
     day_of_week: int = Field(ge=0, le=6)

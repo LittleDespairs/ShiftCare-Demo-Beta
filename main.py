@@ -103,6 +103,7 @@ from schemas import (
     EmployeePreferenceCreate,
     EmployeeRecurringPreferencesUpdate,
     EmployeeWeekPreferenceCreate,
+    EmployeeWeekPreferenceRequestDecision,
     FeedbackReportCreate,
     LicenseActivationCodeRequest,
     LicenseImportRequest,
@@ -169,6 +170,7 @@ WEEKLY_PREFERENCE_TYPES = (
     "no_morning_evening_combo",
 )
 PERSISTED_RECURRING_PREFERENCE_TYPES = tuple(value for value in WEEKLY_PREFERENCE_TYPES if value != "no_preference")
+EMPLOYEE_DIRECT_WEEKLY_PREFERENCE_DAY_LIMIT = 2
 SOFT_PREFERENCE_PENALTY = 350
 SOFT_DAY_OFF_PENALTY = 1200
 SOFT_COMBO_PENALTY = 500
@@ -1425,6 +1427,10 @@ def require_permanent_preference_admin_if_auth_initialized(authorization: str | 
     return require_roles_if_auth_initialized({"owner", "admin"}, authorization)
 
 
+def require_week_preference_approval_if_auth_initialized(authorization: str | None = Header(default=None)) -> dict | None:
+    return require_roles_if_auth_initialized({"owner", "admin", "scheduler", "manager"}, authorization)
+
+
 def employee_scope_from_access(access_context: dict | None) -> int | None:
     if not access_context:
         return None
@@ -1583,6 +1589,183 @@ def require_employee_preference_scope(preference_context: dict | None, employee_
         return
     if preference_context["membership"].get("employee_id") != employee_id:
         raise HTTPException(status_code=403, detail="Employees can manage only their own preferences")
+
+
+def count_confirmed_week_preference_days(cursor, organization_id: int, employee_id: int, week_start_date: str) -> int:
+    cursor.execute(
+        """
+        SELECT COUNT(DISTINCT preference_date) AS count
+        FROM employee_week_preferences
+        WHERE organization_id = ?
+          AND employee_id = ?
+          AND week_start_date = ?
+        """,
+        (organization_id, employee_id, week_start_date),
+    )
+    return int(cursor.fetchone()["count"] or 0)
+
+
+def has_confirmed_week_preference_on_date(
+    cursor,
+    organization_id: int,
+    employee_id: int,
+    preference_date: str,
+) -> bool:
+    cursor.execute(
+        """
+        SELECT 1
+        FROM employee_week_preferences
+        WHERE organization_id = ?
+          AND employee_id = ?
+          AND preference_date = ?
+        LIMIT 1
+        """,
+        (organization_id, employee_id, preference_date),
+    )
+    return cursor.fetchone() is not None
+
+
+def should_queue_week_preference_for_approval(
+    cursor,
+    preference_context: dict | None,
+    organization_id: int,
+    preference: EmployeeWeekPreferenceCreate,
+) -> bool:
+    if not preference_context or preference_context.get("scope") != "own":
+        return False
+    if has_confirmed_week_preference_on_date(cursor, organization_id, preference.employee_id, preference.preference_date):
+        return False
+    confirmed_day_count = count_confirmed_week_preference_days(
+        cursor,
+        organization_id,
+        preference.employee_id,
+        preference.week_start_date,
+    )
+    return confirmed_day_count >= EMPLOYEE_DIRECT_WEEKLY_PREFERENCE_DAY_LIMIT
+
+
+def delete_matching_pending_week_preference_requests(
+    cursor,
+    organization_id: int,
+    preference: EmployeeWeekPreferenceCreate,
+) -> None:
+    if preference.request_type in {"day_off", "vacation"}:
+        cursor.execute(
+            """
+            DELETE FROM employee_week_preference_requests
+            WHERE organization_id = ?
+              AND employee_id = ?
+              AND preference_date = ?
+              AND status = 'pending'
+            """,
+            (organization_id, preference.employee_id, preference.preference_date),
+        )
+        return
+    cursor.execute(
+        """
+        DELETE FROM employee_week_preference_requests
+        WHERE organization_id = ?
+          AND employee_id = ?
+          AND preference_date = ?
+          AND request_type = ?
+          AND target_category = ?
+          AND status = 'pending'
+        """,
+        (
+            organization_id,
+            preference.employee_id,
+            preference.preference_date,
+            preference.request_type,
+            preference.target_category,
+        ),
+    )
+
+
+def save_confirmed_week_preference(
+    cursor,
+    preference: EmployeeWeekPreferenceCreate,
+    organization_id: int,
+    user_id: int | None,
+    now: str,
+    cleanup_pending: bool = True,
+) -> int:
+    if preference.request_type in {"day_off", "vacation"}:
+        cursor.execute(
+            """
+            DELETE FROM employee_week_preferences
+            WHERE organization_id = ? AND employee_id = ? AND preference_date = ?
+            """,
+            (organization_id, preference.employee_id, preference.preference_date),
+        )
+    else:
+        cursor.execute(
+            """
+            DELETE FROM employee_week_preferences
+            WHERE organization_id = ? AND employee_id = ? AND preference_date = ?
+              AND request_type = ? AND target_category = ?
+            """,
+            (
+                organization_id,
+                preference.employee_id,
+                preference.preference_date,
+                preference.request_type,
+                preference.target_category,
+            ),
+        )
+    cursor.execute(
+        """
+        INSERT INTO employee_week_preferences
+            (organization_id, employee_id, week_start_date, preference_date, preference_type,
+             request_type, target_category, updated_at, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            organization_id,
+            preference.employee_id,
+            preference.week_start_date,
+            preference.preference_date,
+            preference.preference_type,
+            preference.request_type,
+            preference.target_category,
+            now,
+            user_id,
+        ),
+    )
+    if cleanup_pending:
+        delete_matching_pending_week_preference_requests(cursor, organization_id, preference)
+    return int(cursor.lastrowid)
+
+
+def queue_week_preference_request(
+    cursor,
+    preference: EmployeeWeekPreferenceCreate,
+    organization_id: int,
+    user_id: int | None,
+    now: str,
+) -> int:
+    delete_matching_pending_week_preference_requests(cursor, organization_id, preference)
+    cursor.execute(
+        """
+        INSERT INTO employee_week_preference_requests (
+            organization_id, employee_id, week_start_date, preference_date, preference_type,
+            request_type, target_category, status, created_at, updated_at, updated_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+        """,
+        (
+            organization_id,
+            preference.employee_id,
+            preference.week_start_date,
+            preference.preference_date,
+            preference.preference_type,
+            preference.request_type,
+            preference.target_category,
+            now,
+            now,
+            user_id,
+        ),
+    )
+    return int(cursor.lastrowid)
 
 
 def get_optional_current_user(authorization: str | None = Header(default=None)) -> dict | None:
@@ -2131,6 +2314,7 @@ ORGANIZATION_EXPORT_TABLES = (
     "coverage_requirements",
     "employee_preferences",
     "employee_week_preferences",
+    "employee_week_preference_requests",
     "employee_recurring_preferences",
     "employee_day_statuses",
     "schedule_entries",
@@ -2143,6 +2327,7 @@ ORGANIZATION_IMPORT_DELETE_ORDER = (
     "schedule_entries",
     "employee_day_statuses",
     "employee_recurring_preferences",
+    "employee_week_preference_requests",
     "employee_week_preferences",
     "employee_preferences",
     "coverage_requirements",
@@ -2729,6 +2914,37 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
             ),
         )
 
+    for row in records.get("employee_week_preference_requests") or []:
+        new_employee_id = employee_id_map.get(int(row["employee_id"]))
+        if not new_employee_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO employee_week_preference_requests (
+                organization_id, public_id, employee_id, week_start_date, preference_date,
+                preference_type, request_type, target_category, status,
+                created_at, updated_at, updated_by, reviewed_at, reviewed_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                new_employee_id,
+                row.get("week_start_date"),
+                row.get("preference_date"),
+                row.get("preference_type"),
+                row.get("request_type") or "request_shift",
+                row.get("target_category"),
+                row.get("status") if row.get("status") in {"pending", "approved", "rejected"} else "pending",
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+                row.get("reviewed_at"),
+                row.get("reviewed_by"),
+            ),
+        )
+
     for row in records.get("employee_recurring_preferences") or []:
         new_employee_id = employee_id_map.get(int(row["employee_id"]))
         if not new_employee_id:
@@ -2845,6 +3061,7 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
             "positions": len(position_id_map),
             "shift_templates": len(shift_template_id_map),
             "schedule_entries": len(records.get("schedule_entries") or []),
+            "employee_week_preference_requests": len(records.get("employee_week_preference_requests") or []),
             "licenses": license_count,
         },
         "restored_employee_links": restored_employee_links,
@@ -8513,6 +8730,151 @@ def get_employee_week_preferences(
         connection.close()
 
 
+@app.get("/api/employee-week-preference-requests", tags=["Weekly Preferences"])
+def get_employee_week_preference_requests(
+    week_start_date: str | None = None,
+    status: str | None = None,
+    preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
+):
+    if status and status not in {"pending", "approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="Unsupported request status")
+    organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        filters = ["ewpr.organization_id = ?"]
+        params: list = [organization_id]
+        if week_start_date:
+            filters.append("ewpr.week_start_date = ?")
+            params.append(week_start_date)
+        if status:
+            filters.append("ewpr.status = ?")
+            params.append(status)
+        if preference_context and preference_context["scope"] == "own":
+            filters.append("ewpr.employee_id = ?")
+            params.append(preference_context["membership"]["employee_id"])
+        else:
+            allowed_department_ids = get_allowed_department_ids(cursor, preference_context)
+            if allowed_department_ids is not None:
+                if not allowed_department_ids:
+                    filters.append("1 = 0")
+                else:
+                    placeholders = ",".join(["?"] * len(allowed_department_ids))
+                    filters.append(
+                        f"""
+                        EXISTS (
+                            SELECT 1
+                            FROM employee_positions ep
+                            JOIN positions p ON p.id = ep.position_id
+                            WHERE ep.employee_id = ewpr.employee_id
+                              AND p.department_id IN ({placeholders})
+                        )
+                        """
+                    )
+                    params.extend(sorted(allowed_department_ids))
+        cursor.execute(
+            f"""
+            SELECT ewpr.*, e.full_name AS employee_name
+            FROM employee_week_preference_requests ewpr
+            JOIN employees e ON e.id = ewpr.employee_id
+            WHERE {" AND ".join(filters)}
+            ORDER BY
+                CASE ewpr.status WHEN 'pending' THEN 0 WHEN 'rejected' THEN 1 ELSE 2 END,
+                ewpr.preference_date,
+                e.full_name,
+                ewpr.created_at DESC,
+                ewpr.id DESC
+            """,
+            tuple(params),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        connection.close()
+
+
+@app.patch("/api/employee-week-preference-requests/{request_id}", tags=["Weekly Preferences"])
+def decide_employee_week_preference_request(
+    request_id: int,
+    decision: EmployeeWeekPreferenceRequestDecision,
+    approval_context: dict | None = Depends(require_week_preference_approval_if_auth_initialized),
+):
+    organization_id = approval_context["membership"]["organization_id"] if approval_context else 1
+    user_id = approval_context["user"]["id"] if approval_context else None
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        request_row = fetch_one_or_404(
+            cursor,
+            """
+            SELECT *
+            FROM employee_week_preference_requests
+            WHERE id = ? AND organization_id = ?
+            """,
+            (request_id, organization_id),
+            "Preference request not found",
+        )
+        ensure_department_access_for_employee(cursor, approval_context, int(request_row["employee_id"]))
+        if request_row["status"] != "pending":
+            raise HTTPException(status_code=409, detail="Preference request has already been reviewed")
+
+        now = current_utc_timestamp()
+        approved_preference_id = None
+        if decision.status == "approved":
+            preference = EmployeeWeekPreferenceCreate(
+                employee_id=int(request_row["employee_id"]),
+                week_start_date=str(request_row["week_start_date"]),
+                preference_date=str(request_row["preference_date"]),
+                preference_type=str(request_row["preference_type"]),
+                request_type=str(request_row["request_type"]),
+                target_category=request_row["target_category"],
+            )
+            approved_preference_id = save_confirmed_week_preference(
+                cursor,
+                preference,
+                organization_id,
+                user_id,
+                now,
+                cleanup_pending=False,
+            )
+
+        cursor.execute(
+            """
+            UPDATE employee_week_preference_requests
+            SET status = ?,
+                reviewed_at = ?,
+                reviewed_by = ?,
+                updated_at = ?,
+                updated_by = ?
+            WHERE id = ? AND organization_id = ?
+            """,
+            (decision.status, now, user_id, now, user_id, request_id, organization_id),
+        )
+        write_auth_audit_event(
+            cursor,
+            "employee_week_preference_request_reviewed",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={
+                "request_id": request_id,
+                "employee_id": int(request_row["employee_id"]),
+                "status": decision.status,
+                "approved_preference_id": approved_preference_id,
+            },
+        )
+        connection.commit()
+        return {
+            "message": "Weekly preference request reviewed successfully",
+            "request_id": request_id,
+            "status": decision.status,
+            "approved_preference_id": approved_preference_id,
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 @app.post("/api/employee-week-preferences", tags=["Weekly Preferences"])
 def save_employee_week_preference(
     preference: EmployeeWeekPreferenceCreate,
@@ -8531,48 +8893,30 @@ def save_employee_week_preference(
             "Employee not found",
         )
         now = current_utc_timestamp()
-        if preference.request_type in {"day_off", "vacation"}:
-            cursor.execute(
-                """
-                DELETE FROM employee_week_preferences
-                WHERE organization_id = ? AND employee_id = ? AND preference_date = ?
-                """,
-                (organization_id, preference.employee_id, preference.preference_date),
+        if should_queue_week_preference_for_approval(cursor, preference_context, organization_id, preference):
+            request_id = queue_week_preference_request(cursor, preference, organization_id, user_id, now)
+            write_auth_audit_event(
+                cursor,
+                "employee_week_preference_request_queued",
+                user_id=user_id,
+                organization_id=organization_id,
+                metadata={
+                    "employee_id": preference.employee_id,
+                    "week_start_date": preference.week_start_date,
+                    "preference_date": preference.preference_date,
+                    "preference_type": preference.preference_type,
+                    "request_type": preference.request_type,
+                    "target_category": preference.target_category,
+                    "direct_day_limit": EMPLOYEE_DIRECT_WEEKLY_PREFERENCE_DAY_LIMIT,
+                },
             )
-        else:
-            cursor.execute(
-                """
-                DELETE FROM employee_week_preferences
-                WHERE organization_id = ? AND employee_id = ? AND preference_date = ?
-                  AND request_type = ? AND target_category = ?
-                """,
-                (
-                    organization_id,
-                    preference.employee_id,
-                    preference.preference_date,
-                    preference.request_type,
-                    preference.target_category,
-                ),
-            )
-        cursor.execute(
-            """
-            INSERT INTO employee_week_preferences
-                (organization_id, employee_id, week_start_date, preference_date, preference_type,
-                 request_type, target_category, updated_at, updated_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                organization_id,
-                preference.employee_id,
-                preference.week_start_date,
-                preference.preference_date,
-                preference.preference_type,
-                preference.request_type,
-                preference.target_category,
-                now,
-                user_id,
-            ),
-        )
+            connection.commit()
+            return {
+                "message": "Weekly preference request queued for administrator approval",
+                "status": "pending_approval",
+                "request": {**preference.model_dump(), "id": request_id, "status": "pending"},
+            }
+        preference_id = save_confirmed_week_preference(cursor, preference, organization_id, user_id, now)
         write_auth_audit_event(
             cursor,
             "employee_week_preference_saved",
@@ -8590,7 +8934,8 @@ def save_employee_week_preference(
         connection.commit()
         return {
             "message": "Weekly preference saved successfully",
-            "preference": {**preference.model_dump(), "id": cursor.lastrowid},
+            "status": "saved",
+            "preference": {**preference.model_dump(), "id": preference_id},
         }
     finally:
         connection.close()

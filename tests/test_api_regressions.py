@@ -56,6 +56,7 @@ class ApiRegressionTests(unittest.TestCase):
             "app_settings",
             "employee_day_statuses",
             "employee_recurring_preferences",
+            "employee_week_preference_requests",
             "employee_week_preferences",
             "employee_preferences",
             "coverage_requirements",
@@ -193,6 +194,7 @@ class ApiRegressionTests(unittest.TestCase):
             "shift_requirements",
             "employee_preferences",
             "employee_week_preferences",
+            "employee_week_preference_requests",
             "employee_recurring_preferences",
             "employee_day_statuses",
             "coverage_requirements",
@@ -1339,6 +1341,17 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(recurring_response.status_code, 200)
 
         cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO employee_week_preference_requests (
+                employee_id, week_start_date, preference_date, preference_type,
+                request_type, target_category, status
+            )
+            VALUES (?, '2026-04-20', '2026-04-22', 'only_morning', 'request_shift', 'morning', 'pending')
+            """,
+            (employee_id,),
+        )
+        self.connection.commit()
         for table_name, prefix in database.PUBLIC_ID_TABLE_PREFIXES.items():
             cursor.execute(f"SELECT public_id FROM {table_name} WHERE public_id IS NOT NULL LIMIT 1")
             public_id_row = cursor.fetchone()
@@ -2894,6 +2907,152 @@ class ApiRegressionTests(unittest.TestCase):
             params={"week_start_date": "2026-04-20"},
         ).json()
         self.assertEqual(len(remaining), 2)
+
+    def test_employee_weekly_preferences_after_two_days_require_approval(self):
+        owner_response = self.client.post(
+            "/api/auth/bootstrap",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_user_id = owner_response.json()["user"]["id"]
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        employee_id = self._create_employee(
+            headers=owner_headers,
+            full_name="Employee User",
+            id_card="123456789",
+        )
+        position_id = self._create_position(headers=owner_headers, name="Ward A")
+        assignment_response = self.client.post(
+            "/api/employee-positions",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_id,
+                "position_id": position_id,
+                "is_primary": True,
+                "priority_score": 100,
+                "is_fallback_only": False,
+            },
+        )
+        self.assertEqual(assignment_response.status_code, 200)
+        invitation_response = self.client.post(
+            "/api/organizations/1/invitations",
+            headers=owner_headers,
+            json={"email": "employee@example.com", "employee_id": employee_id, "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        employee_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={
+                "token": invitation_response.json()["invitation_token"],
+                "full_name": "Employee User",
+                "password": "EmployeePass123",
+            },
+        )
+        self.assertEqual(employee_response.status_code, 200)
+        employee_headers = {"Authorization": f"Bearer {employee_response.json()['access_token']}"}
+
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO users (email, full_name, status, email_verified, created_at, updated_at)
+            VALUES ('ward-admin@example.com', 'Ward Admin', 'active', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """
+        )
+        department_admin_user_id = cursor.lastrowid
+        cursor.execute(
+            """
+            INSERT INTO organization_memberships (organization_id, user_id, role, status, created_at, updated_at)
+            VALUES (1, ?, 'admin', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (department_admin_user_id,),
+        )
+        cursor.execute(
+            """
+            INSERT INTO user_department_access (
+                organization_id, user_id, department_id, created_at, updated_at, updated_by
+            )
+            VALUES (1, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
+            """,
+            (department_admin_user_id, owner_user_id),
+        )
+        department_admin_session = main.build_auth_response(self.connection, department_admin_user_id)
+        self.connection.commit()
+        department_admin_headers = {"Authorization": f"Bearer {department_admin_session['access_token']}"}
+
+        for preference_date in ("2026-04-20", "2026-04-21"):
+            response = self.client.post(
+                "/api/employee-week-preferences",
+                headers=employee_headers,
+                json={
+                    "employee_id": employee_id,
+                    "week_start_date": "2026-04-20",
+                    "preference_date": preference_date,
+                    "request_type": "request_shift",
+                    "target_category": "morning",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["status"], "saved")
+
+        third_day_response = self.client.post(
+            "/api/employee-week-preferences",
+            headers=employee_headers,
+            json={
+                "employee_id": employee_id,
+                "week_start_date": "2026-04-20",
+                "preference_date": "2026-04-22",
+                "request_type": "exclude_shift",
+                "target_category": "night",
+            },
+        )
+        self.assertEqual(third_day_response.status_code, 200)
+        self.assertEqual(third_day_response.json()["status"], "pending_approval")
+
+        preferences = self.client.get(
+            "/api/employee-week-preferences",
+            headers=owner_headers,
+            params={"week_start_date": "2026-04-20"},
+        ).json()
+        self.assertEqual({item["preference_date"] for item in preferences}, {"2026-04-20", "2026-04-21"})
+
+        pending_requests = self.client.get(
+            "/api/employee-week-preference-requests",
+            headers=department_admin_headers,
+            params={"week_start_date": "2026-04-20", "status": "pending"},
+        ).json()
+        self.assertEqual(len(pending_requests), 1)
+        self.assertEqual(pending_requests[0]["employee_id"], employee_id)
+        self.assertEqual(pending_requests[0]["preference_date"], "2026-04-22")
+
+        approve_response = self.client.patch(
+            f"/api/employee-week-preference-requests/{pending_requests[0]['id']}",
+            headers=department_admin_headers,
+            json={"status": "approved"},
+        )
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.json()["status"], "approved")
+        self.assertIsNotNone(approve_response.json()["approved_preference_id"])
+
+        preferences_after_approval = self.client.get(
+            "/api/employee-week-preferences",
+            headers=owner_headers,
+            params={"week_start_date": "2026-04-20"},
+        ).json()
+        self.assertEqual(
+            {item["preference_date"] for item in preferences_after_approval},
+            {"2026-04-20", "2026-04-21", "2026-04-22"},
+        )
+        reviewed_requests = self.client.get(
+            "/api/employee-week-preference-requests",
+            headers=employee_headers,
+            params={"week_start_date": "2026-04-20"},
+        ).json()
+        self.assertEqual(reviewed_requests[0]["status"], "approved")
 
     def test_vacation_day_status_blocks_schedule_cell(self):
         employee_id = self._create_employee()

@@ -200,6 +200,24 @@
             border-style: dashed;
         }
 
+        .request-chip.pending {
+            background: #fffbeb;
+            color: #92400e;
+            border-color: #fde68a;
+        }
+
+        .request-chip.rejected {
+            background: #fef2f2;
+            color: #991b1b;
+            border-color: #fecaca;
+        }
+
+        .request-chip.approved {
+            background: #f0fdf4;
+            color: #166534;
+            border-color: #bbf7d0;
+        }
+
         .request-remove {
             border: none;
             border-radius: 999px;
@@ -375,6 +393,75 @@
             display: none;
         }
 
+        .approval-panel-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            align-items: flex-start;
+            margin-bottom: 14px;
+        }
+
+        .approval-panel-title {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 850;
+        }
+
+        .approval-panel-text {
+            margin: 4px 0 0;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .approval-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .approval-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            background: #fff;
+        }
+
+        .approval-row-main {
+            display: grid;
+            gap: 4px;
+        }
+
+        .approval-row-title {
+            font-weight: 850;
+            color: var(--text);
+        }
+
+        .approval-row-meta {
+            color: var(--muted);
+            font-size: 0.84rem;
+            line-height: 1.4;
+        }
+
+        .approval-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .approval-empty {
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            color: var(--muted);
+            background: #f8fafc;
+            font-size: 0.9rem;
+        }
+
         @media (max-width: 640px) {
             .request-choice-grid,
             .request-category-options {
@@ -442,6 +529,19 @@
 
             .request-stack > .btn {
                 width: 100%;
+                justify-content: center;
+            }
+
+            .approval-row {
+                grid-template-columns: 1fr;
+            }
+
+            .approval-actions {
+                justify-content: stretch;
+            }
+
+            .approval-actions .btn {
+                flex: 1;
                 justify-content: center;
             }
         }
@@ -735,6 +835,22 @@
                 </div>
             </section>
 
+            <section id="preference-approvals-panel" class="panel mt-22" hidden data-employee-portal-hidden="true">
+                <div class="panel-body">
+                    <div class="approval-panel-header">
+                        <div>
+                            <h3 class="approval-panel-title" data-i18n="preferences_approval_title">
+                                Extra request approvals
+                            </h3>
+                            <p class="approval-panel-text" data-i18n="preferences_approval_text">
+                                Employees can save requests for two days directly. Additional days wait for approval here.
+                            </p>
+                        </div>
+                    </div>
+                    <div id="preference-approvals-list" class="approval-list"></div>
+                </div>
+            </section>
+
             <!--
                 MAIN TABLE / ОСНОВНАЯ ТАБЛИЦА
                 The weekly preference matrix.
@@ -846,6 +962,9 @@
                     <li data-i18n="preferences_note_3">
                         The week in this project starts on Sunday.
                     </li>
+                    <li data-i18n="preferences_note_4">
+                        Employees can save requests for two days directly; additional days require administrator approval.
+                    </li>
                 </ul>
             </div>
         </main>
@@ -934,6 +1053,8 @@
         let preferencePositionOptions = [];
         let weekDates = [];
         let preferencesMap = {};
+        let preferenceRequests = [];
+        let preferenceRequestMap = {};
         let pendingRequestTarget = null;
         let appSettings = {};
         let preferencesLoaded = false;
@@ -1107,7 +1228,10 @@
         }
 
         function employeeHasWeekRequests(employeeId) {
-            return weekDates.some(date => (preferencesMap[preferenceKey(employeeId, date)] || []).length > 0);
+            return weekDates.some(date => {
+                const key = preferenceKey(employeeId, date);
+                return (preferencesMap[key] || []).length > 0 || (preferenceRequestMap[key] || []).length > 0;
+            });
         }
 
         function getFilteredPreferenceEmployees() {
@@ -1162,6 +1286,31 @@
                 }
             }
             return { ...item, request_type: requestType, target_category: targetCategory };
+        }
+
+        function getRequestStatusLabel(status) {
+            if (status === "pending") return t("preferences_request_status_pending", "Pending approval");
+            if (status === "approved") return t("preferences_request_status_approved", "Approved");
+            if (status === "rejected") return t("preferences_request_status_rejected", "Rejected");
+            return status || "";
+        }
+
+        function shouldRenderRequestStatusInCell(request) {
+            return request.status !== "approved";
+        }
+
+        function rebuildPreferenceRequestMap() {
+            preferenceRequestMap = {};
+            preferenceRequests
+                .filter(shouldRenderRequestStatusInCell)
+                .forEach(item => {
+                    const normalized = normalizeRequest(item);
+                    const key = preferenceKey(normalized.employee_id, normalized.preference_date);
+                    if (!preferenceRequestMap[key]) {
+                        preferenceRequestMap[key] = [];
+                    }
+                    preferenceRequestMap[key].push(normalized);
+                });
         }
 
         function applyShiftColorSettings(settings = {}) {
@@ -1219,10 +1368,28 @@
             `;
         }
 
+        function renderRequestStatusChip(request) {
+            const normalized = normalizeRequest(request);
+            const categoryText = normalized.target_category ? ` · ${getShiftCategoryLabel(normalized.target_category)}` : "";
+            return `
+                <div class="request-chip ${escapeHtml(normalized.status || "pending")}">
+                    <span>
+                        ${escapeHtml(getRequestTypeLabel(normalized.request_type))}${escapeHtml(categoryText)}
+                        · ${escapeHtml(getRequestStatusLabel(normalized.status))}
+                    </span>
+                </div>
+            `;
+        }
+
         function renderDayRequests(employeeId, date) {
             const requests = preferencesMap[preferenceKey(employeeId, date)] || [];
-            const list = requests.length
-                ? requests.map(renderRequestChip).join("")
+            const requestStatuses = preferenceRequestMap[preferenceKey(employeeId, date)] || [];
+            const renderedItems = [
+                ...requests.map(renderRequestChip),
+                ...requestStatuses.map(renderRequestStatusChip),
+            ].join("");
+            const list = renderedItems
+                ? renderedItems
                 : `<div class="request-empty">${t("preference_no_preference", "No preference")}</div>`;
             return `
                 <div class="request-stack">
@@ -1238,6 +1405,61 @@
                     </button>
                 </div>
             `;
+        }
+
+        function renderApprovalRow(request) {
+            const normalized = normalizeRequest(request);
+            const categoryText = normalized.target_category ? ` · ${getShiftCategoryLabel(normalized.target_category)}` : "";
+            const employeeName = normalized.employee_name || t("preferences_employee_not_found", "Employee not found");
+            return `
+                <div class="approval-row">
+                    <div class="approval-row-main">
+                        <div class="approval-row-title">
+                            ${escapeHtml(employeeName)} · ${escapeHtml(normalized.preference_date)}
+                        </div>
+                        <div class="approval-row-meta">
+                            ${escapeHtml(getRequestTypeLabel(normalized.request_type))}${escapeHtml(categoryText)}
+                            · ${escapeHtml(getRequestStatusLabel(normalized.status))}
+                        </div>
+                    </div>
+                    <div class="approval-actions">
+                        <button
+                            class="btn btn-primary"
+                            type="button"
+                            data-action="approve-preference-request"
+                            data-request-id="${Number(normalized.id)}"
+                        >
+                            ${t("preferences_approve_request", "Approve")}
+                        </button>
+                        <button
+                            class="btn btn-secondary"
+                            type="button"
+                            data-action="reject-preference-request"
+                            data-request-id="${Number(normalized.id)}"
+                        >
+                            ${t("preferences_reject_request", "Reject")}
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderApprovalPanel() {
+            const panel = document.getElementById("preference-approvals-panel");
+            const list = document.getElementById("preference-approvals-list");
+            if (!panel || !list) return;
+
+            if (isEmployeePortalPreferencesMode() || !preferencesLoaded) {
+                panel.hidden = true;
+                list.innerHTML = "";
+                return;
+            }
+
+            const pendingRequests = preferenceRequests.filter(item => item.status === "pending");
+            panel.hidden = false;
+            list.innerHTML = pendingRequests.length
+                ? pendingRequests.map(renderApprovalRow).join("")
+                : `<div class="approval-empty">${t("preferences_approval_empty", "No extra requests are waiting for approval.")}</div>`;
         }
 
         function renderPreferencesEmptyState(titleKey, titleFallback, textKey, textFallback, actionHtml = "") {
@@ -1258,6 +1480,7 @@
                 </tr>
             `;
             clearPreferenceFilterCount();
+            renderApprovalPanel();
         }
 
         function renderPreferencesInitialState() {
@@ -1325,6 +1548,7 @@
             document.getElementById("preferences-filter-reset").addEventListener("click", resetPreferenceFilters);
             document.getElementById("week_start").addEventListener("change", handlePreferencesContextChanged);
             document.getElementById("tbody").addEventListener("click", handlePreferencesTableClick);
+            document.getElementById("preference-approvals-list").addEventListener("click", handlePreferenceApprovalClick);
             document.getElementById("request_type_select").addEventListener("change", updateRequestModalFields);
             document.querySelectorAll("[data-request-type]").forEach(button => {
                 button.addEventListener("click", () => setRequestType(button.dataset.requestType));
@@ -1412,7 +1636,8 @@
            LOAD WEEK PREFERENCES / ЗАГРУЗКА ПОЖЕЛАНИЙ ЗА НЕДЕЛЮ
            ========================================================= */
 
-        async function loadWeekPreferences() {
+        async function loadWeekPreferences(options = {}) {
+            const showLoadedMessage = options.showLoadedMessage !== false;
             const weekStart = document.getElementById("week_start").value;
 
             if (!weekStart) {
@@ -1423,7 +1648,16 @@
             weekDates = buildWeek(weekStart);
 
             try {
-                const preferences = await window.scheduleAuth.request(`/api/employee-week-preferences?week_start_date=${encodeURIComponent(weekStart)}`);
+                const requestStatusParam = isEmployeePortalPreferencesMode() ? "" : "&status=pending";
+                const [preferences, requests] = await Promise.all([
+                    window.scheduleAuth.request(`/api/employee-week-preferences?week_start_date=${encodeURIComponent(weekStart)}`),
+                    window.scheduleAuth.request(`/api/employee-week-preference-requests?week_start_date=${encodeURIComponent(weekStart)}${requestStatusParam}`)
+                        .catch(error => {
+                            console.error(error);
+                            showMessage(t("msg_server_error_load_preference_requests", "Server error while loading preference requests."), "warning");
+                            return [];
+                        }),
+                ]);
 
                 preferencesMap = {};
                 preferences.forEach(item => {
@@ -1434,10 +1668,15 @@
                     }
                     preferencesMap[key].push(normalized);
                 });
+                preferenceRequests = Array.isArray(requests) ? requests : [];
+                rebuildPreferenceRequestMap();
 
                 preferencesLoaded = true;
                 renderTable();
-                showMessage(t("msg_preferences_loaded", "Preferences loaded successfully."), "success");
+                renderApprovalPanel();
+                if (showLoadedMessage) {
+                    showMessage(t("msg_preferences_loaded", "Preferences loaded successfully."), "success");
+                }
             } catch (error) {
                 console.error(error);
                 showMessage(t("msg_server_error_load_preferences", "Server error while loading preferences."), "danger");
@@ -1447,6 +1686,8 @@
         function handlePreferencesContextChanged() {
             weekDates = [];
             preferencesMap = {};
+            preferenceRequests = [];
+            preferenceRequestMap = {};
             preferencesLoaded = false;
             renderPreferencesInitialState();
         }
@@ -1466,6 +1707,7 @@
 
             const filteredEmployees = getFilteredPreferenceEmployees();
             updatePreferenceFilterCount(filteredEmployees.length, employees.length);
+            renderApprovalPanel();
 
             thead.innerHTML = `
                 <tr>
@@ -1530,6 +1772,18 @@
             }
         }
 
+        function handlePreferenceApprovalClick(event) {
+            const approveButton = event.target.closest('[data-action="approve-preference-request"]');
+            if (approveButton) {
+                decidePreferenceRequest(Number(approveButton.dataset.requestId), "approved");
+                return;
+            }
+            const rejectButton = event.target.closest('[data-action="reject-preference-request"]');
+            if (rejectButton) {
+                decidePreferenceRequest(Number(rejectButton.dataset.requestId), "rejected");
+            }
+        }
+
         function openRequestModal(employeeId, date) {
             pendingRequestTarget = { employeeId, date };
             setRequestType("request_shift");
@@ -1577,7 +1831,7 @@
                 ? null
                 : document.getElementById("request_category_select").value;
             try {
-                await window.scheduleAuth.request("/api/employee-week-preferences", {
+                const response = await window.scheduleAuth.request("/api/employee-week-preferences", {
                     method: "POST",
                     body: JSON.stringify({
                         employee_id: pendingRequestTarget.employeeId,
@@ -1588,7 +1842,36 @@
                     })
                 });
                 closeRequestModal();
-                await loadWeekPreferences();
+                await loadWeekPreferences({ showLoadedMessage: false });
+                if (response?.status === "pending_approval") {
+                    showMessage(
+                        t("msg_preference_request_pending_approval", "This request was sent for administrator approval."),
+                        "info"
+                    );
+                } else {
+                    showMessage(t("msg_preferences_saved", "Preferences saved successfully."), "success");
+                }
+            } catch (error) {
+                console.error(error);
+                showMessage(error.message || t("msg_server_error_save_preferences", "Server error while saving preferences."), "danger");
+            }
+        }
+
+        async function decidePreferenceRequest(requestId, status) {
+            if (!requestId) return;
+            try {
+                await window.scheduleAuth.request(`/api/employee-week-preference-requests/${requestId}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ status })
+                });
+                await loadWeekPreferences({ showLoadedMessage: false });
+                const messageKey = status === "approved"
+                    ? "msg_preference_request_approved"
+                    : "msg_preference_request_rejected";
+                const fallback = status === "approved"
+                    ? "Preference request approved."
+                    : "Preference request rejected.";
+                showMessage(t(messageKey, fallback), "success");
             } catch (error) {
                 console.error(error);
                 showMessage(error.message || t("msg_server_error_save_preferences", "Server error while saving preferences."), "danger");

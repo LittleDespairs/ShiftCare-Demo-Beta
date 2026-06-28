@@ -79,7 +79,7 @@ def get_bundled_database_path() -> Path | None:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
-CURRENT_SCHEMA_VERSION = 23
+CURRENT_SCHEMA_VERSION = 24
 POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
 DEMO_SEED_VERSION = "2026-06-14-separated-nursing-demo-v3"
 DEMO_ORGANIZATION_PUBLIC_ID = "shiftcare-demo-center"
@@ -94,6 +94,7 @@ PUBLIC_ID_TABLE_PREFIXES = {
     "shift_requirements": "shr",
     "employee_preferences": "prf",
     "employee_week_preferences": "wpr",
+    "employee_week_preference_requests": "wqr",
     "employee_recurring_preferences": "rpr",
     "employee_day_statuses": "dst",
     "coverage_requirements": "cov",
@@ -816,6 +817,34 @@ def _ensure_postgres_runtime_schema(connection) -> None:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_request
             ON employee_week_preferences (employee_id, preference_date, request_type, target_category)
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS employee_week_preference_requests (
+                id BIGSERIAL PRIMARY KEY,
+                employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+                week_start_date TEXT NOT NULL,
+                preference_date TEXT NOT NULL,
+                preference_type TEXT NOT NULL,
+                request_type TEXT NOT NULL DEFAULT 'request_shift',
+                target_category TEXT,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+                organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+                public_id TEXT NOT NULL DEFAULT ('wqr_' || lower(encode(gen_random_bytes(16), 'hex'))),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+                reviewed_at TEXT,
+                reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+                UNIQUE (public_id)
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_employee_week_preference_requests_org_week_status
+            ON employee_week_preference_requests (organization_id, week_start_date, status, preference_date)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_employee_week_preference_requests_employee_week
+            ON employee_week_preference_requests (employee_id, week_start_date, status, preference_date)
         """)
         cursor.execute("""
             ALTER TABLE employee_day_statuses
@@ -2332,6 +2361,37 @@ def init_db():
             END
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS employee_week_preference_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            week_start_date TEXT NOT NULL,
+            preference_date TEXT NOT NULL,
+            preference_type TEXT NOT NULL,
+            request_type TEXT NOT NULL DEFAULT 'request_shift',
+            target_category TEXT,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER,
+            reviewed_at TEXT,
+            reviewed_by INTEGER,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_week_preference_requests_org_week_status
+        ON employee_week_preference_requests (organization_id, week_start_date, status, preference_date)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_week_preference_requests_employee_week
+        ON employee_week_preference_requests (employee_id, week_start_date, status, preference_date)
+    """)
+
     # ==============================================================
     # Permanent employee preferences / Постоянные пожелания
     # ==============================================================
@@ -2513,6 +2573,7 @@ def init_db():
         "shift_requirements",
         "employee_preferences",
         "employee_week_preferences",
+        "employee_week_preference_requests",
         "employee_recurring_preferences",
         "employee_day_statuses",
         "coverage_requirements",
@@ -2590,6 +2651,10 @@ def init_db():
         ON employee_week_preferences (organization_id, week_start_date, preference_date)
     """)
     cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_employee_week_preference_requests_org_week_status
+        ON employee_week_preference_requests (organization_id, week_start_date, status, preference_date)
+    """)
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_employee_recurring_preferences_org_employee
         ON employee_recurring_preferences (organization_id, employee_id, preference_kind, day_of_week)
     """)
@@ -2604,7 +2669,7 @@ def init_db():
             cursor,
             previous_schema_version,
             CURRENT_SCHEMA_VERSION,
-            "Add user feedback report tracking",
+            "Add weekly preference approval requests",
         )
         _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
 
