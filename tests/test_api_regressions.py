@@ -3013,6 +3013,20 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(third_day_response.status_code, 200)
         self.assertEqual(third_day_response.json()["status"], "pending_approval")
 
+        fourth_day_response = self.client.post(
+            "/api/employee-week-preferences",
+            headers=employee_headers,
+            json={
+                "employee_id": employee_id,
+                "week_start_date": "2026-04-20",
+                "preference_date": "2026-04-23",
+                "request_type": "request_shift",
+                "target_category": "evening",
+            },
+        )
+        self.assertEqual(fourth_day_response.status_code, 200)
+        self.assertEqual(fourth_day_response.json()["status"], "pending_approval")
+
         preferences = self.client.get(
             "/api/employee-week-preferences",
             headers=owner_headers,
@@ -3025,8 +3039,23 @@ class ApiRegressionTests(unittest.TestCase):
             headers=department_admin_headers,
             params={"week_start_date": "2026-04-20", "status": "pending"},
         ).json()
+        pending_by_date = {request["preference_date"]: request for request in pending_requests}
+        self.assertEqual(set(pending_by_date), {"2026-04-22", "2026-04-23"})
+        self.assertEqual(pending_by_date["2026-04-22"]["employee_id"], employee_id)
+
+        delete_response = self.client.delete(
+            f"/api/employee-week-preference-requests/{pending_by_date['2026-04-23']['id']}",
+            headers=department_admin_headers,
+        )
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(delete_response.json()["deleted_count"], 1)
+
+        pending_requests = self.client.get(
+            "/api/employee-week-preference-requests",
+            headers=department_admin_headers,
+            params={"week_start_date": "2026-04-20", "status": "pending"},
+        ).json()
         self.assertEqual(len(pending_requests), 1)
-        self.assertEqual(pending_requests[0]["employee_id"], employee_id)
         self.assertEqual(pending_requests[0]["preference_date"], "2026-04-22")
 
         approve_response = self.client.patch(
@@ -3053,6 +3082,37 @@ class ApiRegressionTests(unittest.TestCase):
             params={"week_start_date": "2026-04-20"},
         ).json()
         self.assertEqual(reviewed_requests[0]["status"], "approved")
+
+        employee_delete_candidate = self.client.post(
+            "/api/employee-week-preferences",
+            headers=employee_headers,
+            json={
+                "employee_id": employee_id,
+                "week_start_date": "2026-04-20",
+                "preference_date": "2026-04-23",
+                "request_type": "request_shift",
+                "target_category": "evening",
+            },
+        )
+        self.assertEqual(employee_delete_candidate.status_code, 200)
+        self.assertEqual(employee_delete_candidate.json()["status"], "pending_approval")
+
+        employee_delete_response = self.client.delete(
+            f"/api/employee-week-preference-requests/{employee_delete_candidate.json()['request']['id']}",
+            headers=employee_headers,
+        )
+        self.assertEqual(employee_delete_response.status_code, 200)
+        self.assertEqual(employee_delete_response.json()["deleted_count"], 1)
+
+        employee_requests_after_delete = self.client.get(
+            "/api/employee-week-preference-requests",
+            headers=employee_headers,
+            params={"week_start_date": "2026-04-20"},
+        ).json()
+        self.assertEqual(
+            {request["preference_date"] for request in employee_requests_after_delete},
+            {"2026-04-22"},
+        )
 
     def test_vacation_day_status_blocks_schedule_cell(self):
         employee_id = self._create_employee()

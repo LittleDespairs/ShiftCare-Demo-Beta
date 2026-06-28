@@ -8876,6 +8876,65 @@ def decide_employee_week_preference_request(
         connection.close()
 
 
+@app.delete("/api/employee-week-preference-requests/{request_id}", tags=["Weekly Preferences"])
+def delete_employee_week_preference_request(
+    request_id: int,
+    preference_context: dict | None = Depends(require_preference_access_if_auth_initialized),
+):
+    organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
+    user_id = preference_context["user"]["id"] if preference_context else None
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        request_row = fetch_one_or_404(
+            cursor,
+            """
+            SELECT *
+            FROM employee_week_preference_requests
+            WHERE id = ? AND organization_id = ?
+            """,
+            (request_id, organization_id),
+            "Preference request not found",
+        )
+        if preference_context and preference_context.get("scope") == "own":
+            require_employee_preference_scope(preference_context, int(request_row["employee_id"]))
+        else:
+            ensure_department_access_for_employee(cursor, preference_context, int(request_row["employee_id"]))
+
+        cursor.execute(
+            """
+            DELETE FROM employee_week_preference_requests
+            WHERE id = ? AND organization_id = ?
+            """,
+            (request_id, organization_id),
+        )
+        deleted_count = cursor.rowcount
+        write_auth_audit_event(
+            cursor,
+            "employee_week_preference_request_deleted",
+            user_id=user_id,
+            organization_id=organization_id,
+            metadata={
+                "request_id": request_id,
+                "employee_id": int(request_row["employee_id"]),
+                "week_start_date": request_row["week_start_date"],
+                "preference_date": request_row["preference_date"],
+                "status": request_row["status"],
+            },
+        )
+        connection.commit()
+        return {
+            "message": "Weekly preference request deleted successfully",
+            "request_id": request_id,
+            "deleted_count": deleted_count,
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 @app.post("/api/employee-week-preferences", tags=["Weekly Preferences"])
 def save_employee_week_preference(
     preference: EmployeeWeekPreferenceCreate,
