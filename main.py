@@ -135,7 +135,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.20.10_beta"
+APP_VERSION = "0.20.11_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -5016,6 +5016,39 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
                 ),
             )
 
+        cursor.execute("DELETE FROM employee_week_preference_requests WHERE organization_id = 1")
+        for row in records.get("employee_week_preference_requests") or []:
+            public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
+            local_employee_id = local_employee_ids.get(str(public_id))
+            if not local_employee_id:
+                continue
+            cursor.execute(
+                """
+                INSERT INTO employee_week_preference_requests (
+                    organization_id, public_id, employee_id, week_start_date, preference_date,
+                    preference_type, request_type, target_category, status,
+                    created_at, updated_at, updated_by, reviewed_at, reviewed_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    1,
+                    row.get("public_id"),
+                    local_employee_id,
+                    row.get("week_start_date"),
+                    row.get("preference_date"),
+                    row.get("preference_type"),
+                    row.get("request_type") or "request_shift",
+                    row.get("target_category"),
+                    row.get("status") if row.get("status") in {"pending", "approved", "rejected"} else "pending",
+                    row.get("created_at") or now,
+                    row.get("updated_at") or now,
+                    None,
+                    row.get("reviewed_at"),
+                    row.get("reviewed_by"),
+                ),
+            )
+
         cursor.execute("DELETE FROM employee_recurring_preferences WHERE organization_id = 1")
         for row in records.get("employee_recurring_preferences") or []:
             public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
@@ -5071,12 +5104,13 @@ def pull_cloud_preferences_for_desktop_generation(connection) -> None:
         SELECT COUNT(*) AS count
         FROM desktop_sync_outbox
         WHERE organization_id = 1
-          AND entity_type IN (
-              'employee_preferences',
-              'employee_week_preferences',
-              'employee_recurring_preferences',
-              'employee_day_statuses'
-          )
+              AND entity_type IN (
+                  'employee_preferences',
+                  'employee_week_preferences',
+                  'employee_week_preference_requests',
+                  'employee_recurring_preferences',
+                  'employee_day_statuses'
+              )
           AND status IN ('pending', 'failed', 'syncing')
         """
     )
@@ -8742,6 +8776,8 @@ def get_employee_week_preference_requests(
     organization_id = preference_context["membership"]["organization_id"] if preference_context else 1
     connection = get_connection()
     try:
+        pull_cloud_preferences_for_desktop_generation(connection)
+        connection.commit()
         cursor = connection.cursor()
         filters = ["ewpr.organization_id = ?"]
         params: list = [organization_id]

@@ -796,6 +796,10 @@ def _ensure_postgres_runtime_schema(connection) -> None:
             DROP CONSTRAINT IF EXISTS employee_recurring_preferences_employee_id_preference_kind_day_of_week_key
         """)
         cursor.execute("""
+            ALTER TABLE employee_recurring_preferences
+            DROP CONSTRAINT IF EXISTS employee_recurring_preference_employee_id_preference_kind_d_key
+        """)
+        cursor.execute("""
             UPDATE employee_week_preferences
             SET request_type = CASE
                     WHEN preference_type = 'off_day' THEN 'day_off'
@@ -813,6 +817,10 @@ def _ensure_postgres_runtime_schema(connection) -> None:
         cursor.execute("""
             ALTER TABLE employee_week_preferences
             DROP CONSTRAINT IF EXISTS employee_week_preferences_employee_id_preference_date_key
+        """)
+        cursor.execute("""
+            ALTER TABLE employee_week_preferences
+            DROP CONSTRAINT IF EXISTS employee_week_preference_employee_id_preference_date_key
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_employee_week_preferences_request

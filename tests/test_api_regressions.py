@@ -2427,10 +2427,10 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("/login", service_worker_js)
         self.assertIn("/departments", service_worker_js)
         self.assertIn('requestUrl.searchParams.get("embedded") === "1"', service_worker_js)
-        self.assertIn("/static/css/auth.css?v=0.20.10_beta-desktop-1080p-readability", service_worker_js)
-        self.assertIn("/static/js/auth.js?v=0.20.10_beta-portal-entry-employee-mode", service_worker_js)
-        self.assertIn("/static/js/schedule.js?v=0.20.10_beta-schedule-sync-manual-time", service_worker_js)
-        self.assertIn("/static/js/update_notifier.js?v=0.20.10_beta-startup-updates", service_worker_js)
+        self.assertIn("/static/css/auth.css?v=0.20.11_beta-desktop-1080p-readability", service_worker_js)
+        self.assertIn("/static/js/auth.js?v=0.20.11_beta-portal-entry-employee-mode", service_worker_js)
+        self.assertIn("/static/js/schedule.js?v=0.20.11_beta-schedule-sync-manual-time", service_worker_js)
+        self.assertIn("/static/js/update_notifier.js?v=0.20.11_beta-startup-updates", service_worker_js)
         self.assertNotIn("/static/css/style.css?v=0.20.1_beta-generation-modes-rtl", service_worker_js)
         self.assertNotIn("/static/css/schedule.css?v=0.20.1_beta-generation-modes", service_worker_js)
         self.assertIn("registration.update()", pwa_js)
@@ -3241,6 +3241,70 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(preferences[0]["employee_id"], employee_id)
         self.assertEqual(preferences[0]["preference_type"], "off_day")
 
+    def test_weekly_preference_requests_list_pulls_cloud_requests_when_no_local_pending_changes(self):
+        employee_id = self._create_employee()
+        cursor = self.connection.cursor()
+        cursor.execute("UPDATE employees SET public_id = 'emp_cloud' WHERE id = ?", (employee_id,))
+        for key, value in {
+            "cloud_api_base_url": "https://schedule-app-beta.web.app",
+            "cloud_organization_id": "42",
+            "desktop_cloud_access_token": "cloud-token",
+        }.items():
+            cursor.execute(
+                """
+                INSERT INTO app_settings (organization_id, key, value)
+                VALUES (1, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+        cursor.execute("DELETE FROM desktop_sync_outbox")
+        self.connection.commit()
+
+        cloud_bundle = {
+            "format": "shiftcare.organization.v1",
+            "app_version": "0.20.11_beta",
+            "records": {
+                "employees": [{"id": 7, "public_id": "emp_cloud"}],
+                "employee_preferences": [],
+                "employee_week_preferences": [],
+                "employee_week_preference_requests": [
+                    {
+                        "id": 12,
+                        "public_id": "wqr_cloud",
+                        "employee_id": 7,
+                        "week_start_date": "2026-05-03",
+                        "preference_date": "2026-05-05",
+                        "preference_type": "only_morning",
+                        "request_type": "request_shift",
+                        "target_category": "morning",
+                        "status": "pending",
+                        "created_at": "2026-05-06T01:00:00",
+                        "updated_at": "2026-05-06T01:00:00",
+                    }
+                ],
+                "employee_recurring_preferences": [],
+            },
+        }
+
+        def fake_cloud_request(base_url, path, **kwargs):
+            self.assertEqual(path, "/api/organizations/42/cloud-export")
+            self.assertEqual(kwargs["token"], "cloud-token")
+            return cloud_bundle
+
+        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+            response = self.client.get(
+                "/api/employee-week-preference-requests",
+                params={"week_start_date": "2026-05-03", "status": "pending"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        requests = response.json()
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0]["employee_id"], employee_id)
+        self.assertEqual(requests[0]["preference_date"], "2026-05-05")
+        self.assertEqual(requests[0]["status"], "pending")
+
     def test_cloud_preference_pull_does_not_queue_imported_rows_for_push(self):
         employee_id = self._create_employee()
         cursor = self.connection.cursor()
@@ -3264,6 +3328,21 @@ class ApiRegressionTests(unittest.TestCase):
                         "preference_type": "off_day",
                         "request_type": "day_off",
                         "target_category": None,
+                        "created_at": "2026-05-06T01:00:00",
+                        "updated_at": "2026-05-06T01:00:00",
+                    }
+                ],
+                "employee_week_preference_requests": [
+                    {
+                        "id": 13,
+                        "public_id": "wqr_cloud",
+                        "employee_id": 7,
+                        "week_start_date": "2026-05-03",
+                        "preference_date": "2026-05-05",
+                        "preference_type": "only_evening",
+                        "request_type": "request_shift",
+                        "target_category": "evening",
+                        "status": "pending",
                         "created_at": "2026-05-06T01:00:00",
                         "updated_at": "2026-05-06T01:00:00",
                     }
@@ -3311,6 +3390,19 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIsNotNone(recurring_row)
         self.assertEqual(recurring_row["request_type"], "request_shift")
         self.assertEqual(recurring_row["target_category"], "night")
+        cursor.execute(
+            """
+            SELECT status, request_type, target_category
+            FROM employee_week_preference_requests
+            WHERE employee_id = ? AND preference_date = '2026-05-05'
+            """,
+            (employee_id,),
+        )
+        request_row = cursor.fetchone()
+        self.assertIsNotNone(request_row)
+        self.assertEqual(request_row["status"], "pending")
+        self.assertEqual(request_row["request_type"], "request_shift")
+        self.assertEqual(request_row["target_category"], "evening")
 
     def test_auto_generate_uses_local_preferences_without_cloud_pull(self):
         position_id = self._create_position(name="Caregiver")

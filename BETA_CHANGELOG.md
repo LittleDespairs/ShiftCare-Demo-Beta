@@ -2,6 +2,23 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.20.11_beta - 2026-06-28
+
+## Release Focus
+
+Fix desktop/cloud synchronization for employee portal weekly preference requests.
+
+## Fixed
+
+- Imported employee weekly preference approval requests during desktop cloud pull, so administrator clients see pending requests created on the portal.
+- Triggered cloud preference pull when the administrator request queue loads, not only when confirmed weekly preferences load.
+- Removed the legacy PostgreSQL recurring-preference uniqueness constraint name that could keep desktop sync stuck in `failed`.
+
+## Verification
+
+- Confirmed the portal cloud export contains the test case: two confirmed Raja requests for week `2026-06-28` and one pending approval request for `2026-06-30`.
+- Added regression coverage for pulling pending weekly preference requests into desktop without queuing imported rows back to sync outbox.
+
 # 0.20.10_beta - 2026-06-28
 
 ## Release Focus
