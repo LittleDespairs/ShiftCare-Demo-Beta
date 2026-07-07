@@ -606,6 +606,21 @@
             line-height: 1.45;
         }
 
+        .settings-toggle-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            cursor: pointer;
+        }
+
+        .settings-toggle-row input {
+            width: 18px;
+            height: 18px;
+            margin-top: 3px;
+            accent-color: var(--primary);
+            flex: 0 0 auto;
+        }
+
         .settings-module-list {
             display: grid;
             gap: 10px;
@@ -1097,6 +1112,18 @@
                                             <span class="settings-option-text" style="margin-top:8px;" data-i18n="settings_coverage_display_hint">
                                                 The interval mode uses real coverage requirements and is recommended for accuracy.
                                             </span>
+                                        </div>
+
+                                        <div class="settings-option-row">
+                                            <label class="settings-toggle-row" for="employee_shift_swap_requests_enabled">
+                                                <input id="employee_shift_swap_requests_enabled" type="checkbox">
+                                                <span>
+                                                    <span class="settings-option-heading" data-i18n="settings_shift_swap_enabled_title">Employee shift swap requests</span>
+                                                    <span class="settings-option-text" data-i18n="settings_shift_swap_enabled_text">
+                                                        Allow employees to create new shift swap requests from the schedule.
+                                                    </span>
+                                                </span>
+                                            </label>
                                         </div>
 
                                         <div class="color-form-grid" style="margin-top:14px;">
@@ -1738,7 +1765,8 @@
             { id: "schedule_status_color", previewId: "preview_status" }
         ];
         const scheduleViewDefaults = {
-            schedule_coverage_display_mode: "interval"
+            schedule_coverage_display_mode: "interval",
+            employee_shift_swap_requests_enabled: true
         };
         let databaseBackups = [];
         let latestUpdate = null;
@@ -2100,6 +2128,10 @@
             if (coverageModeSelect) {
                 coverageModeSelect.value = settings.schedule_coverage_display_mode || scheduleViewDefaults.schedule_coverage_display_mode;
             }
+            const shiftSwapEnabledInput = document.getElementById("employee_shift_swap_requests_enabled");
+            if (shiftSwapEnabledInput) {
+                shiftSwapEnabledInput.checked = settings.employee_shift_swap_requests_enabled !== false;
+            }
             updateAppearancePreview();
         }
 
@@ -2152,6 +2184,10 @@
             if (coverageModeSelect) {
                 payload.schedule_coverage_display_mode = coverageModeSelect.value || scheduleViewDefaults.schedule_coverage_display_mode;
             }
+            const shiftSwapEnabledInput = document.getElementById("employee_shift_swap_requests_enabled");
+            if (shiftSwapEnabledInput) {
+                payload.employee_shift_swap_requests_enabled = Boolean(shiftSwapEnabledInput.checked);
+            }
 
             const response = await fetch("/api/app-settings", {
                 method: "PUT",
@@ -2175,6 +2211,10 @@
             const savedCoverageModeSelect = document.getElementById("schedule_coverage_display_mode");
             if (savedCoverageModeSelect) {
                 savedCoverageModeSelect.value = result.settings.schedule_coverage_display_mode || scheduleViewDefaults.schedule_coverage_display_mode;
+            }
+            const savedShiftSwapEnabledInput = document.getElementById("employee_shift_swap_requests_enabled");
+            if (savedShiftSwapEnabledInput) {
+                savedShiftSwapEnabledInput.checked = result.settings.employee_shift_swap_requests_enabled !== false;
             }
             updateAppearancePreview();
             showAppearanceMessage(t("settings_msg_appearance_saved", "Appearance settings saved."), "success");
@@ -2344,7 +2384,7 @@
             loadLicenseStatus({ silent: true });
         });
     </script>
-<script src="/static/js/i18n.js?v={{ app_version }}-department-access"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-shift-swap-setting"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
 <script src="/static/js/access_control.js?v={{ app_version }}-department-access"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>

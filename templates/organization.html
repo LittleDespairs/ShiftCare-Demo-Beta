@@ -30,10 +30,12 @@
             </div>
             <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
             <nav class="nav-list">
-                <a href="/" class="nav-item">
-                    <span class="nav-icon" aria-hidden="true">⌂</span>
-                    <span class="nav-label" data-i18n="nav_dashboard">Home</span>
-                </a>
+                {% if not cloud_employee_portal_mode() %}
+                    <a href="/" class="nav-item">
+                        <span class="nav-icon" aria-hidden="true">⌂</span>
+                        <span class="nav-label" data-i18n="nav_dashboard">Home</span>
+                    </a>
+                {% endif %}
                 <a href="/schedule" class="nav-item">
                     <span class="nav-icon" aria-hidden="true">🗓</span>
                     <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
@@ -42,10 +44,12 @@
                     <span class="nav-icon" aria-hidden="true">◎</span>
                     <span class="nav-label" data-i18n="nav_organization">Personal account</span>
                 </a>
-                <a href="/settings" class="nav-item">
-                    <span class="nav-icon" aria-hidden="true">⚙</span>
-                    <span class="nav-label" data-i18n="nav_settings">Settings</span>
-                </a>
+                {% if not cloud_employee_portal_mode() %}
+                    <a href="/settings" class="nav-item">
+                        <span class="nav-icon" aria-hidden="true">⚙</span>
+                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                    </a>
+                {% endif %}
             </nav>
         </aside>
 
@@ -206,6 +210,17 @@
                             <button id="copy-employee-portal-btn" class="btn btn-secondary" type="button" data-i18n="org_copy_link">Copy link</button>
                         </div>
                     </div>
+
+                    <form id="employee-portal-settings-form" class="organization-form-stack" hidden>
+                        <label class="portal-color-control" for="employee_shift_swap_requests_enabled">
+                            <input id="employee_shift_swap_requests_enabled" type="checkbox">
+                            <span>
+                                <strong data-i18n="settings_shift_swap_enabled_title">Employee shift swap requests</strong>
+                                <small data-i18n="settings_shift_swap_enabled_text">Allow employees to create new shift swap requests from the schedule.</small>
+                            </span>
+                        </label>
+                        <button class="btn btn-primary" type="submit" data-i18n="org_save_employee_portal_settings">Save portal settings</button>
+                    </form>
                 </section>
 
                 <form id="invite-form" class="organization-panel">
@@ -315,12 +330,12 @@
             <div id="organization-message" class="organization-message" role="status" aria-live="polite"></div>
         </main>
     </div>
-<script src="/static/js/i18n.js?v={{ app_version }}-department-access"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-shift-swap-setting"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-department-access"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-nav-feedback-ru"></script>
 <script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
 <script src="/static/js/auth_i18n.js?v={{ app_version }}-department-access"></script>
-<script src="/static/js/organization.js?v={{ app_version }}-department-access"></script>
+<script src="/static/js/organization.js?v={{ app_version }}-employee-portal-settings"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

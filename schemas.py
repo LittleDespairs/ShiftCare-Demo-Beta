@@ -432,6 +432,42 @@ class ScheduleEntryTimeUpdate(BaseModel):
         return self
 
 
+class ShiftSwapRequestCreate(BaseModel):
+    requester_schedule_entry_id: int = Field(ge=1)
+    target_schedule_entry_id: int = Field(ge=1)
+    requester_note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def normalize_request(self):
+        if self.requester_schedule_entry_id == self.target_schedule_entry_id:
+            raise ValueError("target shift must be different from requester shift")
+        if self.requester_note is not None:
+            self.requester_note = self.requester_note.strip() or None
+        return self
+
+
+class ShiftSwapTargetDecision(BaseModel):
+    status: Literal["accepted", "rejected"]
+    note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def normalize_note(self):
+        if self.note is not None:
+            self.note = self.note.strip() or None
+        return self
+
+
+class ShiftSwapAdminDecision(BaseModel):
+    status: Literal["approved", "rejected"]
+    note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def normalize_note(self):
+        if self.note is not None:
+            self.note = self.note.strip() or None
+        return self
+
+
 class AutoGenerateScheduleRequest(BaseModel):
     position_id: int
     week_start_date: str
@@ -549,6 +585,7 @@ class AppSettingsUpdate(BaseModel):
     schedule_evening_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     schedule_night_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     schedule_status_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    employee_shift_swap_requests_enabled: bool | None = None
     allow_multiple_positions_per_day: bool | None = None
     max_work_days_per_week: int | None = Field(default=None, ge=1, le=7)
     max_consecutive_nights: int | None = Field(default=None, ge=1, le=7)

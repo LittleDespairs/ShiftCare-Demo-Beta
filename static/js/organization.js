@@ -10,11 +10,13 @@
         departments: [],
         clientConfig: null,
         cloudLink: null,
+        appSettings: null,
     };
 
     const elements = {};
     const INVITATION_ROLES = new Set(["owner", "admin"]);
     const MEMBER_VIEW_ROLES = new Set(["owner", "admin", "scheduler", "manager"]);
+    const APP_SETTINGS_ROLES = new Set(["owner", "admin", "scheduler"]);
     const ALL_MEMBER_ROLES = ["owner", "admin", "scheduler", "manager", "read_only", "employee"];
     const ADMIN_ASSIGNABLE_ROLES = ["scheduler", "manager", "read_only", "employee"];
     const INVITE_ROLES = ["employee", "read_only", "manager", "scheduler", "admin", "owner"];
@@ -151,6 +153,10 @@
         return MEMBER_VIEW_ROLES.has(state.membership?.role);
     }
 
+    function canManageEmployeePortalSettings() {
+        return APP_SETTINGS_ROLES.has(state.membership?.role);
+    }
+
     function selectMembership() {
         const membership = window.scheduleAuth.getActiveMembership(state.user);
         state.membership = membership;
@@ -205,10 +211,48 @@
         }
     }
 
+    function renderEmployeePortalSettings() {
+        if (!elements.shiftSwapRequestsEnabled) return;
+        elements.shiftSwapRequestsEnabled.checked = state.appSettings?.employee_shift_swap_requests_enabled !== false;
+    }
+
+    async function loadEmployeePortalSettings() {
+        if (!canManageEmployeePortalSettings()) {
+            state.appSettings = null;
+            renderEmployeePortalSettings();
+            return;
+        }
+        state.appSettings = await window.scheduleAuth.request("/api/app-settings");
+        renderEmployeePortalSettings();
+    }
+
+    async function saveEmployeePortalSettings() {
+        if (!canManageEmployeePortalSettings() || !elements.shiftSwapRequestsEnabled) return;
+        setMessage(uiText("org_msg_saving_employee_portal_settings", "Saving portal settings..."), "");
+        try {
+            const response = await window.scheduleAuth.request("/api/app-settings", {
+                method: "PUT",
+                body: JSON.stringify({
+                    employee_shift_swap_requests_enabled: Boolean(elements.shiftSwapRequestsEnabled.checked),
+                }),
+            });
+            state.appSettings = response.settings || state.appSettings;
+            renderEmployeePortalSettings();
+            setMessage(uiText("org_msg_employee_portal_settings_saved", "Employee portal settings saved."), "success");
+        } catch (error) {
+            renderEmployeePortalSettings();
+            setMessage(error.message, "error");
+        }
+    }
+
     function renderPermissions() {
         elements.inviteForm.hidden = !canManageInvitations();
         if (elements.employeePortalPanel) {
-            elements.employeePortalPanel.hidden = Boolean(state.clientConfig?.cloud_employee_portal_mode);
+            elements.employeePortalPanel.hidden = Boolean(state.clientConfig?.cloud_employee_portal_mode)
+                && !canManageEmployeePortalSettings();
+        }
+        if (elements.employeePortalSettingsForm) {
+            elements.employeePortalSettingsForm.hidden = !canManageEmployeePortalSettings();
         }
         if (elements.membersPanel) {
             elements.membersPanel.hidden = !canViewMembers();
@@ -1110,6 +1154,7 @@
             try {
                 await loadOrganizationData();
                 await loadEmployeesForInvitations();
+                await loadEmployeePortalSettings();
                 await loadCloudLinkStatus();
             } catch (error) {
                 setMessage(error.message, "error");
@@ -1124,6 +1169,10 @@
             if (!elements.employeePortalUrl.value) return;
             await navigator.clipboard.writeText(elements.employeePortalUrl.value);
             setMessage(uiText("org_msg_employee_portal_copied", "Employee portal link copied."), "success");
+        });
+        elements.employeePortalSettingsForm?.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await saveEmployeePortalSettings();
         });
         elements.inviteRole?.addEventListener("change", updateInviteRoleState);
         elements.cloudLinkForm?.addEventListener("submit", async (event) => {
@@ -1222,6 +1271,8 @@
             employeePortalUrl: document.getElementById("employee-portal-url"),
             openEmployeePortalLink: document.getElementById("open-employee-portal-link"),
             copyEmployeePortal: document.getElementById("copy-employee-portal-btn"),
+            employeePortalSettingsForm: document.getElementById("employee-portal-settings-form"),
+            shiftSwapRequestsEnabled: document.getElementById("employee_shift_swap_requests_enabled"),
             cloudLinkForm: document.getElementById("cloud-link-form"),
             cloudApiBaseUrl: document.getElementById("cloud-api-base-url"),
             cloudEmail: document.getElementById("cloud-email"),
@@ -1256,6 +1307,7 @@
             updateInviteRoleState();
             await loadOrganizationData();
             await loadEmployeesForInvitations();
+            await loadEmployeePortalSettings();
             await loadCloudLinkStatus();
         } catch (error) {
             setMessage(error.message, "error");

@@ -2249,7 +2249,26 @@
         }
 
         body.schedule-board-page .employee-name {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
             font-size: 0.82rem;
+        }
+
+        body.schedule-board-page .current-employee-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 20px;
+            border: 1px solid #9cc8c2;
+            border-radius: 999px;
+            background: #e6f6f3;
+            color: #0d766d;
+            padding: 2px 7px;
+            font-size: 0.66rem;
+            font-weight: 950;
+            line-height: 1;
+            white-space: nowrap;
         }
 
         body.schedule-board-page .employee-meta {
@@ -2357,6 +2376,99 @@
         body.schedule-board-page .schedule-log-line strong {
             color: var(--text);
             font-weight: 950;
+        }
+
+        body.schedule-board-page .shift-swap-row {
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        body.schedule-board-page .schedule-ledger-detail {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 0.72rem;
+            font-weight: 750;
+            line-height: 1.35;
+        }
+
+        body.schedule-board-page .shift-swap-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: flex-end;
+            margin-inline-start: auto;
+        }
+
+        body.schedule-board-page .shift-swap-actions:empty {
+            display: none;
+        }
+
+        body.schedule-board-page .shift-swap-actions .btn {
+            min-height: 30px;
+            padding: 6px 10px;
+            font-size: 0.72rem;
+        }
+
+        body.schedule-board-page .shift-swap-card-list {
+            gap: 12px;
+        }
+
+        body.schedule-board-page .shift-swap-day-group {
+            display: grid;
+            gap: 8px;
+        }
+
+        body.schedule-board-page .shift-swap-day-heading {
+            color: var(--text);
+            font-size: 0.82rem;
+            font-weight: 950;
+        }
+
+        body.schedule-board-page .shift-swap-card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 8px;
+        }
+
+        body.schedule-board-page .shift-swap-card {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            align-items: start;
+            min-height: 96px;
+            padding: 10px;
+            text-align: start;
+        }
+
+        body.schedule-board-page .shift-swap-card-main {
+            display: grid;
+            gap: 5px;
+            min-width: 0;
+        }
+
+        body.schedule-board-page .shift-swap-card-employee {
+            color: var(--text);
+            font-size: 0.88rem;
+            font-weight: 950;
+            overflow-wrap: anywhere;
+        }
+
+        body.schedule-board-page .shift-swap-card-shift {
+            color: var(--primary-strong);
+            font-size: 0.78rem;
+            font-weight: 900;
+        }
+
+        body.schedule-board-page .shift-swap-card-meta,
+        body.schedule-board-page .shift-swap-card-state {
+            color: var(--muted);
+            font-size: 0.72rem;
+            font-weight: 750;
+            line-height: 1.35;
+        }
+
+        body.schedule-board-page .shift-swap-card-state {
+            margin-top: 8px;
+            color: var(--warning);
         }
 
         body.schedule-board-page .schedule-log-line {
@@ -2472,6 +2584,21 @@
         body.schedule-board-page[data-auth-role="employee"] .schedule-generation-mode,
         body.schedule-board-page.employee-schedule-view .schedule-inspector-stack,
         body.schedule-board-page[data-auth-role="employee"] .schedule-inspector-stack {
+            display: none !important;
+        }
+
+        body.schedule-board-page.employee-schedule-view .schedule-inspector-stack,
+        body.schedule-board-page[data-auth-role="employee"] .schedule-inspector-stack {
+            display: grid !important;
+        }
+
+        body.schedule-board-page.employee-schedule-view .schedule-inspector-stack .schedule-inspector-panel:not(#shift-swap-panel),
+        body.schedule-board-page[data-auth-role="employee"] .schedule-inspector-stack .schedule-inspector-panel:not(#shift-swap-panel) {
+            display: none !important;
+        }
+
+        body.schedule-board-page.employee-schedule-view #shift-swap-panel[hidden],
+        body.schedule-board-page[data-auth-role="employee"] #shift-swap-panel[hidden] {
             display: none !important;
         }
 

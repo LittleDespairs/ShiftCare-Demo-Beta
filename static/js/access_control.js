@@ -134,14 +134,19 @@
     function ensureStandardNav() {
         const nav = document.querySelector(".nav-list");
         if (!nav) return;
-        const items = [
+        const items = window.scheduleAuth?.isEmployeePortalMode?.() ? [
+            ["/schedule", "🗓", "nav_schedule", "Schedule"],
+            ["/weekly-preferences", "✦", "nav_requests", "Preferences"],
+            ["/organization", "◎", "nav_organization", "Personal account"],
+            ["/feedback", "?", "nav_feedback", "Feedback"],
+        ] : [
             ["/", "⌂", "nav_dashboard", "Dashboard"],
             ["/schedule", "🗓", "nav_schedule", "Schedule"],
             ["/employees", "👥", "nav_employees", "Employees"],
             ["/weekly-preferences", "✦", "nav_requests", "Preferences"],
             ["/organization", "◎", "nav_organization", "Personal account"],
             ["/settings", "⚙", "nav_settings", "Settings"],
-            ["/feedback", "?", "nav_feedback", "Support"],
+            ["/feedback", "?", "nav_feedback", "Feedback"],
         ];
         const existing = new Map();
         const duplicates = [];
@@ -171,6 +176,12 @@
                 nav.insertBefore(item, nav.children[index] || null);
             }
         });
+        Array.from(nav.querySelectorAll("a[href]")).forEach((link) => {
+            const path = canonicalPath(new URL(link.getAttribute("href"), window.location.origin).pathname);
+            if (!items.some(([href]) => href === path)) {
+                link.remove();
+            }
+        });
     }
 
     function applyNavLabels() {
@@ -181,7 +192,7 @@
             "/weekly-preferences": ["nav_requests", "Preferences"],
             "/settings": ["nav_settings", "Settings"],
             "/organization": ["nav_organization", "Personal account"],
-            "/feedback": ["nav_feedback", "Support"],
+            "/feedback": ["nav_feedback", "Feedback"],
         };
         document.querySelectorAll(".nav-list a[href]").forEach((link) => {
             const path = canonicalPath(new URL(link.getAttribute("href"), window.location.origin).pathname);

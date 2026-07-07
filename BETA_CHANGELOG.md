@@ -2,6 +2,30 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.20.13_beta - 2026-07-07
+
+## Release Focus
+
+Ship the employee portal shift-swap workflow and administrator controls for turning new swap requests on or off.
+
+## Added
+
+- Added employee shift swap requests with target employee approval and administrator review.
+- Added server-side swap validation for same-position swaps and duplicate same-day shift categories.
+- Added an administrator setting to enable or disable new employee shift swap requests.
+- Added the setting to the desktop settings page and the cloud portal organization page.
+
+## Changed
+
+- Cleaned up unavailable employee portal navigation items.
+- Kept the logged-in employee at the top of mobile schedule tables.
+- Refreshed employee portal cache keys so browsers load the current schedule and organization scripts.
+
+## Verification
+
+- Full regression suite passed locally: 150 tests, 1 PostgreSQL integration test skipped because `SCHEDULE_APP_POSTGRES_TEST_DSN` is not configured.
+- Deployed to the portal on Cloud Run revision `schedule-app-beta-api-00114-dwt` and verified `/organization`, service worker cache, and readiness health.
+
 # 0.20.12_beta - 2026-06-28
 
 ## Release Focus

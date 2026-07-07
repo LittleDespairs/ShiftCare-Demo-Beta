@@ -79,7 +79,7 @@ def get_bundled_database_path() -> Path | None:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
-CURRENT_SCHEMA_VERSION = 24
+CURRENT_SCHEMA_VERSION = 25
 POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
 DEMO_SEED_VERSION = "2026-06-14-separated-nursing-demo-v3"
 DEMO_ORGANIZATION_PUBLIC_ID = "shiftcare-demo-center"
@@ -91,6 +91,7 @@ PUBLIC_ID_TABLE_PREFIXES = {
     "positions": "pos",
     "shift_templates": "tpl",
     "schedule_entries": "sch",
+    "shift_swap_requests": "swr",
     "shift_requirements": "shr",
     "employee_preferences": "prf",
     "employee_week_preferences": "wpr",
@@ -853,6 +854,42 @@ def _ensure_postgres_runtime_schema(connection) -> None:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_employee_week_preference_requests_employee_week
             ON employee_week_preference_requests (employee_id, week_start_date, status, preference_date)
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shift_swap_requests (
+                id BIGSERIAL PRIMARY KEY,
+                organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+                public_id TEXT NOT NULL DEFAULT ('swr_' || lower(encode(gen_random_bytes(16), 'hex'))),
+                requester_employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+                target_employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+                requester_schedule_entry_id BIGINT NOT NULL REFERENCES schedule_entries(id) ON DELETE CASCADE,
+                target_schedule_entry_id BIGINT NOT NULL REFERENCES schedule_entries(id) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'pending_target' CHECK (
+                    status IN ('pending_target', 'pending_admin', 'approved', 'rejected', 'cancelled')
+                ),
+                requester_note TEXT,
+                target_note TEXT,
+                admin_note TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+                target_responded_at TEXT,
+                reviewed_at TEXT,
+                reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+                UNIQUE (public_id)
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_org_status
+            ON shift_swap_requests (organization_id, status, created_at)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_requester
+            ON shift_swap_requests (requester_employee_id, status, created_at)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_target
+            ON shift_swap_requests (target_employee_id, status, created_at)
         """)
         cursor.execute("""
             ALTER TABLE employee_day_statuses
@@ -2280,6 +2317,52 @@ def init_db():
     """)
 
     # ==========================================
+    # Shift swap requests / Заявки на обмен сменами
+    # ==========================================
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shift_swap_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            public_id TEXT,
+            requester_employee_id INTEGER NOT NULL,
+            target_employee_id INTEGER NOT NULL,
+            requester_schedule_entry_id INTEGER NOT NULL,
+            target_schedule_entry_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending_target' CHECK (
+                status IN ('pending_target', 'pending_admin', 'approved', 'rejected', 'cancelled')
+            ),
+            requester_note TEXT,
+            target_note TEXT,
+            admin_note TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER,
+            target_responded_at TEXT,
+            reviewed_at TEXT,
+            reviewed_by INTEGER,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (requester_employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (requester_schedule_entry_id) REFERENCES schedule_entries(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_schedule_entry_id) REFERENCES schedule_entries(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_org_status
+        ON shift_swap_requests (organization_id, status, created_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_requester
+        ON shift_swap_requests (requester_employee_id, status, created_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_target
+        ON shift_swap_requests (target_employee_id, status, created_at)
+    """)
+
+    # ==========================================
     # Shift requirements / Требования к сменам
     # ==========================================
     cursor.execute("""
@@ -2578,6 +2661,7 @@ def init_db():
         "positions",
         "shift_templates",
         "schedule_entries",
+        "shift_swap_requests",
         "shift_requirements",
         "employee_preferences",
         "employee_week_preferences",
@@ -2618,6 +2702,7 @@ def init_db():
         "positions",
         "shift_templates",
         "schedule_entries",
+        "shift_swap_requests",
         "shift_requirements",
         "coverage_requirements",
     ):

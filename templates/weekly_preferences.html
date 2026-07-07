@@ -723,30 +723,36 @@
                 <div class="sidebar-section-title" data-i18n="nav_section_main">Main</div>
 
                 <nav class="nav-list">
-                    <a href="/" class="nav-item">
-                        <span class="nav-icon">⌂</span>
-                        <span class="nav-label" data-i18n="nav_dashboard">Dashboard</span>
-                    </a>
+                    {% if not cloud_employee_portal_mode() %}
+                        <a href="/" class="nav-item">
+                            <span class="nav-icon">⌂</span>
+                            <span class="nav-label" data-i18n="nav_dashboard">Dashboard</span>
+                        </a>
+                    {% endif %}
 
                     <a href="/schedule" class="nav-item">
                         <span class="nav-icon">🗓</span>
                         <span class="nav-label" data-i18n="nav_schedule">Schedule</span>
                     </a>
 
-                    <a href="/employees" class="nav-item">
-                        <span class="nav-icon">👥</span>
-                        <span class="nav-label" data-i18n="nav_employees">Employees</span>
-                    </a>
+                    {% if not cloud_employee_portal_mode() %}
+                        <a href="/employees" class="nav-item">
+                            <span class="nav-icon">👥</span>
+                            <span class="nav-label" data-i18n="nav_employees">Employees</span>
+                        </a>
+                    {% endif %}
 
                     <a href="/weekly-preferences" class="nav-item active">
                         <span class="nav-icon">✦</span>
                         <span class="nav-label" data-i18n="nav_requests">Preferences</span>
                     </a>
 
-                    <a href="/settings" class="nav-item">
-                        <span class="nav-icon">⚙</span>
-                        <span class="nav-label" data-i18n="nav_settings">Settings</span>
-                    </a>
+                    {% if not cloud_employee_portal_mode() %}
+                        <a href="/settings" class="nav-item">
+                            <span class="nav-icon">⚙</span>
+                            <span class="nav-label" data-i18n="nav_settings">Settings</span>
+                        </a>
+                    {% endif %}
                 </nav>
             </div>
         </aside>
@@ -1950,9 +1956,9 @@
                     <a href="/guide" data-i18n="footer_guide">Guide</a>
                 </div>
             </footer>
-<script src="/static/js/i18n.js?v={{ app_version }}-department-access"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}-nav-feedback-ru"></script>
 <script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-department-access"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}-nav-feedback-ru"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
 <script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>

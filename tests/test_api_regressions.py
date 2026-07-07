@@ -52,6 +52,7 @@ class ApiRegressionTests(unittest.TestCase):
             "user_department_access",
             "organization_memberships",
             "users",
+            "shift_swap_requests",
             "schedule_entries",
             "app_settings",
             "employee_day_statuses",
@@ -152,6 +153,20 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()["shift_template"]["id"]
 
+    def _create_employee_login_headers(self, owner_headers, organization_id: int, employee_id: int, email: str):
+        invitation_response = self.client.post(
+            f"/api/organizations/{organization_id}/invitations",
+            headers=owner_headers,
+            json={"email": email, "employee_id": employee_id, "role": "employee", "expires_in_days": 7},
+        )
+        self.assertEqual(invitation_response.status_code, 200)
+        accept_response = self.client.post(
+            "/api/auth/accept-invitation",
+            json={"token": invitation_response.json()["invitation_token"], "password": "EmployeePass123"},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+        return {"Authorization": f"Bearer {accept_response.json()['access_token']}"}
+
     def test_authorization_schema_is_initialized(self):
         cursor = self.connection.cursor()
         for table_name in (
@@ -191,6 +206,7 @@ class ApiRegressionTests(unittest.TestCase):
             "positions",
             "shift_templates",
             "schedule_entries",
+            "shift_swap_requests",
             "shift_requirements",
             "employee_preferences",
             "employee_week_preferences",
@@ -1325,6 +1341,7 @@ class ApiRegressionTests(unittest.TestCase):
             },
         )
         self.assertEqual(schedule_response.status_code, 200)
+        schedule_entry_id = schedule_response.json()["schedule_entry"]["id"]
         recurring_response = self.client.post(
             "/api/employee-recurring-preferences",
             json={
@@ -1350,6 +1367,16 @@ class ApiRegressionTests(unittest.TestCase):
             VALUES (?, '2026-04-20', '2026-04-22', 'only_morning', 'request_shift', 'morning', 'pending')
             """,
             (employee_id,),
+        )
+        cursor.execute(
+            """
+            INSERT INTO shift_swap_requests (
+                requester_employee_id, target_employee_id,
+                requester_schedule_entry_id, target_schedule_entry_id
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (employee_id, employee_id, schedule_entry_id, schedule_entry_id),
         )
         self.connection.commit()
         for table_name, prefix in database.PUBLIC_ID_TABLE_PREFIXES.items():
@@ -2236,6 +2263,478 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(own_schedule_response.status_code, 200)
         self.assertEqual({entry["employee_id"] for entry in own_schedule_response.json()}, {employee_a})
 
+    def test_employee_shift_swap_flow_requires_target_and_owner_approval(self):
+        owner_response = self.client.post(
+            "/api/auth/create-organization",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+
+        employee_a = self._create_employee(headers=owner_headers, full_name="Employee A", id_card="111111111")
+        employee_b = self._create_employee(headers=owner_headers, full_name="Employee B", id_card="222222222")
+        position_id = self._create_position(headers=owner_headers, name="Nurse")
+        morning_template_id = self._create_shift_template(
+            headers=owner_headers,
+            position_id=position_id,
+            name="Morning",
+            category="morning",
+            start_time="06:00",
+            end_time="14:00",
+        )
+        evening_template_id = self._create_shift_template(
+            headers=owner_headers,
+            position_id=position_id,
+            name="Evening",
+            category="evening",
+            start_time="14:00",
+            end_time="22:00",
+        )
+
+        for employee_id in (employee_a, employee_b):
+            response = self.client.post(
+                "/api/employee-positions",
+                headers=owner_headers,
+                json={"employee_id": employee_id, "position_id": position_id, "is_primary": True, "priority_score": 90},
+            )
+            self.assertEqual(response.status_code, 200)
+
+        requester_entry_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_a,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": morning_template_id,
+            },
+        )
+        self.assertEqual(requester_entry_response.status_code, 200)
+        requester_entry_id = requester_entry_response.json()["schedule_entry"]["id"]
+
+        target_entry_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_b,
+                "position_id": position_id,
+                "date": "2026-04-21",
+                "shift_template_id": evening_template_id,
+            },
+        )
+        self.assertEqual(target_entry_response.status_code, 200)
+        target_entry_id = target_entry_response.json()["schedule_entry"]["id"]
+
+        employee_headers = {}
+        for email, employee_id in (("employee-a@example.com", employee_a), ("employee-b@example.com", employee_b)):
+            invitation_response = self.client.post(
+                f"/api/organizations/{organization_id}/invitations",
+                headers=owner_headers,
+                json={"email": email, "employee_id": employee_id, "role": "employee", "expires_in_days": 7},
+            )
+            self.assertEqual(invitation_response.status_code, 200)
+            accept_response = self.client.post(
+                "/api/auth/accept-invitation",
+                json={"token": invitation_response.json()["invitation_token"], "password": "EmployeePass123"},
+            )
+            self.assertEqual(accept_response.status_code, 200)
+            employee_headers[employee_id] = {"Authorization": f"Bearer {accept_response.json()['access_token']}"}
+
+        owner_create_response = self.client.post(
+            "/api/shift-swap-requests",
+            headers=owner_headers,
+            json={
+                "requester_schedule_entry_id": requester_entry_id,
+                "target_schedule_entry_id": target_entry_id,
+            },
+        )
+        self.assertEqual(owner_create_response.status_code, 403)
+
+        create_response = self.client.post(
+            "/api/shift-swap-requests",
+            headers=employee_headers[employee_a],
+            json={
+                "requester_schedule_entry_id": requester_entry_id,
+                "target_schedule_entry_id": target_entry_id,
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        swap_request = create_response.json()["request"]
+        self.assertEqual(swap_request["status"], "pending_target")
+        self.assertEqual(swap_request["requester_employee_id"], employee_a)
+        self.assertEqual(swap_request["target_employee_id"], employee_b)
+
+        duplicate_response = self.client.post(
+            "/api/shift-swap-requests",
+            headers=employee_headers[employee_a],
+            json={
+                "requester_schedule_entry_id": requester_entry_id,
+                "target_schedule_entry_id": target_entry_id,
+            },
+        )
+        self.assertEqual(duplicate_response.status_code, 409)
+
+        target_list_response = self.client.get(
+            "/api/shift-swap-requests",
+            headers=employee_headers[employee_b],
+            params={"week_start_date": "2026-04-20", "position_id": position_id},
+        )
+        self.assertEqual(target_list_response.status_code, 200)
+        self.assertEqual([item["id"] for item in target_list_response.json()], [swap_request["id"]])
+
+        accept_response = self.client.patch(
+            f"/api/shift-swap-requests/{swap_request['id']}/target",
+            headers=employee_headers[employee_b],
+            json={"status": "accepted"},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+        self.assertEqual(accept_response.json()["request"]["status"], "pending_admin")
+
+        review_response = self.client.patch(
+            f"/api/shift-swap-requests/{swap_request['id']}/review",
+            headers=owner_headers,
+            json={"status": "approved"},
+        )
+        self.assertEqual(review_response.status_code, 200)
+        self.assertEqual(review_response.json()["request"]["status"], "approved")
+
+        schedule_response = self.client.get("/api/schedule", headers=owner_headers, params={"position_id": position_id})
+        self.assertEqual(schedule_response.status_code, 200)
+        entries_by_id = {entry["id"]: entry for entry in schedule_response.json()}
+        self.assertEqual(entries_by_id[requester_entry_id]["employee_id"], employee_b)
+        self.assertEqual(entries_by_id[target_entry_id]["employee_id"], employee_a)
+
+    def test_employee_shift_swap_rejects_cross_position_targets(self):
+        owner_response = self.client.post(
+            "/api/auth/create-organization",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+
+        employee_a = self._create_employee(headers=owner_headers, full_name="Employee A", id_card="111111111")
+        employee_b = self._create_employee(headers=owner_headers, full_name="Employee B", id_card="222222222")
+        nurse_position_id = self._create_position(headers=owner_headers, name="Nurse")
+        reception_position_id = self._create_position(headers=owner_headers, name="Reception")
+        nurse_template_id = self._create_shift_template(
+            headers=owner_headers,
+            position_id=nurse_position_id,
+            name="Nurse Morning",
+            category="morning",
+            start_time="06:00",
+            end_time="14:00",
+        )
+        reception_template_id = self._create_shift_template(
+            headers=owner_headers,
+            position_id=reception_position_id,
+            name="Reception Evening",
+            category="evening",
+            start_time="14:00",
+            end_time="22:00",
+        )
+
+        for employee_id in (employee_a, employee_b):
+            for position_id in (nurse_position_id, reception_position_id):
+                response = self.client.post(
+                    "/api/employee-positions",
+                    headers=owner_headers,
+                    json={"employee_id": employee_id, "position_id": position_id, "is_primary": position_id == nurse_position_id, "priority_score": 90},
+                )
+                self.assertEqual(response.status_code, 200)
+
+        requester_entry_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_a,
+                "position_id": nurse_position_id,
+                "date": "2026-04-20",
+                "shift_template_id": nurse_template_id,
+            },
+        )
+        self.assertEqual(requester_entry_response.status_code, 200)
+        target_entry_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_b,
+                "position_id": reception_position_id,
+                "date": "2026-04-21",
+                "shift_template_id": reception_template_id,
+            },
+        )
+        self.assertEqual(target_entry_response.status_code, 200)
+
+        employee_a_headers = self._create_employee_login_headers(
+            owner_headers,
+            organization_id,
+            employee_a,
+            "employee-a@example.com",
+        )
+        create_response = self.client.post(
+            "/api/shift-swap-requests",
+            headers=employee_a_headers,
+            json={
+                "requester_schedule_entry_id": requester_entry_response.json()["schedule_entry"]["id"],
+                "target_schedule_entry_id": target_entry_response.json()["schedule_entry"]["id"],
+            },
+        )
+        self.assertEqual(create_response.status_code, 400)
+        self.assertIn("one position", create_response.json()["detail"])
+
+    def test_employee_shift_swap_approval_rejects_duplicate_same_day_category(self):
+        owner_response = self.client.post(
+            "/api/auth/create-organization",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+
+        employee_a = self._create_employee(headers=owner_headers, full_name="Employee A", id_card="111111111")
+        employee_b = self._create_employee(headers=owner_headers, full_name="Employee B", id_card="222222222")
+        position_id = self._create_position(headers=owner_headers, name="Nurse")
+        early_morning_template_id = self._create_shift_template(
+            headers=owner_headers,
+            position_id=position_id,
+            name="Early Morning",
+            category="morning",
+            start_time="06:00",
+            end_time="10:00",
+        )
+        late_morning_template_id = self._create_shift_template(
+            headers=owner_headers,
+            position_id=position_id,
+            name="Late Morning",
+            category="morning",
+            start_time="10:00",
+            end_time="12:00",
+        )
+        evening_template_id = self._create_shift_template(
+            headers=owner_headers,
+            position_id=position_id,
+            name="Evening",
+            category="evening",
+            start_time="14:00",
+            end_time="22:00",
+        )
+
+        for employee_id in (employee_a, employee_b):
+            response = self.client.post(
+                "/api/employee-positions",
+                headers=owner_headers,
+                json={"employee_id": employee_id, "position_id": position_id, "is_primary": True, "priority_score": 90},
+            )
+            self.assertEqual(response.status_code, 200)
+
+        requester_entry_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_a,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": early_morning_template_id,
+            },
+        )
+        self.assertEqual(requester_entry_response.status_code, 200)
+        requester_entry_id = requester_entry_response.json()["schedule_entry"]["id"]
+        target_entry_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_b,
+                "position_id": position_id,
+                "date": "2026-04-21",
+                "shift_template_id": evening_template_id,
+            },
+        )
+        self.assertEqual(target_entry_response.status_code, 200)
+        target_entry_id = target_entry_response.json()["schedule_entry"]["id"]
+
+        employee_a_headers = self._create_employee_login_headers(
+            owner_headers,
+            organization_id,
+            employee_a,
+            "employee-a@example.com",
+        )
+        employee_b_headers = self._create_employee_login_headers(
+            owner_headers,
+            organization_id,
+            employee_b,
+            "employee-b@example.com",
+        )
+
+        create_response = self.client.post(
+            "/api/shift-swap-requests",
+            headers=employee_a_headers,
+            json={
+                "requester_schedule_entry_id": requester_entry_id,
+                "target_schedule_entry_id": target_entry_id,
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        swap_request = create_response.json()["request"]
+        accept_response = self.client.patch(
+            f"/api/shift-swap-requests/{swap_request['id']}/target",
+            headers=employee_b_headers,
+            json={"status": "accepted"},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        conflicting_entry_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_b,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": late_morning_template_id,
+            },
+        )
+        self.assertEqual(conflicting_entry_response.status_code, 200)
+
+        review_response = self.client.patch(
+            f"/api/shift-swap-requests/{swap_request['id']}/review",
+            headers=owner_headers,
+            json={"status": "approved"},
+        )
+        self.assertEqual(review_response.status_code, 400)
+        self.assertIn("shift category", review_response.json()["detail"])
+
+        schedule_response = self.client.get("/api/schedule", headers=owner_headers, params={"position_id": position_id})
+        self.assertEqual(schedule_response.status_code, 200)
+        entries_by_id = {entry["id"]: entry for entry in schedule_response.json()}
+        self.assertEqual(entries_by_id[requester_entry_id]["employee_id"], employee_a)
+        self.assertEqual(entries_by_id[target_entry_id]["employee_id"], employee_b)
+
+    def test_employee_shift_swap_request_setting_blocks_new_requests(self):
+        owner_response = self.client.post(
+            "/api/auth/create-organization",
+            json={
+                "organization_name": "Beta Clinic",
+                "full_name": "Owner User",
+                "email": "owner@example.com",
+                "password": "CorrectHorse123",
+            },
+        )
+        self.assertEqual(owner_response.status_code, 200)
+        owner_headers = {"Authorization": f"Bearer {owner_response.json()['access_token']}"}
+        organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
+
+        employee_a = self._create_employee(headers=owner_headers, full_name="Employee A", id_card="111111111")
+        employee_b = self._create_employee(headers=owner_headers, full_name="Employee B", id_card="222222222")
+        position_id = self._create_position(headers=owner_headers, name="Nurse")
+        morning_template_id = self._create_shift_template(
+            headers=owner_headers,
+            position_id=position_id,
+            name="Morning",
+            category="morning",
+            start_time="06:00",
+            end_time="14:00",
+        )
+        evening_template_id = self._create_shift_template(
+            headers=owner_headers,
+            position_id=position_id,
+            name="Evening",
+            category="evening",
+            start_time="14:00",
+            end_time="22:00",
+        )
+
+        for employee_id in (employee_a, employee_b):
+            response = self.client.post(
+                "/api/employee-positions",
+                headers=owner_headers,
+                json={"employee_id": employee_id, "position_id": position_id, "is_primary": True, "priority_score": 90},
+            )
+            self.assertEqual(response.status_code, 200)
+
+        requester_entry_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_a,
+                "position_id": position_id,
+                "date": "2026-04-20",
+                "shift_template_id": morning_template_id,
+            },
+        )
+        self.assertEqual(requester_entry_response.status_code, 200)
+        target_entry_response = self.client.post(
+            "/api/schedule",
+            headers=owner_headers,
+            json={
+                "employee_id": employee_b,
+                "position_id": position_id,
+                "date": "2026-04-21",
+                "shift_template_id": evening_template_id,
+            },
+        )
+        self.assertEqual(target_entry_response.status_code, 200)
+
+        employee_a_headers = self._create_employee_login_headers(
+            owner_headers,
+            organization_id,
+            employee_a,
+            "employee-a@example.com",
+        )
+
+        disabled_response = self.client.put(
+            "/api/app-settings",
+            headers=owner_headers,
+            json={"employee_shift_swap_requests_enabled": False},
+        )
+        self.assertEqual(disabled_response.status_code, 200)
+        self.assertFalse(disabled_response.json()["settings"]["employee_shift_swap_requests_enabled"])
+
+        blocked_response = self.client.post(
+            "/api/shift-swap-requests",
+            headers=employee_a_headers,
+            json={
+                "requester_schedule_entry_id": requester_entry_response.json()["schedule_entry"]["id"],
+                "target_schedule_entry_id": target_entry_response.json()["schedule_entry"]["id"],
+            },
+        )
+        self.assertEqual(blocked_response.status_code, 403)
+        self.assertIn("disabled", blocked_response.json()["detail"])
+
+        enabled_response = self.client.put(
+            "/api/app-settings",
+            headers=owner_headers,
+            json={"employee_shift_swap_requests_enabled": True},
+        )
+        self.assertEqual(enabled_response.status_code, 200)
+        self.assertTrue(enabled_response.json()["settings"]["employee_shift_swap_requests_enabled"])
+
+        create_response = self.client.post(
+            "/api/shift-swap-requests",
+            headers=employee_a_headers,
+            json={
+                "requester_schedule_entry_id": requester_entry_response.json()["schedule_entry"]["id"],
+                "target_schedule_entry_id": target_entry_response.json()["schedule_entry"]["id"],
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        self.assertEqual(create_response.json()["request"]["status"], "pending_target")
+
     def test_cloud_import_preserves_employee_portal_schedule_links(self):
         owner_response = self.client.post(
             "/api/auth/create-organization",
@@ -2367,6 +2866,9 @@ class ApiRegressionTests(unittest.TestCase):
             "auth_employee_login",
             "auth_employee_login_action_text",
             "auth_msg_employee_login_ready",
+            "nav_feedback",
+            "settings_shift_swap_enabled_title",
+            "shift_swap_disabled",
         ]:
             self.assertEqual(i18n_js.count(f"{key}:"), 3)
 
@@ -2391,6 +2893,8 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("function isEmployeeUser()", schedule_js)
         self.assertIn("allPositions.find(position => position.is_primary) || allPositions[0]", schedule_js)
         self.assertIn("await loadSchedulePageData({ showLoadedMessage: false });", schedule_js)
+        self.assertIn("employee_shift_swap_requests_enabled !== false", schedule_js)
+        self.assertIn("shift_swap_disabled", schedule_js)
 
     def test_hosted_web_schedule_hides_coverage_display_without_desktop_removal(self):
         schedule_html = Path("templates/schedule.html").read_text(encoding="utf-8")
@@ -2423,14 +2927,18 @@ class ApiRegressionTests(unittest.TestCase):
         service_worker_js = Path("static/service-worker.js").read_text(encoding="utf-8")
         pwa_js = Path("static/js/pwa.js").read_text(encoding="utf-8")
 
-        self.assertIn("20260628", service_worker_js)
+        self.assertIn("20260707", service_worker_js)
         self.assertIn("/login", service_worker_js)
         self.assertIn("/departments", service_worker_js)
         self.assertIn('requestUrl.searchParams.get("embedded") === "1"', service_worker_js)
-        self.assertIn("/static/css/auth.css?v=0.20.12_beta-desktop-1080p-readability", service_worker_js)
-        self.assertIn("/static/js/auth.js?v=0.20.12_beta-portal-entry-employee-mode", service_worker_js)
-        self.assertIn("/static/js/schedule.js?v=0.20.12_beta-schedule-sync-manual-time", service_worker_js)
-        self.assertIn("/static/js/update_notifier.js?v=0.20.12_beta-startup-updates", service_worker_js)
+        self.assertIn("/static/css/auth.css?v=0.20.13_beta-desktop-1080p-readability", service_worker_js)
+        self.assertIn("/static/css/schedule.css?v=0.20.13_beta-mobile-current-first", service_worker_js)
+        self.assertIn("/static/js/i18n.js?v=0.20.13_beta-shift-swap-setting", service_worker_js)
+        self.assertIn("/static/js/access_control.js?v=0.20.13_beta-nav-feedback-ru", service_worker_js)
+        self.assertIn("/static/js/auth.js?v=0.20.13_beta-portal-entry-employee-mode", service_worker_js)
+        self.assertIn("/static/js/schedule.js?v=0.20.13_beta-shift-swap-setting", service_worker_js)
+        self.assertIn("/static/js/organization.js?v=0.20.13_beta-employee-portal-settings", service_worker_js)
+        self.assertIn("/static/js/update_notifier.js?v=0.20.13_beta-startup-updates", service_worker_js)
         self.assertNotIn("/static/css/style.css?v=0.20.1_beta-generation-modes-rtl", service_worker_js)
         self.assertNotIn("/static/css/schedule.css?v=0.20.1_beta-generation-modes", service_worker_js)
         self.assertIn("registration.update()", pwa_js)
@@ -2497,9 +3005,10 @@ class ApiRegressionTests(unittest.TestCase):
     def test_organization_pages_return_auth_shells(self):
         organization_response = self.client.get("/organization")
         self.assertEqual(organization_response.status_code, 200)
-        self.assertIn("/static/js/organization.js", organization_response.text)
+        self.assertIn("/static/js/organization.js?v=0.20.13_beta-employee-portal-settings", organization_response.text)
         self.assertIn("Invite member", organization_response.text)
         self.assertIn("Public page for employee wishes", organization_response.text)
+        self.assertIn('id="employee_shift_swap_requests_enabled"', organization_response.text)
         self.assertIn('id="invite-role"', organization_response.text)
         self.assertIn('value="read_only"', organization_response.text)
         self.assertIn('id="invite-employee-field"', organization_response.text)
@@ -2518,10 +3027,16 @@ class ApiRegressionTests(unittest.TestCase):
 
     def test_organization_frontend_uses_invitation_employee_link_without_manual_member_link(self):
         organization_js = Path("static/js/organization.js").read_text(encoding="utf-8")
+        auth_i18n_js = Path("static/js/auth_i18n.js").read_text(encoding="utf-8")
         self.assertIn("role: selectedRole", organization_js)
         self.assertIn("payload.employee_id = Number(elements.inviteEmployee.value)", organization_js)
         self.assertIn('data-organization-action="member-role"', organization_js)
         self.assertIn("/members/${userId}/role", organization_js)
+        self.assertIn("canManageEmployeePortalSettings", organization_js)
+        self.assertIn("/api/app-settings", organization_js)
+        self.assertIn("employee_shift_swap_requests_enabled", organization_js)
+        self.assertEqual(auth_i18n_js.count("org_save_employee_portal_settings:"), 3)
+        self.assertEqual(auth_i18n_js.count("org_msg_employee_portal_settings_saved:"), 3)
         self.assertNotIn("link-member-employee", organization_js)
         self.assertNotIn("data-member-employee-select", organization_js)
 
@@ -3263,7 +3778,7 @@ class ApiRegressionTests(unittest.TestCase):
 
         cloud_bundle = {
             "format": "shiftcare.organization.v1",
-            "app_version": "0.20.12_beta",
+            "app_version": "0.20.13_beta",
             "records": {
                 "employees": [{"id": 7, "public_id": "emp_cloud"}],
                 "employee_preferences": [],
@@ -4180,6 +4695,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(initial_settings["schedule_evening_color"], "#fff7ed")
         self.assertEqual(initial_settings["schedule_night_color"], "#eef2ff")
         self.assertEqual(initial_settings["schedule_status_color"], "#f5f3ff")
+        self.assertTrue(initial_settings["employee_shift_swap_requests_enabled"])
         self.assertFalse(initial_settings["allow_multiple_positions_per_day"])
         self.assertEqual(initial_settings["max_daily_work_minutes"], 720)
         self.assertEqual(initial_settings["coverage_shortage_gain_weight"], 100)
@@ -4193,6 +4709,7 @@ class ApiRegressionTests(unittest.TestCase):
                 "schedule_evening_color": "#ffedd5",
                 "schedule_night_color": "#e0e7ff",
                 "schedule_status_color": "#ede9fe",
+                "employee_shift_swap_requests_enabled": False,
                 "allow_multiple_positions_per_day": True,
                 "max_daily_work_minutes": 960,
                 "coverage_shortage_gain_weight": 180,
@@ -4208,6 +4725,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(stored_settings["schedule_evening_color"], "#ffedd5")
         self.assertEqual(stored_settings["schedule_night_color"], "#e0e7ff")
         self.assertEqual(stored_settings["schedule_status_color"], "#ede9fe")
+        self.assertFalse(stored_settings["employee_shift_swap_requests_enabled"])
         self.assertTrue(stored_settings["allow_multiple_positions_per_day"])
         self.assertEqual(stored_settings["max_daily_work_minutes"], 960)
         self.assertEqual(stored_settings["coverage_shortage_gain_weight"], 180)
@@ -4220,6 +4738,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(direct_read["schedule_evening_color"], "#ffedd5")
         self.assertEqual(direct_read["schedule_night_color"], "#e0e7ff")
         self.assertEqual(direct_read["schedule_status_color"], "#ede9fe")
+        self.assertFalse(direct_read["employee_shift_swap_requests_enabled"])
         self.assertTrue(direct_read["allow_multiple_positions_per_day"])
         self.assertEqual(direct_read["max_daily_work_minutes"], 960)
         self.assertEqual(direct_read["coverage_shortage_gain_weight"], 180)

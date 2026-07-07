@@ -32,10 +32,12 @@
         let appSettings = {};
         let allShiftTemplates = [];
         let allDayStatuses = [];
+        let allShiftSwapRequests = [];
         let weekDates = [];
         let pendingShiftTarget = null;
         let pendingStatusTarget = null;
         let pendingTimeOverrideEntry = null;
+        let pendingSwapSourceEntry = null;
         let lastGenerationSummary = null;
         let selectedGenerationMode = "balanced";
         let scheduleDataLoaded = false;
@@ -76,6 +78,7 @@
             bindShiftPicker();
             bindStatusPicker();
             bindTimeOverridePicker();
+            bindShiftSwapPicker();
             bindSidebarToggle();
             bindScheduleActionModals();
             bindScheduleFloatingHeader();
@@ -116,6 +119,7 @@
             }
             updateScheduleBoardRange();
             updateScheduleInspector();
+            renderShiftSwapPanel();
             updateScheduleActionAvailability();
             syncScheduleFloatingHeader();
         });
@@ -470,6 +474,16 @@
                 day: "2-digit",
                 month: "short",
                 ...(options.year ? { year: "numeric" } : {})
+            }).format(date);
+        }
+
+        function formatReadableScheduleDate(value, options = {}) {
+            const date = parseDate(value);
+            if (!date) return value || "";
+            return new Intl.DateTimeFormat(getScheduleLocale(), {
+                weekday: options.short ? "short" : "long",
+                day: "2-digit",
+                month: "short"
             }).format(date);
         }
 
@@ -918,6 +932,7 @@
                 : `<a class="btn btn-secondary" href="/positions">${t("common_open_positions", "Open positions")}</a>`;
 
             scheduleDataLoaded = false;
+            allShiftSwapRequests = [];
             thead.innerHTML = "";
             tbody.innerHTML = `
                 <tr>
@@ -939,6 +954,7 @@
             updateScheduleBoardRange();
             updateScheduleStatusStrip();
             updateScheduleInspector();
+            renderShiftSwapPanel();
             updateScheduleFilterCount(0, 0);
             syncScheduleFloatingHeader();
         }
@@ -973,6 +989,18 @@
                 if (mode === "with_shifts" && !hasShift) return false;
                 if (mode === "without_shifts" && hasShift) return false;
                 return true;
+            });
+        }
+
+        function prioritizeCurrentEmployee(employees) {
+            if (!isEmployeeUser()) return employees;
+            return [...employees].sort((a, b) => {
+                const aIsCurrent = isCurrentEmployeeId(a.id);
+                const bIsCurrent = isCurrentEmployeeId(b.id);
+                if (aIsCurrent !== bIsCurrent) {
+                    return aIsCurrent ? -1 : 1;
+                }
+                return 0;
             });
         }
 
@@ -1429,7 +1457,8 @@
                     coverageRequirementsResponse,
                     appSettingsResponse,
                     shiftTemplatesResponse,
-                    dayStatusesResponse
+                    dayStatusesResponse,
+                    shiftSwapRequestsResponse
                 ] = await Promise.all([
                     fetch(`/api/employees${employeeScheduleScopeQuery}`),
                     fetch(`/api/employee-positions${employeeScheduleScopeQuery}`),
@@ -1438,7 +1467,8 @@
                     fetch(`/api/coverage-requirements${employeeScheduleScopeQuery}`),
                     fetch("/api/app-settings"),
                     fetch(`/api/shift-templates${employeeScheduleScopeQuery}${employeeScheduleScopeJoiner}active_only=true`),
-                    fetch(`/api/employee-day-statuses${employeeScheduleScopeQuery}`)
+                    fetch(`/api/employee-day-statuses${employeeScheduleScopeQuery}`),
+                    fetch(`/api/shift-swap-requests?week_start_date=${encodeURIComponent(weekStart)}&position_id=${encodeURIComponent(positionId)}`)
                 ]);
 
                 if (
@@ -1449,7 +1479,8 @@
                     !coverageRequirementsResponse.ok ||
                     !appSettingsResponse.ok ||
                     !shiftTemplatesResponse.ok ||
-                    !dayStatusesResponse.ok
+                    !dayStatusesResponse.ok ||
+                    !shiftSwapRequestsResponse.ok
                 ) {
                     showMessage(t("msg_failed_load_schedule_data", "Failed to load schedule data."), "danger");
                     return;
@@ -1473,9 +1504,11 @@
                 applyScheduleAppearanceSettings();
                 allShiftTemplates = await shiftTemplatesResponse.json();
                 allDayStatuses = await dayStatusesResponse.json();
+                allShiftSwapRequests = await shiftSwapRequestsResponse.json();
                 scheduleDataLoaded = true;
 
                 renderScheduleTable(positionId);
+                renderShiftSwapPanel();
                 updateScheduleActionAvailability();
                 if (showLoadedMessage) {
                     showMessage(t("msg_schedule_loaded", "Schedule loaded successfully."), "success");
@@ -2495,6 +2528,7 @@
             const positionMeta = options.showPosition
                 ? ` · ${escapeHtml(getPositionName(entry.position_id))}`
                 : "";
+            const showSwapAction = canRequestShiftSwap(entry, options);
             return `
                 <div class="${getCardClassByShiftCategory(entry.shift_category)} ${entry.no_show ? "has-no-show" : ""}${extraClasses}">
                     <div class="entry-title">${escapeHtml(timeLabel)}</div>
@@ -2513,6 +2547,17 @@
                                 ×
                             </button>
                         ` : ""}
+                    ` : ""}
+                    ${showSwapAction ? `
+                        <button
+                            class="entry-time-btn shift-swap-btn"
+                            data-entry-id="${entry.id}"
+                            type="button"
+                            title="${t("shift_swap_request_button", "Request swap")}"
+                            aria-label="${t("shift_swap_request_button", "Request swap")}"
+                        >
+                            ${t("shift_swap_short_button", "Swap")}
+                        </button>
                     ` : ""}
                     ${options.showActions ? `
                         <button
@@ -2536,6 +2581,14 @@
                     ` : ""}
                 </div>
             `;
+        }
+
+        function canRequestShiftSwap(entry, options = {}) {
+            return isEmployeeUser()
+                && appSettings.employee_shift_swap_requests_enabled !== false
+                && !options.muted
+                && !entry.no_show
+                && isCurrentEmployeeId(entry.employee_id);
         }
 
         function getForeignPositionEntries(employeeId, positionId, date) {
@@ -2691,6 +2744,7 @@
 
             const employeesForPosition = getEmployeesForPosition(positionId);
             const filteredEmployees = getFilteredScheduleEmployees(employeesForPosition, positionId);
+            const visibleEmployees = prioritizeCurrentEmployee(filteredEmployees);
             const selectedPosition = allPositions.find(item => item.id === positionId);
 
             thead.innerHTML = `
@@ -2726,7 +2780,7 @@
             updateScheduleStatusStrip();
             updateScheduleBoardRange();
             updateScheduleInspector();
-            updateScheduleFilterCount(filteredEmployees.length, employeesForPosition.length);
+            updateScheduleFilterCount(visibleEmployees.length, employeesForPosition.length);
 
             if (employeesForPosition.length === 0) {
                 const actionHtml = [
@@ -2750,7 +2804,7 @@
                 return;
             }
 
-            if (filteredEmployees.length === 0) {
+            if (visibleEmployees.length === 0) {
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="8" style="padding:24px;">
@@ -2766,11 +2820,14 @@
                 return;
             }
 
-            tbody.innerHTML = filteredEmployees.map(employee => `
+            tbody.innerHTML = visibleEmployees.map(employee => `
                 <tr class="${isCurrentEmployeeId(employee.id) ? "is-current-employee" : ""}">
                     <td class="employee-column">
                         <div class="employee-cell">
-                            <div class="employee-name">${escapeHtml(employee.full_name)}</div>
+                            <div class="employee-name">
+                                <span>${escapeHtml(employee.full_name)}</span>
+                                ${isCurrentEmployeeId(employee.id) ? `<span class="current-employee-badge">${escapeHtml(t("schedule_current_employee_badge", "You"))}</span>` : ""}
+                            </div>
                             <div class="employee-meta">
                                 ${escapeHtml(t("employee_min_target_max", "Min/Target/Max"))}:
                                 ${Number(employee.min_shifts_per_week)}/${Number(employee.target_shifts_per_week)}/${Number(employee.max_shifts_per_week)}
@@ -2793,6 +2850,12 @@
            ========================================================= */
 
         function bindScheduleActions() {
+            document.querySelectorAll(".shift-swap-btn").forEach(button => {
+                button.addEventListener("click", () => {
+                    const entryId = Number(button.dataset.entryId);
+                    openShiftSwapPicker(entryId);
+                });
+            });
             if (!canEditSchedule()) {
                 return;
             }
@@ -3120,6 +3183,249 @@
             pendingTimeOverrideEntry = null;
         }
 
+        function bindShiftSwapPicker() {
+            const overlay = document.getElementById("shift-swap-overlay");
+            if (!overlay) return;
+            const closeButton = document.getElementById("shift-swap-close");
+            closeButton?.addEventListener("click", closeShiftSwapPicker);
+            overlay.addEventListener("click", event => {
+                if (event.target === overlay) {
+                    closeShiftSwapPicker();
+                }
+            });
+            document.addEventListener("keydown", event => {
+                if (event.key === "Escape" && pendingSwapSourceEntry) {
+                    closeShiftSwapPicker();
+                }
+            });
+        }
+
+        function openShiftSwapPicker(entryId) {
+            if (!isEmployeeUser()) return;
+            if (appSettings.employee_shift_swap_requests_enabled === false) {
+                showMessage(t("shift_swap_disabled", "Shift swap requests are disabled."), "warning");
+                return;
+            }
+            const sourceEntry = allScheduleEntries.find(item => Number(item.id) === Number(entryId));
+            if (!sourceEntry || !isCurrentEmployeeId(sourceEntry.employee_id)) return;
+            pendingSwapSourceEntry = sourceEntry;
+
+            const overlay = document.getElementById("shift-swap-overlay");
+            const context = document.getElementById("shift-swap-context");
+            const body = document.getElementById("shift-swap-body");
+            context.textContent = `${t("shift_swap_source_label", "Your shift")}: ${formatSwapShiftLine(sourceEntry)}`;
+            body.innerHTML = renderShiftSwapPickerOptions(sourceEntry);
+            body.querySelectorAll(".shift-swap-option").forEach(button => {
+                button.addEventListener("click", async () => {
+                    const targetEntryId = Number(button.dataset.entryId);
+                    button.disabled = true;
+                    const created = await createShiftSwapRequest(sourceEntry.id, targetEntryId);
+                    button.disabled = false;
+                    if (created) {
+                        closeShiftSwapPicker();
+                    }
+                });
+            });
+            overlay.classList.add("is-open");
+            overlay.setAttribute("aria-hidden", "false");
+        }
+
+        function closeShiftSwapPicker() {
+            const overlay = document.getElementById("shift-swap-overlay");
+            overlay?.classList.remove("is-open");
+            overlay?.setAttribute("aria-hidden", "true");
+            pendingSwapSourceEntry = null;
+        }
+
+        function formatSwapShiftLine(entry) {
+            if (!entry) return "";
+            const employeeName = entry.employee_name || getEmployeeName(entry.employee_id);
+            return [
+                employeeName,
+                formatReadableScheduleDate(entry.date),
+                getPositionName(entry.position_id),
+                `${getShiftCategoryLabel(entry.shift_category)} · ${entry.start_time} - ${entry.end_time}`
+            ].filter(Boolean).join(" · ");
+        }
+
+        function getEmployeeName(employeeId) {
+            return allEmployees.find(employee => Number(employee.id) === Number(employeeId))?.full_name || "";
+        }
+
+        function activeSwapExistsForEntries(sourceEntryId, targetEntryId) {
+            return allShiftSwapRequests.some(request => (
+                ["pending_target", "pending_admin"].includes(request.status)
+                && Number(request.requester_schedule_entry_id) === Number(sourceEntryId)
+                && Number(request.target_schedule_entry_id) === Number(targetEntryId)
+            ));
+        }
+
+        function renderShiftSwapPickerOptions(sourceEntry) {
+            const candidates = allScheduleEntries
+                .filter(entry => Number(entry.id) !== Number(sourceEntry.id))
+                .filter(entry => Number(entry.employee_id) !== Number(sourceEntry.employee_id))
+                .filter(entry => !entry.no_show)
+                .filter(entry => weekDates.includes(entry.date))
+                .sort((first, second) => `${first.date} ${first.start_time}`.localeCompare(`${second.date} ${second.start_time}`));
+            if (candidates.length === 0) {
+                return `<div class="empty-text">${t("shift_swap_no_candidates", "No available shifts to request for swap.")}</div>`;
+            }
+            const groupedByDate = candidates.reduce((groups, entry) => {
+                if (!groups.has(entry.date)) {
+                    groups.set(entry.date, []);
+                }
+                groups.get(entry.date).push(entry);
+                return groups;
+            }, new Map());
+            return `
+                <div class="shift-picker-group shift-swap-card-list">
+                    <div class="shift-picker-group-title">${t("shift_swap_pick_target", "Choose shift to request")}</div>
+                    ${Array.from(groupedByDate.entries()).map(([date, entries]) => `
+                        <div class="shift-swap-day-group">
+                            <div class="shift-swap-day-heading">${escapeHtml(formatReadableScheduleDate(date))}</div>
+                            <div class="shift-swap-card-grid">
+                                ${entries.map(entry => {
+                                    const disabled = activeSwapExistsForEntries(sourceEntry.id, entry.id);
+                                    const employeeName = entry.employee_name || getEmployeeName(entry.employee_id);
+                                    const categoryLabel = getShiftCategoryLabel(entry.shift_category);
+                                    const positionName = getPositionName(entry.position_id);
+                                    const ariaLabel = [
+                                        employeeName,
+                                        formatReadableScheduleDate(entry.date),
+                                        categoryLabel,
+                                        `${entry.start_time} - ${entry.end_time}`,
+                                        positionName,
+                                        disabled ? t("shift_swap_already_pending", "already pending") : ""
+                                    ].filter(Boolean).join(", ");
+                                    return `
+                                        <button class="shift-picker-option shift-swap-option shift-swap-card" type="button" data-entry-id="${entry.id}" aria-label="${escapeHtml(ariaLabel)}" ${disabled ? "disabled" : ""}>
+                                            <div class="shift-swap-card-main">
+                                                <div class="shift-swap-card-employee">${escapeHtml(employeeName)}</div>
+                                                <div class="shift-swap-card-shift">${escapeHtml(categoryLabel)} · ${escapeHtml(entry.start_time)} - ${escapeHtml(entry.end_time)}</div>
+                                                <div class="shift-swap-card-meta">${escapeHtml([positionName, entry.shift_template_name].filter(Boolean).join(" · "))}</div>
+                                            </div>
+                                            ${disabled ? `<div class="shift-swap-card-state">${escapeHtml(t("shift_swap_already_pending", "already pending"))}</div>` : ""}
+                                        </button>
+                                    `;
+                                }).join("")}
+                            </div>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+        }
+
+        function getSwapStatusLabel(status) {
+            const labels = {
+                pending_target: t("shift_swap_status_pending_target", "Waiting for employee"),
+                pending_admin: t("shift_swap_status_pending_admin", "Waiting for administrator"),
+                approved: t("shift_swap_status_approved", "Approved"),
+                rejected: t("shift_swap_status_rejected", "Rejected"),
+                cancelled: t("shift_swap_status_cancelled", "Cancelled")
+            };
+            return labels[status] || status || "";
+        }
+
+        function shouldShowSwapRequest(request) {
+            if (!request) return false;
+            if (["pending_target", "pending_admin"].includes(request.status)) return true;
+            return isEmployeeUser()
+                && (
+                    Number(request.requester_employee_id) === Number(getCurrentEmployeeId())
+                    || Number(request.target_employee_id) === Number(getCurrentEmployeeId())
+                );
+        }
+
+        function renderShiftSwapPanel() {
+            const panel = document.getElementById("shift-swap-panel");
+            const list = document.getElementById("shift-swap-list");
+            if (!panel || !list) return;
+            const visibleRequests = allShiftSwapRequests.filter(shouldShowSwapRequest);
+            panel.hidden = visibleRequests.length === 0;
+            if (visibleRequests.length === 0) {
+                list.innerHTML = "";
+                return;
+            }
+            list.innerHTML = visibleRequests.map(request => {
+                const requesterLine = `${request.requester_employee_name}: ${formatSwapRequestShift(request.requester_shift)}`;
+                const targetLine = `${request.target_employee_name}: ${formatSwapRequestShift(request.target_shift)}`;
+                const rowState = request.status === "approved" ? "ok" : request.status === "rejected" ? "critical" : "warning";
+                return `
+                    <div class="schedule-ledger-row ${rowState} shift-swap-row">
+                        <div>
+                            <strong>${escapeHtml(getSwapStatusLabel(request.status))}</strong>
+                            <div class="schedule-ledger-detail">${escapeHtml(requesterLine)}</div>
+                            <div class="schedule-ledger-detail">${escapeHtml(targetLine)}</div>
+                        </div>
+                        <div class="shift-swap-actions">
+                            ${renderShiftSwapActions(request)}
+                        </div>
+                    </div>
+                `;
+            }).join("");
+            bindShiftSwapPanelActions();
+        }
+
+        function formatSwapRequestShift(shift) {
+            if (!shift) return "";
+            return [
+                shift.date,
+                shift.department_name && shift.position_name
+                    ? `${shift.department_name} / ${shift.position_name}`
+                    : shift.position_name,
+                `${shift.start_time} - ${shift.end_time}`
+            ].filter(Boolean).join(" · ");
+        }
+
+        function renderShiftSwapActions(request) {
+            const currentEmployeeId = getCurrentEmployeeId();
+            const actions = [];
+            if (
+                isEmployeeUser()
+                && request.status === "pending_target"
+                && Number(request.target_employee_id) === Number(currentEmployeeId)
+            ) {
+                actions.push(`<button class="btn btn-secondary shift-swap-target-action" type="button" data-swap-id="${request.id}" data-status="accepted">${t("shift_swap_accept", "Accept")}</button>`);
+                actions.push(`<button class="btn btn-danger shift-swap-target-action" type="button" data-swap-id="${request.id}" data-status="rejected">${t("shift_swap_reject", "Reject")}</button>`);
+            }
+            if (
+                isEmployeeUser()
+                && ["pending_target", "pending_admin"].includes(request.status)
+                && Number(request.requester_employee_id) === Number(currentEmployeeId)
+            ) {
+                actions.push(`<button class="btn btn-secondary shift-swap-cancel-action" type="button" data-swap-id="${request.id}">${t("shift_swap_cancel", "Cancel")}</button>`);
+            }
+            if (canEditSchedule() && request.status === "pending_admin") {
+                actions.push(`<button class="btn btn-primary shift-swap-review-action" type="button" data-swap-id="${request.id}" data-status="approved">${t("shift_swap_approve", "Approve")}</button>`);
+                actions.push(`<button class="btn btn-danger shift-swap-review-action" type="button" data-swap-id="${request.id}" data-status="rejected">${t("shift_swap_reject", "Reject")}</button>`);
+            }
+            return actions.join("");
+        }
+
+        function bindShiftSwapPanelActions() {
+            document.querySelectorAll(".shift-swap-target-action").forEach(button => {
+                button.addEventListener("click", async () => {
+                    button.disabled = true;
+                    await answerShiftSwapAsTarget(Number(button.dataset.swapId), button.dataset.status);
+                    button.disabled = false;
+                });
+            });
+            document.querySelectorAll(".shift-swap-cancel-action").forEach(button => {
+                button.addEventListener("click", async () => {
+                    button.disabled = true;
+                    await cancelShiftSwapRequest(Number(button.dataset.swapId));
+                    button.disabled = false;
+                });
+            });
+            document.querySelectorAll(".shift-swap-review-action").forEach(button => {
+                button.addEventListener("click", async () => {
+                    button.disabled = true;
+                    await reviewShiftSwapRequest(Number(button.dataset.swapId), button.dataset.status);
+                    button.disabled = false;
+                });
+            });
+        }
+
         /* =========================================================
            CRUD: SCHEDULE / CRUD: РАСПИСАНИЕ
            ========================================================= */
@@ -3227,6 +3533,103 @@
             }
         }
 
+        async function createShiftSwapRequest(requesterEntryId, targetEntryId) {
+            try {
+                const response = await fetch("/api/shift-swap-requests", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        requester_schedule_entry_id: requesterEntryId,
+                        target_schedule_entry_id: targetEntryId
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("shift_swap_create_failed", "Could not create shift swap request."), "danger");
+                    return false;
+                }
+
+                await refreshScheduleEntriesOnly();
+                showMessage(t("shift_swap_created", "Shift swap request sent."), "success");
+                return true;
+            } catch (error) {
+                console.error(error);
+                showMessage(t("shift_swap_create_failed", "Could not create shift swap request."), "danger");
+                return false;
+            }
+        }
+
+        async function answerShiftSwapAsTarget(swapRequestId, status) {
+            try {
+                const response = await fetch(`/api/shift-swap-requests/${swapRequestId}/target`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ status })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("shift_swap_update_failed", "Could not update shift swap request."), "danger");
+                    return false;
+                }
+                await refreshScheduleEntriesOnly();
+                showMessage(t("shift_swap_updated", "Shift swap request updated."), "success");
+                return true;
+            } catch (error) {
+                console.error(error);
+                showMessage(t("shift_swap_update_failed", "Could not update shift swap request."), "danger");
+                return false;
+            }
+        }
+
+        async function cancelShiftSwapRequest(swapRequestId) {
+            try {
+                const response = await fetch(`/api/shift-swap-requests/${swapRequestId}/cancel`, {
+                    method: "PATCH"
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("shift_swap_update_failed", "Could not update shift swap request."), "danger");
+                    return false;
+                }
+                await refreshScheduleEntriesOnly();
+                showMessage(t("shift_swap_updated", "Shift swap request updated."), "success");
+                return true;
+            } catch (error) {
+                console.error(error);
+                showMessage(t("shift_swap_update_failed", "Could not update shift swap request."), "danger");
+                return false;
+            }
+        }
+
+        async function reviewShiftSwapRequest(swapRequestId, status) {
+            try {
+                const response = await fetch(`/api/shift-swap-requests/${swapRequestId}/review`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ status })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage(errorData.detail || t("shift_swap_update_failed", "Could not update shift swap request."), "danger");
+                    return false;
+                }
+                await refreshScheduleEntriesOnly();
+                showMessage(t("shift_swap_updated", "Shift swap request updated."), "success");
+                return true;
+            } catch (error) {
+                console.error(error);
+                showMessage(t("shift_swap_update_failed", "Could not update shift swap request."), "danger");
+                return false;
+            }
+        }
+
         /* =========================================================
            CRUD: DAY STATUS / CRUD: СТАТУС ДНЯ
            ========================================================= */
@@ -3281,22 +3684,31 @@
             // Refresh only entries and statuses, not all reference data
             // Обновляем только смены и статусы, не трогая весь справочник
             const positionId = Number(document.getElementById("position_select").value);
+            const weekStart = document.getElementById("week_start").value;
 
             try {
-                const [scheduleResponse, dayStatusesResponse] = await Promise.all([
-                    fetch("/api/schedule"),
-                    fetch("/api/employee-day-statuses")
+                const employeeScheduleScopeQuery = isEmployeeUser() && positionId
+                    ? `?position_id=${encodeURIComponent(positionId)}`
+                    : "";
+                const [scheduleResponse, dayStatusesResponse, shiftSwapRequestsResponse] = await Promise.all([
+                    fetch(`/api/schedule${employeeScheduleScopeQuery}`),
+                    fetch(`/api/employee-day-statuses${employeeScheduleScopeQuery}`),
+                    weekStart && positionId
+                        ? fetch(`/api/shift-swap-requests?week_start_date=${encodeURIComponent(weekStart)}&position_id=${encodeURIComponent(positionId)}`)
+                        : Promise.resolve({ ok: true, json: async () => [] })
                 ]);
 
-                if (!scheduleResponse.ok || !dayStatusesResponse.ok) {
+                if (!scheduleResponse.ok || !dayStatusesResponse.ok || !shiftSwapRequestsResponse.ok) {
                     showMessage(t("msg_failed_refresh_schedule_data", "Failed to refresh schedule data."), "warning");
                     return;
                 }
 
                 allScheduleEntries = await scheduleResponse.json();
                 allDayStatuses = await dayStatusesResponse.json();
+                allShiftSwapRequests = await shiftSwapRequestsResponse.json();
                 scheduleDataLoaded = true;
                 renderScheduleTable(positionId);
+                renderShiftSwapPanel();
                 updateScheduleActionAvailability();
             } catch (error) {
                 console.error(error);

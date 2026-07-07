@@ -76,6 +76,7 @@ def get_app_settings(connection, organization_id: int = 1) -> dict:
         "schedule_evening_color": read_color("schedule_evening_color", DEFAULT_SCHEDULE_COLORS["schedule_evening_color"]),
         "schedule_night_color": read_color("schedule_night_color", DEFAULT_SCHEDULE_COLORS["schedule_night_color"]),
         "schedule_status_color": read_color("schedule_status_color", DEFAULT_SCHEDULE_COLORS["schedule_status_color"]),
+        "employee_shift_swap_requests_enabled": read_bool("employee_shift_swap_requests_enabled", True),
         "allow_multiple_positions_per_day": read_bool("allow_multiple_positions_per_day", False),
         "max_work_days_per_week": read_int("max_work_days_per_week", MAX_WORK_DAYS_PER_WEEK),
         "max_consecutive_nights": read_int("max_consecutive_nights", MAX_CONSECUTIVE_NIGHTS),
@@ -163,5 +164,8 @@ def reset_visual_color_settings(connection, organization_id: int = 1) -> int:
             """,
             (organization_id, key, value),
         )
-    cursor.execute("UPDATE positions SET color = ?", (DEFAULT_POSITION_COLOR,))
+    cursor.execute(
+        "UPDATE positions SET color = ? WHERE organization_id = ?",
+        (DEFAULT_POSITION_COLOR, organization_id),
+    )
     return cursor.rowcount

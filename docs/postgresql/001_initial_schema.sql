@@ -307,6 +307,36 @@ CREATE TABLE IF NOT EXISTS schedule_entries (
     UNIQUE (public_id)
 );
 
+CREATE TABLE IF NOT EXISTS shift_swap_requests (
+    id BIGSERIAL PRIMARY KEY,
+    organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
+    public_id TEXT NOT NULL DEFAULT ('swr_' || lower(encode(gen_random_bytes(16), 'hex'))),
+    requester_employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    target_employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    requester_schedule_entry_id BIGINT NOT NULL REFERENCES schedule_entries(id) ON DELETE CASCADE,
+    target_schedule_entry_id BIGINT NOT NULL REFERENCES schedule_entries(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending_target' CHECK (status IN ('pending_target', 'pending_admin', 'approved', 'rejected', 'cancelled')),
+    requester_note TEXT,
+    target_note TEXT,
+    admin_note TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    target_responded_at TEXT,
+    reviewed_at TEXT,
+    reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE (public_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_org_status
+ON shift_swap_requests (organization_id, status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_requester
+ON shift_swap_requests (requester_employee_id, status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_target
+ON shift_swap_requests (target_employee_id, status, created_at);
+
 CREATE TABLE IF NOT EXISTS shift_requirements (
     id BIGSERIAL PRIMARY KEY,
     position_id BIGINT NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
@@ -500,5 +530,5 @@ CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position ON coverage_re
 CREATE INDEX IF NOT EXISTS idx_app_settings_organization ON app_settings (organization_id, key);
 
 INSERT INTO schema_metadata (key, value)
-VALUES ('schema_version', '24')
+VALUES ('schema_version', '25')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;

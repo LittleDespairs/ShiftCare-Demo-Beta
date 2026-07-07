@@ -115,6 +115,9 @@ from schemas import (
     ScheduleEntryCreate,
     ScheduleEntryStatusUpdate,
     ScheduleEntryTimeUpdate,
+    ShiftSwapAdminDecision,
+    ShiftSwapRequestCreate,
+    ShiftSwapTargetDecision,
     ShiftRequirementCreate,
     ShiftTemplateCreate,
     UpdateInstallRequest,
@@ -135,7 +138,7 @@ import update_service
 from word_export import build_all_schedule_export_document, build_schedule_export_document
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
-APP_VERSION = "0.20.12_beta"
+APP_VERSION = "0.20.13_beta"
 APP_DEMO_MODE = any(
     os.environ.get(name, "").strip().lower() in TRUTHY_ENV_VALUES
     for name in ("SHIFTCARE_DEMO", "SCHEDULE_APP_DEMO_MODE")
@@ -2319,12 +2322,14 @@ ORGANIZATION_EXPORT_TABLES = (
     "employee_recurring_preferences",
     "employee_day_statuses",
     "schedule_entries",
+    "shift_swap_requests",
     "licenses",
     "app_settings",
 )
 
 ORGANIZATION_IMPORT_DELETE_ORDER = (
     "licenses",
+    "shift_swap_requests",
     "schedule_entries",
     "employee_day_statuses",
     "employee_recurring_preferences",
@@ -3001,6 +3006,7 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
             ),
         )
 
+    schedule_entry_id_map = {}
     for row in records.get("schedule_entries") or []:
         new_employee_id = employee_id_map.get(int(row["employee_id"]))
         new_position_id = position_id_map.get(int(row["position_id"]))
@@ -3030,6 +3036,44 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
                 row.get("created_at") or now,
                 row.get("updated_at") or now,
                 row.get("updated_by"),
+            ),
+        )
+        schedule_entry_id_map[int(row["id"])] = int(cursor.lastrowid)
+
+    for row in records.get("shift_swap_requests") or []:
+        requester_employee_id = employee_id_map.get(int(row["requester_employee_id"]))
+        target_employee_id = employee_id_map.get(int(row["target_employee_id"]))
+        requester_entry_id = schedule_entry_id_map.get(int(row["requester_schedule_entry_id"]))
+        target_entry_id = schedule_entry_id_map.get(int(row["target_schedule_entry_id"]))
+        if not requester_employee_id or not target_employee_id or not requester_entry_id or not target_entry_id:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO shift_swap_requests (
+                organization_id, public_id, requester_employee_id, target_employee_id,
+                requester_schedule_entry_id, target_schedule_entry_id, status,
+                requester_note, target_note, admin_note,
+                created_at, updated_at, updated_by, target_responded_at, reviewed_at, reviewed_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                row.get("public_id"),
+                requester_employee_id,
+                target_employee_id,
+                requester_entry_id,
+                target_entry_id,
+                row.get("status") if row.get("status") in {"pending_target", "pending_admin", "approved", "rejected", "cancelled"} else "pending_target",
+                row.get("requester_note"),
+                row.get("target_note"),
+                row.get("admin_note"),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("updated_by"),
+                row.get("target_responded_at"),
+                row.get("reviewed_at"),
+                row.get("reviewed_by"),
             ),
         )
 
@@ -3062,6 +3106,7 @@ def import_organization_bundle(connection, organization_id: int, bundle: dict, r
             "positions": len(position_id_map),
             "shift_templates": len(shift_template_id_map),
             "schedule_entries": len(records.get("schedule_entries") or []),
+            "shift_swap_requests": len(records.get("shift_swap_requests") or []),
             "employee_week_preference_requests": len(records.get("employee_week_preference_requests") or []),
             "licenses": license_count,
         },
@@ -4953,9 +4998,16 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
         for row in cloud_employees
         if row.get("id") is not None and row.get("public_id")
     }
+    cloud_schedule_public_ids = {
+        int(row["id"]): str(row.get("public_id") or "")
+        for row in records.get("schedule_entries") or []
+        if row.get("id") is not None and row.get("public_id")
+    }
     cursor = connection.cursor()
     cursor.execute("SELECT id, public_id FROM employees WHERE organization_id = 1")
     local_employee_ids = {str(row["public_id"]): int(row["id"]) for row in cursor.fetchall() if row["public_id"]}
+    cursor.execute("SELECT id, public_id FROM schedule_entries WHERE organization_id = 1")
+    local_schedule_entry_ids = {str(row["public_id"]): int(row["id"]) for row in cursor.fetchall() if row["public_id"]}
     now = current_utc_timestamp()
 
     with suspend_desktop_sync_triggers(cursor, 1):
@@ -5132,6 +5184,93 @@ def sync_cloud_preferences_to_desktop(connection, settings: dict[str, str]) -> b
                 (1, row_public_id, *row_values[:9], None, *row_values[9:]),
             )
 
+        cloud_swap_public_ids = {
+            str(row.get("public_id"))
+            for row in records.get("shift_swap_requests") or []
+            if row.get("public_id")
+        }
+        if cloud_swap_public_ids:
+            placeholders = ",".join(["?"] * len(cloud_swap_public_ids))
+            cursor.execute(
+                f"""
+                DELETE FROM shift_swap_requests
+                WHERE organization_id = 1
+                  AND public_id IS NOT NULL
+                  AND public_id NOT IN ({placeholders})
+                """,
+                tuple(sorted(cloud_swap_public_ids)),
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE FROM shift_swap_requests
+                WHERE organization_id = 1 AND public_id IS NOT NULL
+                """
+            )
+        for row in records.get("shift_swap_requests") or []:
+            requester_public_id = cloud_employee_public_ids.get(int(row["requester_employee_id"])) if row.get("requester_employee_id") is not None else None
+            target_public_id = cloud_employee_public_ids.get(int(row["target_employee_id"])) if row.get("target_employee_id") is not None else None
+            requester_employee_id = local_employee_ids.get(str(requester_public_id))
+            target_employee_id = local_employee_ids.get(str(target_public_id))
+            requester_entry_public_id = cloud_schedule_public_ids.get(int(row["requester_schedule_entry_id"])) if row.get("requester_schedule_entry_id") is not None else None
+            target_entry_public_id = cloud_schedule_public_ids.get(int(row["target_schedule_entry_id"])) if row.get("target_schedule_entry_id") is not None else None
+            requester_entry_id = local_schedule_entry_ids.get(str(requester_entry_public_id))
+            target_entry_id = local_schedule_entry_ids.get(str(target_entry_public_id))
+            if not requester_employee_id or not target_employee_id or not requester_entry_id or not target_entry_id:
+                continue
+            row_public_id = row.get("public_id")
+            row_values = (
+                requester_employee_id,
+                target_employee_id,
+                requester_entry_id,
+                target_entry_id,
+                row.get("status") if row.get("status") in {"pending_target", "pending_admin", "approved", "rejected", "cancelled"} else "pending_target",
+                row.get("requester_note"),
+                row.get("target_note"),
+                row.get("admin_note"),
+                row.get("created_at") or now,
+                row.get("updated_at") or now,
+                row.get("target_responded_at"),
+                row.get("reviewed_at"),
+                row.get("reviewed_by"),
+            )
+            if row_public_id:
+                cursor.execute(
+                    """
+                    UPDATE shift_swap_requests
+                    SET requester_employee_id = ?,
+                        target_employee_id = ?,
+                        requester_schedule_entry_id = ?,
+                        target_schedule_entry_id = ?,
+                        status = ?,
+                        requester_note = ?,
+                        target_note = ?,
+                        admin_note = ?,
+                        created_at = ?,
+                        updated_at = ?,
+                        updated_by = NULL,
+                        target_responded_at = ?,
+                        reviewed_at = ?,
+                        reviewed_by = ?
+                    WHERE organization_id = 1 AND public_id = ?
+                    """,
+                    (*row_values, row_public_id),
+                )
+                if cursor.rowcount > 0:
+                    continue
+            cursor.execute(
+                """
+                INSERT INTO shift_swap_requests (
+                    organization_id, public_id, requester_employee_id, target_employee_id,
+                    requester_schedule_entry_id, target_schedule_entry_id, status,
+                    requester_note, target_note, admin_note,
+                    created_at, updated_at, updated_by, target_responded_at, reviewed_at, reviewed_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (1, row_public_id, *row_values[:10], None, *row_values[10:]),
+            )
+
         cursor.execute("DELETE FROM employee_recurring_preferences WHERE organization_id = 1")
         for row in records.get("employee_recurring_preferences") or []:
             public_id = cloud_employee_public_ids.get(int(row["employee_id"])) if row.get("employee_id") is not None else None
@@ -5192,7 +5331,8 @@ def pull_cloud_preferences_for_desktop_generation(connection) -> None:
                   'employee_week_preferences',
                   'employee_week_preference_requests',
                   'employee_recurring_preferences',
-                  'employee_day_statuses'
+                  'employee_day_statuses',
+                  'shift_swap_requests'
               )
           AND status IN ('pending', 'failed', 'syncing')
         """
@@ -8572,10 +8712,11 @@ def get_coverage_requirements(
 
 
 @app.get("/api/app-settings", tags=["Requirements"])
-def get_app_settings_api():
+def get_app_settings_api(access_context: dict | None = Depends(require_schedule_view_if_auth_initialized)):
+    organization_id = access_context["membership"]["organization_id"] if access_context else 1
     connection = get_connection()
     try:
-        return get_app_settings(connection)
+        return get_app_settings(connection, organization_id=organization_id)
     finally:
         connection.close()
 
@@ -8585,13 +8726,14 @@ def update_app_settings(
     settings: AppSettingsUpdate,
     _access: dict | None = Depends(require_setup_edit_if_auth_initialized),
 ):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
     connection = get_connection()
     try:
-        save_app_settings(connection, settings)
+        save_app_settings(connection, settings, organization_id=organization_id)
         connection.commit()
         return {
             "message": "Application settings updated successfully",
-            "settings": get_app_settings(connection),
+            "settings": get_app_settings(connection, organization_id=organization_id),
         }
     finally:
         connection.close()
@@ -8599,13 +8741,14 @@ def update_app_settings(
 
 @app.post("/api/app-settings/reset-colors", tags=["Requirements"])
 def reset_app_visual_colors(_access: dict | None = Depends(require_setup_edit_if_auth_initialized)):
+    organization_id = _access["membership"]["organization_id"] if _access else 1
     connection = get_connection()
     try:
-        updated_positions = reset_visual_color_settings(connection)
+        updated_positions = reset_visual_color_settings(connection, organization_id=organization_id)
         connection.commit()
         return {
             "message": "Visual colors reset successfully",
-            "settings": get_app_settings(connection),
+            "settings": get_app_settings(connection, organization_id=organization_id),
             "updated_positions": updated_positions,
             "default_position_color": DEFAULT_POSITION_COLOR,
         }
@@ -9792,6 +9935,619 @@ def update_schedule_entry_time(
             "message": "Schedule entry time updated successfully",
             "schedule_entry": updated_entry,
         }
+    finally:
+        connection.close()
+
+
+def schedule_entry_template_for_swap(entry: dict) -> dict:
+    return {
+        "id": entry["shift_template_id"],
+        "name": entry["shift_template_name"],
+        "category": entry["shift_category"],
+        "start_time": entry["start_time"],
+        "end_time": entry["end_time"],
+        "is_overnight": bool(entry["is_overnight"]),
+        "is_split_only": bool(entry["is_split_only"]),
+    }
+
+
+def fetch_schedule_entry_for_swap(cursor, schedule_entry_id: int, organization_id: int) -> dict:
+    row = fetch_one_or_404(
+        cursor,
+        """
+        SELECT
+            se.id,
+            se.public_id,
+            se.organization_id,
+            se.employee_id,
+            se.position_id,
+            se.date,
+            se.shift_template_id,
+            se.no_show,
+            COALESCE(se.start_time_override, st.start_time) AS start_time,
+            COALESCE(se.end_time_override, st.end_time) AS end_time,
+            COALESCE(se.is_overnight_override, st.is_overnight) AS is_overnight,
+            st.name AS shift_template_name,
+            st.category AS shift_category,
+            st.is_split_only,
+            e.full_name AS employee_name,
+            e.sex AS employee_sex,
+            p.name AS position_name,
+            p.department_id,
+            d.name AS department_name
+        FROM schedule_entries se
+        JOIN shift_templates st ON st.id = se.shift_template_id
+        JOIN employees e ON e.id = se.employee_id
+        JOIN positions p ON p.id = se.position_id
+        LEFT JOIN departments d ON d.id = p.department_id
+        WHERE se.id = ? AND se.organization_id = ?
+        """,
+        (schedule_entry_id, organization_id),
+        "Schedule entry not found",
+    )
+    item = dict(row)
+    item["is_overnight"] = bool(item["is_overnight"])
+    item["is_split_only"] = bool(item["is_split_only"])
+    item["no_show"] = bool(item["no_show"])
+    return item
+
+
+def get_projected_entries_for_swap(
+    connection,
+    employee_id: int,
+    date_string: str,
+    excluded_entry_id: int,
+) -> list[dict]:
+    return [
+        entry
+        for entry in get_employee_entries_for_date(connection, employee_id, date_string)
+        if int(entry["id"]) != int(excluded_entry_id)
+    ]
+
+
+def projected_has_category(
+    connection,
+    employee_id: int,
+    date_string: str,
+    category: str,
+    excluded_entry_id: int,
+) -> bool:
+    return any(
+        entry_category(entry) == category
+        for entry in get_projected_entries_for_swap(connection, employee_id, date_string, excluded_entry_id)
+    )
+
+
+def validate_employee_can_receive_swap_entry(
+    connection,
+    employee_id: int,
+    incoming_entry: dict,
+    replaced_entry_id: int,
+) -> str | None:
+    cursor = connection.cursor()
+    employee_row = fetch_one_or_404(cursor, "SELECT * FROM employees WHERE id = ?", (employee_id,), "Employee not found")
+    employee = row_to_employee_dict(employee_row)
+    template = schedule_entry_template_for_swap(incoming_entry)
+    date_string = incoming_entry["date"]
+    position_id = int(incoming_entry["position_id"])
+    app_settings = get_position_app_settings(connection, position_id)
+
+    if incoming_entry.get("no_show"):
+        return "No-show shifts cannot be swapped"
+    day_status = get_employee_day_status(connection, employee_id, date_string)
+    if day_status and day_status["status_type"] in {"sick", "vacation"}:
+        return "Target employee is unavailable on this date"
+    if not category_allowed_by_preferences(connection, employee, date_string, template["category"]):
+        return "Employee preferences or permissions block this shift"
+    cursor.execute(
+        """
+        SELECT 1
+        FROM employee_positions
+        WHERE employee_id = ? AND position_id = ?
+        """,
+        (employee_id, position_id),
+    )
+    if not cursor.fetchone():
+        return "Employee is not assigned to this position"
+
+    existing_entries = get_projected_entries_for_swap(connection, employee_id, date_string, replaced_entry_id)
+    cross_position_rejection = cross_position_same_day_rejection(connection, position_id, existing_entries)
+    if cross_position_rejection:
+        return cross_position_rejection
+
+    if any(entry_category(entry) == template["category"] for entry in existing_entries):
+        return "Employee already has this shift category on this date"
+
+    incoming_interval = build_interval(template["start_time"], template["end_time"], template["is_overnight"])
+    for entry in existing_entries:
+        existing_interval = build_interval(entry["start_time"], entry["end_time"], bool(entry["is_overnight"]))
+        if incoming_interval.overlaps(existing_interval):
+            return "Employee already has an overlapping shift"
+
+    pairing_rejection = explain_same_day_pairing_rejection(
+        connection,
+        employee,
+        date_string,
+        template,
+        existing_entries,
+        app_settings,
+    )
+    if pairing_rejection:
+        return pairing_rejection
+
+    previous_date = (parse_date_string(date_string) - timedelta(days=1)).isoformat()
+    next_date = (parse_date_string(date_string) + timedelta(days=1)).isoformat()
+    if template["category"] == "morning" and projected_has_category(connection, employee_id, previous_date, "night", replaced_entry_id):
+        return "Morning after previous night is forbidden"
+    if template["category"] == "night" and projected_has_category(connection, employee_id, next_date, "morning", replaced_entry_id):
+        return "Night before next morning is forbidden"
+    return None
+
+
+def validate_shift_swap_request_rows(connection, swap_request: dict) -> tuple[dict, dict]:
+    cursor = connection.cursor()
+    organization_id = int(swap_request["organization_id"])
+    requester_entry = fetch_schedule_entry_for_swap(cursor, int(swap_request["requester_schedule_entry_id"]), organization_id)
+    target_entry = fetch_schedule_entry_for_swap(cursor, int(swap_request["target_schedule_entry_id"]), organization_id)
+
+    if int(requester_entry["employee_id"]) != int(swap_request["requester_employee_id"]):
+        raise HTTPException(status_code=409, detail="Requester shift no longer belongs to the requester")
+    if int(target_entry["employee_id"]) != int(swap_request["target_employee_id"]):
+        raise HTTPException(status_code=409, detail="Target shift no longer belongs to the target employee")
+    if int(requester_entry["position_id"]) != int(target_entry["position_id"]):
+        raise HTTPException(status_code=400, detail="Shift swaps must stay inside one position")
+    if requester_entry["date"] and target_entry["date"]:
+        if get_week_start_for_date(requester_entry["date"]) != get_week_start_for_date(target_entry["date"]):
+            raise HTTPException(status_code=400, detail="Shift swaps must stay inside one week")
+    requester_rejection = validate_employee_can_receive_swap_entry(
+        connection,
+        int(swap_request["requester_employee_id"]),
+        target_entry,
+        int(swap_request["requester_schedule_entry_id"]),
+    )
+    if requester_rejection:
+        raise HTTPException(status_code=400, detail=f"Requester cannot take target shift: {requester_rejection}")
+    target_rejection = validate_employee_can_receive_swap_entry(
+        connection,
+        int(swap_request["target_employee_id"]),
+        requester_entry,
+        int(swap_request["target_schedule_entry_id"]),
+    )
+    if target_rejection:
+        raise HTTPException(status_code=400, detail=f"Target employee cannot take requester shift: {target_rejection}")
+    return requester_entry, target_entry
+
+
+def shift_swap_select_sql(extra_where: str = "") -> str:
+    where_sql = f"WHERE {extra_where}" if extra_where else ""
+    return f"""
+        SELECT
+            ssr.*,
+            requester.full_name AS requester_employee_name,
+            target.full_name AS target_employee_name,
+            rse.date AS requester_date,
+            rse.position_id AS requester_position_id,
+            rst.name AS requester_shift_template_name,
+            rst.category AS requester_shift_category,
+            COALESCE(rse.start_time_override, rst.start_time) AS requester_start_time,
+            COALESCE(rse.end_time_override, rst.end_time) AS requester_end_time,
+            rp.name AS requester_position_name,
+            rd.name AS requester_department_name,
+            tse.date AS target_date,
+            tse.position_id AS target_position_id,
+            tst.name AS target_shift_template_name,
+            tst.category AS target_shift_category,
+            COALESCE(tse.start_time_override, tst.start_time) AS target_start_time,
+            COALESCE(tse.end_time_override, tst.end_time) AS target_end_time,
+            tp.name AS target_position_name,
+            td.name AS target_department_name
+        FROM shift_swap_requests ssr
+        JOIN employees requester ON requester.id = ssr.requester_employee_id
+        JOIN employees target ON target.id = ssr.target_employee_id
+        JOIN schedule_entries rse ON rse.id = ssr.requester_schedule_entry_id
+        JOIN shift_templates rst ON rst.id = rse.shift_template_id
+        JOIN positions rp ON rp.id = rse.position_id
+        LEFT JOIN departments rd ON rd.id = rp.department_id
+        JOIN schedule_entries tse ON tse.id = ssr.target_schedule_entry_id
+        JOIN shift_templates tst ON tst.id = tse.shift_template_id
+        JOIN positions tp ON tp.id = tse.position_id
+        LEFT JOIN departments td ON td.id = tp.department_id
+        {where_sql}
+        ORDER BY ssr.created_at DESC, ssr.id DESC
+    """
+
+
+def shift_swap_row_to_dict(row) -> dict:
+    item = dict(row)
+    return {
+        "id": item["id"],
+        "public_id": item.get("public_id"),
+        "organization_id": item["organization_id"],
+        "requester_employee_id": item["requester_employee_id"],
+        "requester_employee_name": item["requester_employee_name"],
+        "target_employee_id": item["target_employee_id"],
+        "target_employee_name": item["target_employee_name"],
+        "requester_schedule_entry_id": item["requester_schedule_entry_id"],
+        "target_schedule_entry_id": item["target_schedule_entry_id"],
+        "status": item["status"],
+        "requester_note": item.get("requester_note"),
+        "target_note": item.get("target_note"),
+        "admin_note": item.get("admin_note"),
+        "created_at": item.get("created_at"),
+        "updated_at": item.get("updated_at"),
+        "target_responded_at": item.get("target_responded_at"),
+        "reviewed_at": item.get("reviewed_at"),
+        "reviewed_by": item.get("reviewed_by"),
+        "requester_shift": {
+            "date": item["requester_date"],
+            "position_id": item["requester_position_id"],
+            "position_name": item["requester_position_name"],
+            "department_name": item.get("requester_department_name"),
+            "template_name": item["requester_shift_template_name"],
+            "category": item["requester_shift_category"],
+            "start_time": item["requester_start_time"],
+            "end_time": item["requester_end_time"],
+        },
+        "target_shift": {
+            "date": item["target_date"],
+            "position_id": item["target_position_id"],
+            "position_name": item["target_position_name"],
+            "department_name": item.get("target_department_name"),
+            "template_name": item["target_shift_template_name"],
+            "category": item["target_shift_category"],
+            "start_time": item["target_start_time"],
+            "end_time": item["target_end_time"],
+        },
+    }
+
+
+def fetch_shift_swap_request(cursor, swap_request_id: int, organization_id: int) -> dict:
+    cursor.execute(
+        shift_swap_select_sql("ssr.id = ? AND ssr.organization_id = ?"),
+        (swap_request_id, organization_id),
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Shift swap request not found")
+    return dict(row)
+
+
+@app.get("/api/shift-swap-requests", tags=["Schedule"])
+def get_shift_swap_requests(
+    week_start_date: str | None = None,
+    position_id: int | None = None,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
+    if access_context is None:
+        raise HTTPException(status_code=403, detail="Shift swap requests require an authenticated account")
+    connection = get_connection()
+    try:
+        if database_module.is_sqlite_runtime():
+            pull_cloud_preferences_for_desktop_generation(connection)
+            connection.commit()
+        cursor = connection.cursor()
+        organization_id = int(access_context["membership"]["organization_id"])
+        role = access_context["membership"]["role"]
+        clauses = ["ssr.organization_id = ?"]
+        params: list = [organization_id]
+        if week_start_date:
+            parse_date_string(week_start_date)
+            week_end_date = get_week_end_date(week_start_date)
+            clauses.append(
+                "((rse.date >= ? AND rse.date <= ?) OR (tse.date >= ? AND tse.date <= ?))"
+            )
+            params.extend([week_start_date, week_end_date, week_start_date, week_end_date])
+        if position_id is not None:
+            clauses.append("(rse.position_id = ? OR tse.position_id = ?)")
+            params.extend([position_id, position_id])
+            ensure_department_access_for_position(cursor, access_context, position_id)
+        if role == "employee":
+            employee_id = employee_scope_from_access(access_context)
+            clauses.append("(ssr.requester_employee_id = ? OR ssr.target_employee_id = ?)")
+            params.extend([employee_id, employee_id])
+        else:
+            allowed_department_ids = get_allowed_department_ids(cursor, access_context)
+            if allowed_department_ids is not None:
+                if not allowed_department_ids:
+                    clauses.append("1 = 0")
+                else:
+                    placeholders = ",".join(["?"] * len(allowed_department_ids))
+                    clauses.append(f"(rp.department_id IN ({placeholders}) OR tp.department_id IN ({placeholders}))")
+                    params.extend(sorted(allowed_department_ids))
+                    params.extend(sorted(allowed_department_ids))
+        cursor.execute(shift_swap_select_sql(" AND ".join(clauses)), params)
+        return [shift_swap_row_to_dict(row) for row in cursor.fetchall()]
+    finally:
+        connection.close()
+
+
+@app.post("/api/shift-swap-requests", tags=["Schedule"])
+def create_shift_swap_request(
+    request_data: ShiftSwapRequestCreate,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
+    if access_context is None or access_context["membership"]["role"] != "employee":
+        raise HTTPException(status_code=403, detail="Only linked employees can request shift swaps")
+    requester_employee_id = employee_scope_from_access(access_context)
+    organization_id = int(access_context["membership"]["organization_id"])
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        if not get_app_settings(connection, organization_id=organization_id).get("employee_shift_swap_requests_enabled", True):
+            raise HTTPException(status_code=403, detail="Shift swap requests are disabled for employees")
+        requester_entry = fetch_schedule_entry_for_swap(cursor, request_data.requester_schedule_entry_id, organization_id)
+        target_entry = fetch_schedule_entry_for_swap(cursor, request_data.target_schedule_entry_id, organization_id)
+        if int(requester_entry["employee_id"]) != requester_employee_id:
+            raise HTTPException(status_code=403, detail="Employees can request swaps only for their own shifts")
+        if int(target_entry["employee_id"]) == requester_employee_id:
+            raise HTTPException(status_code=400, detail="Target shift must belong to another employee")
+        if get_week_start_for_date(requester_entry["date"]) != get_week_start_for_date(target_entry["date"]):
+            raise HTTPException(status_code=400, detail="Shift swaps must stay inside one week")
+
+        candidate = {
+            "organization_id": organization_id,
+            "requester_employee_id": requester_employee_id,
+            "target_employee_id": int(target_entry["employee_id"]),
+            "requester_schedule_entry_id": int(requester_entry["id"]),
+            "target_schedule_entry_id": int(target_entry["id"]),
+        }
+        validate_shift_swap_request_rows(connection, candidate)
+
+        cursor.execute(
+            """
+            SELECT id
+            FROM shift_swap_requests
+            WHERE organization_id = ?
+              AND requester_schedule_entry_id = ?
+              AND target_schedule_entry_id = ?
+              AND status IN ('pending_target', 'pending_admin')
+            LIMIT 1
+            """,
+            (organization_id, requester_entry["id"], target_entry["id"]),
+        )
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="This shift swap request is already pending")
+
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            INSERT INTO shift_swap_requests (
+                organization_id, requester_employee_id, target_employee_id,
+                requester_schedule_entry_id, target_schedule_entry_id,
+                status, requester_note, created_at, updated_at, updated_by
+            )
+            VALUES (?, ?, ?, ?, ?, 'pending_target', ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                requester_employee_id,
+                int(target_entry["employee_id"]),
+                int(requester_entry["id"]),
+                int(target_entry["id"]),
+                request_data.requester_note,
+                now,
+                now,
+                access_context["user"]["id"],
+            ),
+        )
+        swap_request_id = int(cursor.lastrowid)
+        write_auth_audit_event(
+            cursor,
+            "shift_swap_requested",
+            user_id=access_context["user"]["id"],
+            organization_id=organization_id,
+            metadata={
+                "requester_schedule_entry_id": requester_entry["id"],
+                "target_schedule_entry_id": target_entry["id"],
+                "target_employee_id": target_entry["employee_id"],
+            },
+        )
+        connection.commit()
+        return {
+            "message": "Shift swap request created",
+            "request": shift_swap_row_to_dict(fetch_shift_swap_request(cursor, swap_request_id, organization_id)),
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.patch("/api/shift-swap-requests/{swap_request_id}/target", tags=["Schedule"])
+def answer_shift_swap_request_as_target(
+    swap_request_id: int,
+    decision: ShiftSwapTargetDecision,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
+    if access_context is None or access_context["membership"]["role"] != "employee":
+        raise HTTPException(status_code=403, detail="Only the target employee can answer this request")
+    employee_id = employee_scope_from_access(access_context)
+    organization_id = int(access_context["membership"]["organization_id"])
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        swap_request = fetch_shift_swap_request(cursor, swap_request_id, organization_id)
+        if int(swap_request["target_employee_id"]) != int(employee_id):
+            raise HTTPException(status_code=403, detail="Only the target employee can answer this request")
+        if swap_request["status"] != "pending_target":
+            raise HTTPException(status_code=409, detail="Shift swap request is not waiting for employee approval")
+        now = current_utc_timestamp()
+        next_status = "pending_admin" if decision.status == "accepted" else "rejected"
+        if next_status == "pending_admin":
+            validate_shift_swap_request_rows(connection, swap_request)
+        cursor.execute(
+            """
+            UPDATE shift_swap_requests
+            SET status = ?,
+                target_note = ?,
+                target_responded_at = ?,
+                updated_at = ?,
+                updated_by = ?
+            WHERE id = ? AND organization_id = ?
+            """,
+            (next_status, decision.note, now, now, access_context["user"]["id"], swap_request_id, organization_id),
+        )
+        write_auth_audit_event(
+            cursor,
+            "shift_swap_target_answered",
+            user_id=access_context["user"]["id"],
+            organization_id=organization_id,
+            metadata={"shift_swap_request_id": swap_request_id, "status": next_status},
+        )
+        connection.commit()
+        return {
+            "message": "Shift swap request updated",
+            "request": shift_swap_row_to_dict(fetch_shift_swap_request(cursor, swap_request_id, organization_id)),
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.patch("/api/shift-swap-requests/{swap_request_id}/cancel", tags=["Schedule"])
+def cancel_shift_swap_request(
+    swap_request_id: int,
+    access_context: dict | None = Depends(require_schedule_view_if_auth_initialized),
+):
+    if access_context is None or access_context["membership"]["role"] != "employee":
+        raise HTTPException(status_code=403, detail="Only the requester can cancel this request")
+    employee_id = employee_scope_from_access(access_context)
+    organization_id = int(access_context["membership"]["organization_id"])
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        swap_request = fetch_shift_swap_request(cursor, swap_request_id, organization_id)
+        if int(swap_request["requester_employee_id"]) != int(employee_id):
+            raise HTTPException(status_code=403, detail="Only the requester can cancel this request")
+        if swap_request["status"] not in {"pending_target", "pending_admin"}:
+            raise HTTPException(status_code=409, detail="Only pending shift swap requests can be cancelled")
+        now = current_utc_timestamp()
+        cursor.execute(
+            """
+            UPDATE shift_swap_requests
+            SET status = 'cancelled',
+                updated_at = ?,
+                updated_by = ?
+            WHERE id = ? AND organization_id = ?
+            """,
+            (now, access_context["user"]["id"], swap_request_id, organization_id),
+        )
+        connection.commit()
+        return {
+            "message": "Shift swap request cancelled",
+            "request": shift_swap_row_to_dict(fetch_shift_swap_request(cursor, swap_request_id, organization_id)),
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.patch("/api/shift-swap-requests/{swap_request_id}/review", tags=["Schedule"])
+def review_shift_swap_request(
+    swap_request_id: int,
+    decision: ShiftSwapAdminDecision,
+    access_context: dict | None = Depends(require_schedule_edit_if_auth_initialized),
+):
+    if access_context is None:
+        raise HTTPException(status_code=403, detail="Schedule editing permissions are required")
+    organization_id = int(access_context["membership"]["organization_id"])
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        swap_request = fetch_shift_swap_request(cursor, swap_request_id, organization_id)
+        if swap_request["status"] != "pending_admin":
+            raise HTTPException(status_code=409, detail="Shift swap request is not waiting for administrator approval")
+        ensure_department_access_for_position(cursor, access_context, int(swap_request["requester_position_id"]))
+        ensure_department_access_for_position(cursor, access_context, int(swap_request["target_position_id"]))
+        now = current_utc_timestamp()
+        if decision.status == "rejected":
+            cursor.execute(
+                """
+                UPDATE shift_swap_requests
+                SET status = 'rejected',
+                    admin_note = ?,
+                    reviewed_at = ?,
+                    reviewed_by = ?,
+                    updated_at = ?,
+                    updated_by = ?
+                WHERE id = ? AND organization_id = ?
+                """,
+                (decision.note, now, access_context["user"]["id"], now, access_context["user"]["id"], swap_request_id, organization_id),
+            )
+        else:
+            requester_entry, target_entry = validate_shift_swap_request_rows(connection, swap_request)
+            cursor.execute(
+                """
+                UPDATE schedule_entries
+                SET employee_id = ?,
+                    updated_at = ?,
+                    updated_by = ?
+                WHERE id = ? AND organization_id = ?
+                """,
+                (
+                    int(swap_request["target_employee_id"]),
+                    now,
+                    access_context["user"]["id"],
+                    int(swap_request["requester_schedule_entry_id"]),
+                    organization_id,
+                ),
+            )
+            cursor.execute(
+                """
+                UPDATE schedule_entries
+                SET employee_id = ?,
+                    updated_at = ?,
+                    updated_by = ?
+                WHERE id = ? AND organization_id = ?
+                """,
+                (
+                    int(swap_request["requester_employee_id"]),
+                    now,
+                    access_context["user"]["id"],
+                    int(swap_request["target_schedule_entry_id"]),
+                    organization_id,
+                ),
+            )
+            for employee_id, date_string in {
+                (int(swap_request["requester_employee_id"]), requester_entry["date"]),
+                (int(swap_request["requester_employee_id"]), target_entry["date"]),
+                (int(swap_request["target_employee_id"]), requester_entry["date"]),
+                (int(swap_request["target_employee_id"]), target_entry["date"]),
+            }:
+                sync_employee_day_off_status_for_date(connection, cursor, employee_id, date_string)
+            cursor.execute(
+                """
+                UPDATE shift_swap_requests
+                SET status = 'approved',
+                    admin_note = ?,
+                    reviewed_at = ?,
+                    reviewed_by = ?,
+                    updated_at = ?,
+                    updated_by = ?
+                WHERE id = ? AND organization_id = ?
+                """,
+                (decision.note, now, access_context["user"]["id"], now, access_context["user"]["id"], swap_request_id, organization_id),
+            )
+        write_auth_audit_event(
+            cursor,
+            "shift_swap_reviewed",
+            user_id=access_context["user"]["id"],
+            organization_id=organization_id,
+            metadata={"shift_swap_request_id": swap_request_id, "status": decision.status},
+        )
+        connection.commit()
+        return {
+            "message": "Shift swap request reviewed",
+            "request": shift_swap_row_to_dict(fetch_shift_swap_request(cursor, swap_request_id, organization_id)),
+        }
+    except HTTPException:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 
