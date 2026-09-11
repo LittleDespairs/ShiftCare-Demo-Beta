@@ -15,12 +15,39 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $pyinstaller = Join-Path $repoRoot ".venv\Scripts\pyinstaller.exe"
-$specName = if ($Target -eq "Demo") { "ShiftCare_Demo_0.20.13_beta.spec" } else { "ShiftCare_0.20.13_beta.spec" }
+$releaseConfig = Join-Path $repoRoot "release_config.py"
+$versionMatch = [regex]::Match((Get-Content -LiteralPath $releaseConfig -Raw), '(?m)^APP_VERSION\s*=\s*"(?<version>\d+\.\d+\.\d+_beta)"')
+if (-not $versionMatch.Success) {
+    throw "APP_VERSION is missing or invalid in release_config.py."
+}
+$appVersion = $versionMatch.Groups["version"].Value
+$specName = if ($Target -eq "Demo") { "ShiftCare_Demo_$appVersion.spec" } else { "ShiftCare_$appVersion.spec" }
 $installerName = if ($Target -eq "Demo") { "ScheduleAppDemo.iss" } else { "ScheduleApp.iss" }
 $spec = Join-Path $repoRoot $specName
 $installerScript = Join-Path $repoRoot "installer\$installerName"
 $iconScript = Join-Path $repoRoot "tools\create_windows_icon.py"
-$releaseConfig = Join-Path $repoRoot "release_config.py"
+
+function Invoke-CheckedNativeCommand {
+    param([string]$FilePath, [string[]]$Arguments)
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Native command failed with exit code ${LASTEXITCODE}: $FilePath"
+    }
+}
+
+function Test-InstallerPayload {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        throw "Installer payload directory was not created: $Path"
+    }
+    $forbidden = Get-ChildItem -LiteralPath $Path -Recurse -Force -File | Where-Object {
+        $_.Name -match '(?i)(\.(db|sqlite|sqlite3)(-(wal|shm))?$|\.schedulebackup$|^\.env($|\.))' -or
+        $_.FullName -match '(?i)[\\/](private|outputs|backups)[\\/]'
+    }
+    if ($forbidden) {
+        throw "Installer payload contains private runtime data. Remove it from the package sources before building."
+    }
+}
 
 function Find-SignTool {
     param([string]$ConfiguredPath)
@@ -178,7 +205,7 @@ function Invoke-CodeSign {
         throw "File to sign was not found: $Path"
     }
 
-    & $ToolPath sign /fd SHA256 /tr $Timestamp /td SHA256 @IdentityArgs $Path
+    Invoke-CheckedNativeCommand -FilePath $ToolPath -Arguments (@("sign", "/fd", "SHA256", "/tr", $Timestamp, "/td", "SHA256") + $IdentityArgs + @($Path))
 }
 
 function Test-CodeSignature {
@@ -191,7 +218,7 @@ function Test-CodeSignature {
         throw "File to verify was not found: $Path"
     }
 
-    & $ToolPath verify /pa /tw /v $Path
+    Invoke-CheckedNativeCommand -FilePath $ToolPath -Arguments @("verify", "/pa", "/tw", "/v", $Path)
 }
 
 function Test-ExpectedSignerSubject {
@@ -225,6 +252,11 @@ if (-not (Test-Path -LiteralPath $pyinstaller)) {
     throw "PyInstaller was not found: $pyinstaller"
 }
 
+if (-not (Test-Path -LiteralPath $spec)) {
+    throw "Versioned PyInstaller spec was not found: $spec"
+}
+Invoke-CheckedNativeCommand -FilePath $python -Arguments @((Join-Path $repoRoot "tools\sync_release_metadata.py"), "--check")
+
 $iscc = Find-InnoCompiler
 if (-not $iscc -and $InstallInnoSetup) {
     $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
@@ -232,7 +264,7 @@ if (-not $iscc -and $InstallInnoSetup) {
         throw "winget.exe was not found. Install Inno Setup 6 manually: https://jrsoftware.org/isinfo.php"
     }
 
-    & $winget.Source install --id JRSoftware.InnoSetup --exact --silent --accept-source-agreements --accept-package-agreements
+    Invoke-CheckedNativeCommand -FilePath $winget.Source -Arguments @("install", "--id", "JRSoftware.InnoSetup", "--exact", "--silent", "--accept-source-agreements", "--accept-package-agreements")
     $iscc = Find-InnoCompiler
 }
 
@@ -266,13 +298,17 @@ $installerOutputPath = Join-Path $repoRoot "dist\installer\$outputBaseFilename.e
 
 Push-Location $repoRoot
 try {
-    & $python $iconScript
+    Invoke-CheckedNativeCommand -FilePath $python -Arguments @($iconScript)
     $pyinstallerArgs = @("--noconfirm")
     if ($Release) {
         $pyinstallerArgs += "--clean"
     }
     $pyinstallerArgs += $spec
-    & $pyinstaller @pyinstallerArgs
+    Invoke-CheckedNativeCommand -FilePath $pyinstaller -Arguments $pyinstallerArgs
+    Test-InstallerPayload -Path $appDistPath
+    if (-not (Test-Path -LiteralPath $appExePath -PathType Leaf)) {
+        throw "PyInstaller did not create the expected executable: $appExePath"
+    }
 
     if ($Sign) {
         Invoke-CodeSign -ToolPath $signtool -IdentityArgs $signIdentityArgs -Timestamp $TimestampUrl -Path $appExePath
@@ -284,7 +320,10 @@ try {
         $innoArgs += "/SShiftCareSignTool=$innoSignCommand"
     }
     $innoArgs += $installerScript
-    & $iscc @innoArgs
+    Invoke-CheckedNativeCommand -FilePath $iscc -Arguments $innoArgs
+    if (-not (Test-Path -LiteralPath $installerOutputPath -PathType Leaf)) {
+        throw "Inno Setup did not create the expected installer: $installerOutputPath"
+    }
 
     if ($Sign) {
         Test-CodeSignature -ToolPath $signtool -Path $appExePath

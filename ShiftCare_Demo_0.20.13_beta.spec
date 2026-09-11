@@ -5,7 +5,7 @@ a = Analysis(
     ['demo_launcher.py'],
     pathex=[],
     binaries=[],
-    datas=[('templates', 'templates'), ('static', 'static'), ('schedule_app.db', '.')],
+    datas=[('templates', 'templates'), ('static', 'static')],
     hiddenimports=[
         'webview',
         'webview.platforms.edgechromium',

@@ -14,8 +14,30 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from tests.test_support import database, main
+
+import app_settings_service
+import email_service
+import io
+import json
+import shiftcare.config as config
+import shiftcare.scheduling.coverage as scheduling_coverage
+import shiftcare.services.authentication as services_authentication
+import shiftcare.services.bundles as services_bundles
+import shiftcare.services.cloud_client as services_cloud_client
+import shiftcare.services.common as services_common
+import shiftcare.services.sync_pull as services_sync_pull
+import shiftcare.services.sync_worker as services_sync_worker
+import shiftcare.services.updates as services_updates
+import shiftcare.web as web
+import subprocess
+import sys
+import time
+import update_service
+import urllib
 import email_service
 import license_runtime
+from copy import deepcopy
+from sync_policy import canonical_snapshot, snapshot_revision
 import update_service
 from db_adapter import CompatRow, PostgresCursorAdapter, _is_postgres_integrity_error, _rewrite_sql_for_postgres
 
@@ -28,13 +50,28 @@ class ApiRegressionTests(unittest.TestCase):
     def setUp(self):
         self.connection = database.get_connection()
         self._reset_database()
-        with main.AUTH_LOGIN_ATTEMPTS_LOCK:
-            main.AUTH_LOGIN_ATTEMPTS.clear()
-        with main.FEEDBACK_ATTEMPTS_LOCK:
-            main.FEEDBACK_ATTEMPTS.clear()
+        with config.AUTH_LOGIN_ATTEMPTS_LOCK:
+            config.AUTH_LOGIN_ATTEMPTS.clear()
+        with config.FEEDBACK_ATTEMPTS_LOCK:
+            config.FEEDBACK_ATTEMPTS.clear()
 
     def tearDown(self):
         self.connection.close()
+
+    def _complete_cloud_snapshot(self, partial_bundle):
+        """Model a complete v2 export with the last agreed local baseline."""
+        baseline = services_bundles.build_organization_export_bundle(self.connection, 1)
+        services_bundles.save_desktop_sync_baseline(self.connection.cursor(), baseline)
+        self.connection.commit()
+        result = deepcopy(baseline)
+        for table, rows in partial_bundle["records"].items():
+            if table == "employees":
+                originals = {row["public_id"]: row for row in baseline["records"][table]}
+                result["records"][table] = [{**originals[row["public_id"]], **row} for row in rows]
+            else:
+                result["records"][table] = deepcopy(rows)
+        result["sync_revision"] = snapshot_revision(canonical_snapshot(result))
+        return result
 
     def _reset_database(self):
         cursor = self.connection.cursor()
@@ -654,8 +691,8 @@ class ApiRegressionTests(unittest.TestCase):
             "SELECT * FROM users WHERE id = %s AND email = %s",
         )
         self.assertEqual(
-            _rewrite_sql_for_postgres("ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
-            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            _rewrite_sql_for_postgres("ON CONFLICT(organization_id, key) DO UPDATE SET value = excluded.value"),
+            "ON CONFLICT (organization_id, key) DO UPDATE SET value = excluded.value",
         )
         row = CompatRow(["id", "email"], (7, "owner@example.com"))
         self.assertEqual(row[0], 7)
@@ -743,7 +780,7 @@ class ApiRegressionTests(unittest.TestCase):
         organization_id = owner_response.json()["user"]["memberships"][0]["organization_id"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        with patch("main.send_feedback_report_email", return_value=email_service.EmailSendResult("sent")) as send_email:
+        with patch('email_service.send_feedback_report_email', return_value=email_service.EmailSendResult("sent")) as send_email:
             response = self.client.post(
                 "/api/feedback/reports",
                 headers=headers,
@@ -904,7 +941,7 @@ class ApiRegressionTests(unittest.TestCase):
                 INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
                 VALUES (?, ?, ?, 'active', 0, ?, ?)
                 """,
-                ("legacy@example.com", "Legacy Employee", main.hash_password("EmployeePass123"), now, now),
+                ("legacy@example.com", "Legacy Employee", services_authentication.hash_password("EmployeePass123"), now, now),
             )
             user_id = cursor.lastrowid
             cursor.execute(
@@ -1054,7 +1091,7 @@ class ApiRegressionTests(unittest.TestCase):
                 }
             raise AssertionError(path)
 
-        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=fake_cloud_request):
             response = self.client.post(
                 "/api/desktop/cloud-login",
                 json={"email": "owner@example.com", "password": "CorrectHorse123"},
@@ -1100,7 +1137,7 @@ class ApiRegressionTests(unittest.TestCase):
                 """
                 INSERT INTO app_settings (organization_id, key, value)
                 VALUES (1, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                ON CONFLICT(organization_id, key) DO UPDATE SET value = excluded.value
                 """,
                 (key, value),
             )
@@ -1162,8 +1199,8 @@ class ApiRegressionTests(unittest.TestCase):
             raise AssertionError(path)
 
         with (
-            patch.object(main, "request_cloud_json", side_effect=fake_cloud_request),
-            patch.object(main, "is_desktop_invitation_request", return_value=True),
+            patch.object(services_cloud_client, 'request_cloud_json', side_effect=fake_cloud_request),
+            patch.object(services_cloud_client, 'is_desktop_invitation_request', return_value=True),
         ):
             members_response = self.client.get("/api/organizations/1/members", headers=headers)
             invitations_response = self.client.get("/api/organizations/1/invitations", headers=headers)
@@ -1414,7 +1451,7 @@ class ApiRegressionTests(unittest.TestCase):
             },
         )
 
-        with patch.object(main, "AUTH_LOGIN_RATE_LIMIT_ATTEMPTS", 3):
+        with patch.object(config, 'AUTH_LOGIN_RATE_LIMIT_ATTEMPTS', 3):
             first_response = self.client.post(
                 "/api/auth/login",
                 json={"email": "owner@example.com", "password": "wrong-password"},
@@ -1608,7 +1645,7 @@ class ApiRegressionTests(unittest.TestCase):
 
         with (
             patch.dict(os.environ, {"PUBLIC_APP_BASE_URL": "https://shiftcare.example.com"}, clear=False),
-            patch.object(main, "send_invitation_email", return_value=email_service.EmailSendResult("sent")) as send_invitation,
+            patch.object(email_service, 'send_invitation_email', return_value=email_service.EmailSendResult("sent")) as send_invitation,
         ):
             invitation_response = self.client.post(
                 "/api/organizations/1/invitations",
@@ -1630,8 +1667,8 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn(payload["invitation_token"], send_invitation.call_args.kwargs["invitation_url"])
 
         with (
-            patch.object(main, "email_delivery_is_enabled", return_value=True),
-            patch.object(main, "send_password_reset_email", return_value=email_service.EmailSendResult("sent")) as send_reset,
+            patch.object(email_service, 'email_delivery_is_enabled', return_value=True),
+            patch.object(email_service, 'send_password_reset_email', return_value=email_service.EmailSendResult("sent")) as send_reset,
         ):
             reset_request = self.client.post(
                 "/api/auth/request-password-reset",
@@ -1648,8 +1685,8 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(login_response.status_code, 200)
         with (
-            patch.object(main, "email_delivery_is_enabled", return_value=True),
-            patch.object(main, "send_email_verification_email", return_value=email_service.EmailSendResult("sent")) as send_verify,
+            patch.object(email_service, 'email_delivery_is_enabled', return_value=True),
+            patch.object(email_service, 'send_email_verification_email', return_value=email_service.EmailSendResult("sent")) as send_verify,
         ):
             verification_request = self.client.post(
                 "/api/auth/request-email-verification",
@@ -1898,13 +1935,13 @@ class ApiRegressionTests(unittest.TestCase):
         cleaning_template_id = self._create_shift_template(headers=owner_headers, position_id=cleaning_position_id, name="Clean Morning")
 
         cursor = self.connection.cursor()
-        now = main.current_utc_timestamp()
+        now = services_common.current_utc_timestamp()
         cursor.execute(
             """
             INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
             VALUES ('scheduler@example.com', 'Senior Nurse', ?, 'active', 1, ?, ?)
             """,
-            (main.hash_password("SchedulerPass123"), now, now),
+            (services_authentication.hash_password("SchedulerPass123"), now, now),
         )
         scheduler_user_id = cursor.lastrowid
         cursor.execute(
@@ -1914,7 +1951,7 @@ class ApiRegressionTests(unittest.TestCase):
             """,
             (scheduler_user_id, now, now),
         )
-        scheduler_session = main.build_auth_response(self.connection, scheduler_user_id)
+        scheduler_session = services_authentication.build_auth_response(self.connection, scheduler_user_id)
         self.connection.commit()
         scheduler_headers = {"Authorization": f"Bearer {scheduler_session['access_token']}"}
 
@@ -1995,13 +2032,13 @@ class ApiRegressionTests(unittest.TestCase):
         employee_record_id = self._create_employee(headers=owner_headers, full_name="Rehired Employee")
 
         cursor = self.connection.cursor()
-        now = main.current_utc_timestamp()
+        now = services_common.current_utc_timestamp()
         cursor.execute(
             """
             INSERT INTO users (email, full_name, password_hash, status, email_verified, created_at, updated_at)
             VALUES ('rehire@example.com', 'Former Employee', ?, 'active', 0, ?, ?)
             """,
-            (main.hash_password("OldEmployeePass123"), now, now),
+            (services_authentication.hash_password("OldEmployeePass123"), now, now),
         )
         stale_user_id = cursor.lastrowid
         cursor.execute(
@@ -2021,7 +2058,7 @@ class ApiRegressionTests(unittest.TestCase):
             """,
             (
                 employee_record_id,
-                main.hash_session_token("legacy-rehire-token"),
+                services_authentication.hash_session_token("legacy-rehire-token"),
                 now,
                 now,
                 owner_user_id,
@@ -2788,7 +2825,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(accept_response.status_code, 200)
         employee_headers = {"Authorization": f"Bearer {accept_response.json()['access_token']}"}
 
-        bundle = main.build_organization_export_bundle(self.connection, organization_id, exported_by_user_id=owner_user_id)
+        bundle = services_bundles.build_organization_export_bundle(self.connection, organization_id, exported_by_user_id=owner_user_id)
         import_response = self.client.post(
             f"/api/organizations/{organization_id}/cloud-import",
             headers=owner_headers,
@@ -2867,6 +2904,9 @@ class ApiRegressionTests(unittest.TestCase):
             "auth_employee_login_action_text",
             "auth_msg_employee_login_ready",
             "nav_feedback",
+            "settings_tab_employee_portal",
+            "settings_employee_portal_title",
+            "settings_save_employee_portal",
             "settings_shift_swap_enabled_title",
             "shift_swap_disabled",
         ]:
@@ -2927,18 +2967,19 @@ class ApiRegressionTests(unittest.TestCase):
         service_worker_js = Path("static/service-worker.js").read_text(encoding="utf-8")
         pwa_js = Path("static/js/pwa.js").read_text(encoding="utf-8")
 
-        self.assertIn("20260707", service_worker_js)
+        self.assertIn(f'const APP_VERSION = "{config.APP_VERSION}";', service_worker_js)
         self.assertIn("/login", service_worker_js)
         self.assertIn("/departments", service_worker_js)
         self.assertIn('requestUrl.searchParams.get("embedded") === "1"', service_worker_js)
-        self.assertIn("/static/css/auth.css?v=0.20.13_beta-desktop-1080p-readability", service_worker_js)
-        self.assertIn("/static/css/schedule.css?v=0.20.13_beta-mobile-current-first", service_worker_js)
-        self.assertIn("/static/js/i18n.js?v=0.20.13_beta-shift-swap-setting", service_worker_js)
-        self.assertIn("/static/js/access_control.js?v=0.20.13_beta-nav-feedback-ru", service_worker_js)
-        self.assertIn("/static/js/auth.js?v=0.20.13_beta-portal-entry-employee-mode", service_worker_js)
-        self.assertIn("/static/js/schedule.js?v=0.20.13_beta-shift-swap-setting", service_worker_js)
-        self.assertIn("/static/js/organization.js?v=0.20.13_beta-employee-portal-settings", service_worker_js)
-        self.assertIn("/static/js/update_notifier.js?v=0.20.13_beta-startup-updates", service_worker_js)
+        self.assertIn(f"/static/css/auth.css?v={config.APP_VERSION}", service_worker_js)
+        self.assertIn(f"/static/css/schedule.css?v={config.APP_VERSION}", service_worker_js)
+        self.assertIn(f"/static/js/i18n.js?v={config.APP_VERSION}", service_worker_js)
+        self.assertIn(f"/static/js/access_control.js?v={config.APP_VERSION}", service_worker_js)
+        self.assertIn(f"/static/js/auth_i18n.js?v={config.APP_VERSION}", service_worker_js)
+        self.assertIn(f"/static/js/auth.js?v={config.APP_VERSION}", service_worker_js)
+        self.assertIn(f"/static/js/schedule.js?v={config.APP_VERSION}", service_worker_js)
+        self.assertIn(f"/static/js/organization.js?v={config.APP_VERSION}", service_worker_js)
+        self.assertIn(f"/static/js/update_notifier.js?v={config.APP_VERSION}", service_worker_js)
         self.assertNotIn("/static/css/style.css?v=0.20.1_beta-generation-modes-rtl", service_worker_js)
         self.assertNotIn("/static/css/schedule.css?v=0.20.1_beta-generation-modes", service_worker_js)
         self.assertIn("registration.update()", pwa_js)
@@ -3005,10 +3046,10 @@ class ApiRegressionTests(unittest.TestCase):
     def test_organization_pages_return_auth_shells(self):
         organization_response = self.client.get("/organization")
         self.assertEqual(organization_response.status_code, 200)
-        self.assertIn("/static/js/organization.js?v=0.20.13_beta-employee-portal-settings", organization_response.text)
+        self.assertIn(f"/static/js/organization.js?v={config.APP_VERSION}", organization_response.text)
         self.assertIn("Invite member", organization_response.text)
         self.assertIn("Public page for employee wishes", organization_response.text)
-        self.assertIn('id="employee_shift_swap_requests_enabled"', organization_response.text)
+        self.assertNotIn('id="employee_shift_swap_requests_enabled"', organization_response.text)
         self.assertIn('id="invite-role"', organization_response.text)
         self.assertIn('value="read_only"', organization_response.text)
         self.assertIn('id="invite-employee-field"', organization_response.text)
@@ -3025,6 +3066,15 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("/static/js/accept_invitation.js", invitation_response.text)
         self.assertIn("Accept invitation", invitation_response.text)
 
+        settings_response = self.client.get("/settings")
+        self.assertEqual(settings_response.status_code, 200)
+        self.assertIn('data-settings-tab="employee-portal"', settings_response.text)
+        self.assertIn('data-settings-panel="employee-portal"', settings_response.text)
+        self.assertIn('data-i18n="settings_employee_portal_title"', settings_response.text)
+        self.assertIn('id="employee-portal-settings-form"', settings_response.text)
+        self.assertIn('id="employee_shift_swap_requests_enabled"', settings_response.text)
+        self.assertIn('data-i18n="settings_save_employee_portal"', settings_response.text)
+
     def test_organization_frontend_uses_invitation_employee_link_without_manual_member_link(self):
         organization_js = Path("static/js/organization.js").read_text(encoding="utf-8")
         auth_i18n_js = Path("static/js/auth_i18n.js").read_text(encoding="utf-8")
@@ -3032,11 +3082,11 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIn("payload.employee_id = Number(elements.inviteEmployee.value)", organization_js)
         self.assertIn('data-organization-action="member-role"', organization_js)
         self.assertIn("/members/${userId}/role", organization_js)
-        self.assertIn("canManageEmployeePortalSettings", organization_js)
-        self.assertIn("/api/app-settings", organization_js)
-        self.assertIn("employee_shift_swap_requests_enabled", organization_js)
-        self.assertEqual(auth_i18n_js.count("org_save_employee_portal_settings:"), 3)
-        self.assertEqual(auth_i18n_js.count("org_msg_employee_portal_settings_saved:"), 3)
+        self.assertNotIn("canManageEmployeePortalSettings", organization_js)
+        self.assertNotIn("/api/app-settings", organization_js)
+        self.assertNotIn("employee_shift_swap_requests_enabled", organization_js)
+        self.assertNotIn("org_save_employee_portal_settings:", auth_i18n_js)
+        self.assertNotIn("org_msg_employee_portal_settings_saved:", auth_i18n_js)
         self.assertNotIn("link-member-employee", organization_js)
         self.assertNotIn("data-member-employee-select", organization_js)
 
@@ -3233,7 +3283,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(positions[0]["emergency_max_consecutive_nights"], 2)
         self.assertEqual(positions[0]["max_consecutive_split_days"], 3)
         self.assertEqual(positions[0]["emergency_max_consecutive_split_days"], 4)
-        effective_settings = main.get_position_app_settings(self.connection, position_id)
+        effective_settings = app_settings_service.get_position_app_settings(self.connection, position_id)
         self.assertEqual(effective_settings["max_consecutive_nights"], 1)
         self.assertEqual(effective_settings["emergency_max_consecutive_nights"], 2)
         self.assertEqual(effective_settings["max_consecutive_split_days"], 3)
@@ -3495,7 +3545,7 @@ class ApiRegressionTests(unittest.TestCase):
             """,
             (department_admin_user_id, owner_user_id),
         )
-        department_admin_session = main.build_auth_response(self.connection, department_admin_user_id)
+        department_admin_session = services_authentication.build_auth_response(self.connection, department_admin_user_id)
         self.connection.commit()
         department_admin_headers = {"Authorization": f"Bearer {department_admin_session['access_token']}"}
 
@@ -3678,14 +3728,14 @@ class ApiRegressionTests(unittest.TestCase):
                 """
                 INSERT INTO app_settings (organization_id, key, value)
                 VALUES (1, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                ON CONFLICT(organization_id, key) DO UPDATE SET value = excluded.value
                 """,
                 (key, value),
             )
         self.connection.commit()
 
-        with patch.object(main, "request_cloud_json", side_effect=AssertionError("cloud pull should be skipped")):
-            main.pull_cloud_preferences_for_desktop_generation(self.connection)
+        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=AssertionError("cloud pull should be skipped")):
+            services_sync_pull.pull_cloud_preferences_for_desktop_generation(self.connection)
 
         cursor.execute(
             """
@@ -3710,7 +3760,7 @@ class ApiRegressionTests(unittest.TestCase):
                 """
                 INSERT INTO app_settings (organization_id, key, value)
                 VALUES (1, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                ON CONFLICT(organization_id, key) DO UPDATE SET value = excluded.value
                 """,
                 (key, value),
             )
@@ -3738,13 +3788,14 @@ class ApiRegressionTests(unittest.TestCase):
                 "employee_recurring_preferences": [],
             },
         }
+        cloud_bundle = self._complete_cloud_snapshot(cloud_bundle)
 
         def fake_cloud_request(base_url, path, **kwargs):
             self.assertEqual(path, "/api/organizations/42/cloud-export")
             self.assertEqual(kwargs["token"], "cloud-token")
             return cloud_bundle
 
-        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=fake_cloud_request):
             response = self.client.get(
                 "/api/employee-week-preferences",
                 params={"week_start_date": "2026-05-03"},
@@ -3769,7 +3820,7 @@ class ApiRegressionTests(unittest.TestCase):
                 """
                 INSERT INTO app_settings (organization_id, key, value)
                 VALUES (1, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                ON CONFLICT(organization_id, key) DO UPDATE SET value = excluded.value
                 """,
                 (key, value),
             )
@@ -3801,13 +3852,14 @@ class ApiRegressionTests(unittest.TestCase):
                 "employee_recurring_preferences": [],
             },
         }
+        cloud_bundle = self._complete_cloud_snapshot(cloud_bundle)
 
         def fake_cloud_request(base_url, path, **kwargs):
             self.assertEqual(path, "/api/organizations/42/cloud-export")
             self.assertEqual(kwargs["token"], "cloud-token")
             return cloud_bundle
 
-        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=fake_cloud_request):
             response = self.client.get(
                 "/api/employee-week-preference-requests",
                 params={"week_start_date": "2026-05-03", "status": "pending"},
@@ -3821,7 +3873,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(requests[0]["status"], "pending")
         first_request_id = requests[0]["id"]
 
-        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
+        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=fake_cloud_request):
             response = self.client.get(
                 "/api/employee-week-preference-requests",
                 params={"week_start_date": "2026-05-03", "status": "pending"},
@@ -3890,13 +3942,14 @@ class ApiRegressionTests(unittest.TestCase):
                 ],
             },
         }
+        cloud_bundle = self._complete_cloud_snapshot(cloud_bundle)
 
         def fake_cloud_request(base_url, path, **kwargs):
             self.assertEqual(path, "/api/organizations/42/cloud-export")
             return cloud_bundle
 
-        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
-            self.assertTrue(main.sync_cloud_preferences_to_desktop(self.connection, {
+        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=fake_cloud_request):
+            self.assertTrue(services_sync_pull.sync_cloud_preferences_to_desktop(self.connection, {
                 "cloud_api_base_url": "https://schedule-app-beta.web.app",
                 "cloud_organization_id": "42",
                 "desktop_cloud_access_token": "cloud-token",
@@ -3973,14 +4026,14 @@ class ApiRegressionTests(unittest.TestCase):
                 """
                 INSERT INTO app_settings (organization_id, key, value)
                 VALUES (1, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                ON CONFLICT(organization_id, key) DO UPDATE SET value = excluded.value
                 """,
                 (key, value),
             )
         cursor.execute("DELETE FROM desktop_sync_outbox")
         self.connection.commit()
 
-        with patch.object(main, "request_cloud_json", side_effect=AssertionError("generation must not pull cloud preferences")):
+        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=AssertionError("generation must not pull cloud preferences")):
             generate_response = self.client.post(
                 "/api/schedule/auto-generate",
                 json={"position_id": position_id, "week_start_date": "2026-04-20"},
@@ -4013,13 +4066,13 @@ class ApiRegressionTests(unittest.TestCase):
 
         with (
             patch.object(
-                main.urllib.request,
+                urllib.request,
                 "urlopen",
-                side_effect=[main.urllib.error.URLError("temporary dns failure"), FakeResponse()],
+                side_effect=[urllib.error.URLError("temporary dns failure"), FakeResponse()],
             ) as urlopen_mock,
-            patch.object(main, "sleep") as sleep_mock,
+            patch.object(services_cloud_client, 'sleep') as sleep_mock,
         ):
-            response = main.request_cloud_json("https://cloud.example.com", "/api/ping")
+            response = services_cloud_client.request_cloud_json("https://cloud.example.com", "/api/ping")
 
         self.assertEqual(response, {"ok": True})
         self.assertEqual(urlopen_mock.call_count, 2)
@@ -4037,25 +4090,25 @@ class ApiRegressionTests(unittest.TestCase):
             def read(self):
                 return b'{"ok": true}'
 
-        http_error = main.urllib.error.HTTPError(
+        http_error = urllib.error.HTTPError(
             "https://cloud.example.com/api/ping",
             503,
             "Service Unavailable",
             {"Retry-After": "2"},
-            main.BytesIO(b'{"detail": "temporary outage"}'),
+            io.BytesIO(b'{"detail": "temporary outage"}'),
         )
 
         with (
-            patch.object(main.urllib.request, "urlopen", side_effect=[http_error, FakeResponse()]) as urlopen_mock,
-            patch.object(main, "sleep") as sleep_mock,
+            patch.object(urllib.request, "urlopen", side_effect=[http_error, FakeResponse()]) as urlopen_mock,
+            patch.object(services_cloud_client, 'sleep') as sleep_mock,
         ):
-            response = main.request_cloud_json("https://cloud.example.com", "/api/ping")
+            response = services_cloud_client.request_cloud_json("https://cloud.example.com", "/api/ping")
 
         self.assertEqual(response, {"ok": True})
         self.assertEqual(urlopen_mock.call_count, 2)
         sleep_mock.assert_called_once_with(2.0)
 
-    def test_desktop_sync_pushes_pending_preferences_without_pre_pull_delete(self):
+    def test_desktop_sync_merges_pending_preferences_without_destructive_pre_pull(self):
         employee_id = self._create_employee()
         cursor = self.connection.cursor()
         cursor.execute("DELETE FROM desktop_sync_outbox")
@@ -4068,11 +4121,12 @@ class ApiRegressionTests(unittest.TestCase):
                 """
                 INSERT INTO app_settings (organization_id, key, value)
                 VALUES (1, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                ON CONFLICT(organization_id, key) DO UPDATE SET value = excluded.value
                 """,
                 (key, value),
             )
         self.connection.commit()
+        remote_bundle = self._complete_cloud_snapshot({"records": {}})
 
         response = self.client.post(
             "/api/employee-week-preferences",
@@ -4089,14 +4143,14 @@ class ApiRegressionTests(unittest.TestCase):
 
         def fake_cloud_request(base_url, path, **kwargs):
             if path == "/api/organizations/42/cloud-export":
-                raise AssertionError("pending local preferences must not be replaced by a cloud pull before push")
+                return deepcopy(remote_bundle)
             if path == "/api/organizations/42/cloud-import":
                 cloud_import_payloads.append(kwargs["payload"])
-                return {"message": "imported"}
+                return {"message": "imported", "sync_bundle": deepcopy(kwargs["payload"]["bundle"])}
             raise AssertionError(path)
 
-        with patch.object(main, "request_cloud_json", side_effect=fake_cloud_request):
-            self.assertTrue(main.run_desktop_sync_once())
+        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=fake_cloud_request):
+            self.assertTrue(services_sync_worker.run_desktop_sync_once())
 
         cursor.execute(
             """
@@ -4573,8 +4627,8 @@ class ApiRegressionTests(unittest.TestCase):
         entries = self.client.get("/api/schedule").json()
         before_departure_slot = {"start": 7 * 60, "end": 12 * 60, "required_total": 1, "required_female_min": 0, "required_male_min": 0}
         after_departure_slot = {"start": 12 * 60, "end": 15 * 60, "required_total": 1, "required_female_min": 0, "required_male_min": 0}
-        self.assertEqual(main.count_slot_coverage(entries, before_departure_slot), (1, 1, 0))
-        self.assertEqual(main.count_slot_coverage(entries, after_departure_slot), (0, 0, 0))
+        self.assertEqual(scheduling_coverage.count_slot_coverage(entries, before_departure_slot), (1, 1, 0))
+        self.assertEqual(scheduling_coverage.count_slot_coverage(entries, after_departure_slot), (0, 0, 0))
 
         extend_response = self.client.patch(
             f"/api/schedule/{schedule_entry_id}/time",
@@ -4583,7 +4637,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(extend_response.status_code, 200)
         entries = self.client.get("/api/schedule").json()
         evening_slot = {"start": 15 * 60, "end": 20 * 60, "required_total": 1, "required_female_min": 0, "required_male_min": 0}
-        self.assertEqual(main.count_slot_coverage(entries, evening_slot), (1, 1, 0))
+        self.assertEqual(scheduling_coverage.count_slot_coverage(entries, evening_slot), (1, 1, 0))
 
         reset_response = self.client.patch(
             f"/api/schedule/{schedule_entry_id}/time",
@@ -4732,7 +4786,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(stored_settings["balance_target_distance_weight"], 95)
         self.assertEqual(stored_settings["after_night_evening_penalty"], 1600)
 
-        direct_read = main.get_app_settings(self.connection)
+        direct_read = app_settings_service.get_app_settings(self.connection)
         self.assertEqual(direct_read["schedule_coverage_display_mode"], "category")
         self.assertEqual(direct_read["schedule_morning_color"], "#d1fae5")
         self.assertEqual(direct_read["schedule_evening_color"], "#ffedd5")
@@ -5346,7 +5400,7 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(export_response.status_code, 200)
 
-        workbook = load_workbook(filename=main.BytesIO(export_response.content))
+        workbook = load_workbook(filename=io.BytesIO(export_response.content))
         worksheet = workbook.active
         self.assertEqual(worksheet["A1"].value, "Schedule export - Nurse - week starting 2026-04-20")
         self.assertEqual(worksheet["A3"].value, "Employee")
@@ -5385,7 +5439,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertIsNotNone(event)
         self.assertEqual(event["user_id"], owner_response.json()["user"]["id"])
         self.assertEqual(event["organization_id"], 1)
-        metadata = main.json.loads(event["metadata_json"])
+        metadata = json.loads(event["metadata_json"])
         self.assertEqual(metadata["format"], "excel")
         self.assertEqual(metadata["scope"], "position")
         self.assertEqual(metadata["position_id"], position_id)
@@ -5415,7 +5469,7 @@ class ApiRegressionTests(unittest.TestCase):
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
 
-        with ZipFile(main.BytesIO(export_response.content)) as document:
+        with ZipFile(io.BytesIO(export_response.content)) as document:
             document_xml = document.read("word/document.xml").decode("utf-8")
         self.assertIn("<w:tblPr>", document_xml)
         self.assertIn("<w:tblGrid>", document_xml)
@@ -5472,7 +5526,7 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(export_response.status_code, 200)
 
-        with ZipFile(main.BytesIO(export_response.content)) as document:
+        with ZipFile(io.BytesIO(export_response.content)) as document:
             document_xml = document.read("word/document.xml").decode("utf-8")
         first_table = document_xml[document_xml.index("<w:tbl>"):document_xml.index("</w:tbl>")]
         self.assertIn("Morning - No-show", first_table)
@@ -5613,7 +5667,7 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(export_response.status_code, 200)
 
-        workbook = load_workbook(filename=main.BytesIO(export_response.content))
+        workbook = load_workbook(filename=io.BytesIO(export_response.content))
         worksheet = workbook.active
         self.assertEqual(worksheet["B5"].value, "Morning")
         self.assertIn("B5:B6", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
@@ -5913,13 +5967,13 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertTrue(clear_all_response.json()["backup_name"])
 
     def test_get_base_path_uses_meipass_in_frozen_mode(self):
-        with patch.object(main.sys, "frozen", True, create=True), patch.object(
-            main.sys,
+        with patch.object(sys, "frozen", True, create=True), patch.object(
+            sys,
             "_MEIPASS",
             str(Path("D:/fake_bundle")),
             create=True,
         ):
-            self.assertEqual(main.get_base_path(), Path("D:/fake_bundle"))
+            self.assertEqual(web.get_base_path(), Path("D:/fake_bundle"))
 
     def test_frozen_database_path_uses_local_app_data(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -5968,8 +6022,8 @@ class ApiRegressionTests(unittest.TestCase):
             }
         ]
 
-        with patch.object(main, "APP_VERSION", "0.13.5_beta"), patch.object(main, "request_github_releases", return_value=releases):
-            payload = main.get_update_status()
+        with patch.object(config, 'APP_VERSION', "0.13.5_beta"), patch.object(services_updates, 'request_github_releases', return_value=releases):
+            payload = services_updates.get_update_status()
 
         self.assertTrue(payload["update_available"])
         self.assertEqual(payload["latest"]["version"], "0.13.6-beta")
@@ -6017,8 +6071,8 @@ class ApiRegressionTests(unittest.TestCase):
             }
         ]
 
-        with patch.object(main, "request_github_releases", return_value=releases):
-            payload = main.get_update_status()
+        with patch.object(services_updates, 'request_github_releases', return_value=releases):
+            payload = services_updates.get_update_status()
 
         self.assertFalse(payload["update_available"])
         self.assertIn("No installable", payload["message"])
@@ -6033,14 +6087,14 @@ class ApiRegressionTests(unittest.TestCase):
 
         with (
             patch.object(
-                main,
-                "get_update_status",
+                services_updates,
+                'get_update_status',
                 return_value={"current_version": "0.15.17-beta", "update_available": True, "latest": latest},
             ),
-            patch.object(main, "download_update_installer", return_value=installer_path),
-            patch.object(main, "verify_windows_installer_signature") as verify_signature,
-            patch.object(main.subprocess, "Popen") as popen,
-            patch.object(main, "schedule_desktop_shutdown") as schedule_shutdown,
+            patch.object(services_updates, 'download_update_installer', return_value=installer_path),
+            patch.object(update_service, 'verify_windows_installer_signature') as verify_signature,
+            patch.object(subprocess, "Popen") as popen,
+            patch.object(update_service, 'schedule_desktop_shutdown') as schedule_shutdown,
         ):
             response = self.client.post(
                 "/api/updates/install",
@@ -6064,16 +6118,16 @@ class ApiRegressionTests(unittest.TestCase):
         installer_path = Path(tempfile.gettempdir()) / "ShiftCare_Setup_0.15.18-beta.exe"
 
         with (
-            patch.object(main, "update_notifications_are_enabled", return_value=True),
+            patch.object(services_updates, 'update_notifications_are_enabled', return_value=True),
             patch.object(
-                main,
-                "get_update_status",
+                services_updates,
+                'get_update_status',
                 return_value={"current_version": "0.15.17-beta", "update_available": True, "latest": latest},
             ),
-            patch.object(main, "download_update_installer", return_value=installer_path),
-            patch.object(main, "verify_windows_installer_signature"),
-            patch.object(main.subprocess, "Popen"),
-            patch.object(main, "schedule_desktop_shutdown"),
+            patch.object(services_updates, 'download_update_installer', return_value=installer_path),
+            patch.object(update_service, 'verify_windows_installer_signature'),
+            patch.object(subprocess, "Popen"),
+            patch.object(update_service, 'schedule_desktop_shutdown'),
         ):
             install_response = self.client.post(
                 "/api/updates/install",
@@ -6083,11 +6137,11 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(install_response.status_code, 200)
 
         with (
-            patch.object(main, "APP_VERSION", "0.15.18_beta"),
-            patch.object(main, "update_notifications_are_enabled", return_value=True),
+            patch.object(config, 'APP_VERSION', "0.15.18_beta"),
+            patch.object(services_updates, 'update_notifications_are_enabled', return_value=True),
             patch.object(
-                main,
-                "get_update_status",
+                services_updates,
+                'get_update_status',
                 return_value={"current_version": "0.15.18_beta", "update_available": False},
             ),
         ):
@@ -6120,13 +6174,14 @@ class ApiRegressionTests(unittest.TestCase):
         )
 
         with tempfile.NamedTemporaryFile(suffix=".exe") as installer:
+            installer_path = Path(installer.name)
             with (
                 patch.object(update_service.os, "name", "nt"),
                 patch.object(update_service.subprocess, "run", return_value=completed),
                 patch.dict(os.environ, {"SHIFTCARE_WINDOWS_SIGNER_SUBJECT": "ShiftCare"}),
             ):
                 with self.assertRaises(HTTPException) as context:
-                    update_service.verify_windows_installer_signature(Path(installer.name))
+                    update_service.verify_windows_installer_signature(installer_path)
 
         self.assertEqual(context.exception.status_code, 400)
         self.assertIn("unexpected publisher", context.exception.detail)
@@ -6161,12 +6216,12 @@ class ApiRegressionTests(unittest.TestCase):
             },
         ]
 
-        with patch.object(main, "request_github_releases", return_value=releases):
+        with patch.object(services_updates, 'request_github_releases', return_value=releases):
             response = self.client.get("/download")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["cache-control"], "no-store, no-cache, must-revalidate, max-age=0")
-        self.assertIn("href=\"/static/manifest.webmanifest\"", response.text)
+        self.assertIn("href=\"/manifest.webmanifest\"", response.text)
         self.assertIn("href=\"/static/icons/app-icon.svg\"", response.text)
         self.assertIn("href=\"/favicon.ico\"", response.text)
         self.assertIn("0.15.18-beta", response.text)
@@ -6197,7 +6252,7 @@ class ApiRegressionTests(unittest.TestCase):
             },
         ]
 
-        with patch.object(main, "request_github_releases", return_value=releases):
+        with patch.object(services_updates, 'request_github_releases', return_value=releases):
             response = self.client.get("/download/latest", follow_redirects=False)
 
         self.assertEqual(response.status_code, 302)
@@ -6222,7 +6277,7 @@ class ApiRegressionTests(unittest.TestCase):
             }
         ]
 
-        with patch.object(main, "request_github_releases", return_value=releases):
+        with patch.object(services_updates, 'request_github_releases', return_value=releases):
             response = self.client.get("/api/download/latest")
 
         self.assertEqual(response.status_code, 200)
@@ -6241,8 +6296,8 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertTrue(backup_name.endswith(".schedulebackup"))
         backup_path = database.get_backup_dir() / backup_name
         with ZipFile(backup_path) as archive:
-            metadata = main.json.loads(archive.read("metadata.json").decode("utf-8"))
-            self.assertEqual(metadata["app_version"], main.APP_VERSION)
+            metadata = json.loads(archive.read("metadata.json").decode("utf-8"))
+            self.assertEqual(metadata["app_version"], config.APP_VERSION)
             self.assertEqual(metadata["schema_version"], database.CURRENT_SCHEMA_VERSION)
             self.assertEqual(metadata["organization_id"], 1)
             self.assertIn("created_at", metadata)
@@ -6257,6 +6312,9 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(self.client.get("/api/employees").json(), [])
 
+        # An API client does not hold a separate database connection during
+        # maintenance. Closing the fixture lets the restore gate drain readers.
+        self.connection.close()
         restore_response = self.client.post("/api/database/restore", json={"backup_name": backup_name})
         self.assertEqual(restore_response.status_code, 200)
 
@@ -6322,6 +6380,7 @@ class ApiRegressionTests(unittest.TestCase):
         )
         self.assertEqual(employee_restore.status_code, 403)
 
+        self.connection.close()
         restore_response = self.client.post(
             "/api/database/restore",
             headers=owner_headers,

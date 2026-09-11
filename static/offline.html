@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ShiftCare</title>
+<style>body{font:18px/1.6 system-ui,sans-serif;max-width:38rem;margin:12vh auto;padding:1.5rem;background:#f6f8fb;color:#172640}button{font:inherit;padding:.6rem 1rem;cursor:pointer}</style></head>
+<body><h1>ShiftCare</h1><p id="notice">The server is unavailable. Reconnect to load your schedule.</p><button id="retry" type="button">Try again</button>
+<script>
+const language = localStorage.getItem("scheduleAppLanguage") || navigator.language.slice(0, 2);
+const text = {en: ["The server is unavailable. Reconnect to load your schedule.", "Try again"], ru: ["Сервер недоступен. Восстановите соединение, чтобы загрузить расписание.", "Повторить"], he: ["השרת אינו זמין. התחבר מחדש כדי לטעון את הסידור.", "נסה שוב"]};
+const lang = Object.hasOwn(text, language) ? language : "en";
+document.documentElement.lang = lang;
+document.documentElement.dir = lang === "he" ? "rtl" : "ltr";
+document.getElementById("notice").textContent = text[lang][0];
+document.getElementById("retry").textContent = text[lang][1];
+document.getElementById("retry").addEventListener("click", () => location.reload());
+</script></body></html>

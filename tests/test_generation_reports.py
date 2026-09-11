@@ -1,5 +1,16 @@
 import unittest
 from tests.test_support import database, main
+
+import shiftcare.config as config
+import shiftcare.routes.generation as routes_generation
+import shiftcare.scheduling.coverage as scheduling_coverage
+import shiftcare.scheduling.data as scheduling_data
+import shiftcare.scheduling.feasibility as scheduling_feasibility
+import shiftcare.scheduling.legacy as scheduling_legacy
+import shiftcare.scheduling.previews as scheduling_previews
+import shiftcare.scheduling.rules as scheduling_rules
+import shiftcare.services.day_status as services_day_status
+import shiftcare.services.licensing as services_licensing
 from tests.fixtures.fixed_week import WEEK_DATES, WEEK_START_DATE  # noqa: E402
 
 
@@ -73,7 +84,7 @@ class GenerationReportTests(unittest.TestCase):
             (WEEK_DATES[1],),
         )
 
-        inserted = main.sync_generated_day_off_statuses(
+        inserted = services_day_status.sync_generated_day_off_statuses(
             self.connection,
             cursor,
             [{"id": 1}],
@@ -133,7 +144,7 @@ class GenerationReportTests(unittest.TestCase):
             (WEEK_DATES[0],),
         )
 
-        inserted = main.sync_generated_day_off_statuses(
+        inserted = services_day_status.sync_generated_day_off_statuses(
             self.connection,
             cursor,
             [{"id": 1}],
@@ -197,7 +208,7 @@ class GenerationReportTests(unittest.TestCase):
             }
         ]
 
-        report = main.build_generation_feasibility_report(
+        report = scheduling_feasibility.build_generation_feasibility_report(
             self.connection,
             employees,
             templates,
@@ -256,7 +267,7 @@ class GenerationReportTests(unittest.TestCase):
             }
         ]
 
-        report = main.build_generation_feasibility_report(
+        report = scheduling_feasibility.build_generation_feasibility_report(
             self.connection,
             employees,
             templates,
@@ -279,7 +290,7 @@ class GenerationReportTests(unittest.TestCase):
             "required_male_min": 1,
         }
 
-        report = main.build_interval_underfilled_report(
+        report = scheduling_coverage.build_interval_underfilled_report(
             self.connection,
             [],
             [],
@@ -354,7 +365,7 @@ class GenerationReportTests(unittest.TestCase):
             },
         ]
 
-        queue = main.build_week_shortage_queue(
+        queue = scheduling_feasibility.build_week_shortage_queue(
             self.connection,
             employees,
             templates,
@@ -439,7 +450,7 @@ class GenerationReportTests(unittest.TestCase):
         }
 
         self.assertTrue(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 1,
@@ -449,7 +460,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertIsNone(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 1,
@@ -544,7 +555,7 @@ class GenerationReportTests(unittest.TestCase):
         }
 
         self.assertFalse(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 1,
@@ -554,7 +565,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 1,
@@ -637,7 +648,7 @@ class GenerationReportTests(unittest.TestCase):
         }
 
         self.assertTrue(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 1,
@@ -647,7 +658,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertIsNone(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 1,
@@ -736,7 +747,7 @@ class GenerationReportTests(unittest.TestCase):
         }
 
         self.assertFalse(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 1,
@@ -746,7 +757,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 1,
@@ -767,7 +778,7 @@ class GenerationReportTests(unittest.TestCase):
         self.connection.commit()
 
         self.assertTrue(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 1,
@@ -777,7 +788,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertIsNone(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 1,
@@ -867,7 +878,7 @@ class GenerationReportTests(unittest.TestCase):
         }
 
         self.assertFalse(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 2,
@@ -877,7 +888,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 2,
@@ -891,7 +902,7 @@ class GenerationReportTests(unittest.TestCase):
         cursor.execute("UPDATE positions SET allow_same_day_other_positions = 1 WHERE id = 2")
         self.connection.commit()
         self.assertFalse(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 2,
@@ -904,7 +915,7 @@ class GenerationReportTests(unittest.TestCase):
         cursor.execute("UPDATE positions SET allow_same_day_other_positions = 1 WHERE id = 1")
         self.connection.commit()
         self.assertTrue(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 2,
@@ -914,7 +925,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertIsNone(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 2,
@@ -990,11 +1001,11 @@ class GenerationReportTests(unittest.TestCase):
             "is_split_only": False,
         }
         staged_entries = [
-            main.create_entry_preview(employee, 1, WEEK_DATES[0], night_template)
+            scheduling_previews.create_entry_preview(employee, 1, WEEK_DATES[0], night_template)
         ]
 
         self.assertFalse(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 1,
@@ -1005,7 +1016,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 1,
@@ -1089,7 +1100,7 @@ class GenerationReportTests(unittest.TestCase):
         }
 
         self.assertFalse(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 1,
@@ -1099,7 +1110,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 1,
@@ -1134,7 +1145,7 @@ class GenerationReportTests(unittest.TestCase):
             "is_split_only": False,
         }
 
-        can_take = main.can_employee_take_template(
+        can_take = scheduling_rules.can_employee_take_template(
             self.connection,
             employee,
             1,
@@ -1142,7 +1153,7 @@ class GenerationReportTests(unittest.TestCase):
             template,
             WEEK_START_DATE,
         )
-        reason = main.explain_employee_template_rejection(
+        reason = scheduling_rules.explain_employee_template_rejection(
             self.connection,
             employee,
             1,
@@ -1205,7 +1216,7 @@ class GenerationReportTests(unittest.TestCase):
         }
 
         self.assertFalse(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 1,
@@ -1215,7 +1226,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 1,
@@ -1289,7 +1300,7 @@ class GenerationReportTests(unittest.TestCase):
         }
 
         self.assertFalse(
-            main.can_employee_take_template(
+            scheduling_rules.can_employee_take_template(
                 self.connection,
                 employee,
                 1,
@@ -1299,7 +1310,7 @@ class GenerationReportTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            main.explain_employee_template_rejection(
+            scheduling_rules.explain_employee_template_rejection(
                 self.connection,
                 employee,
                 1,
@@ -1410,7 +1421,7 @@ class GenerationReportTests(unittest.TestCase):
         errors = []
         reports = []
 
-        main.fill_day_by_legacy_categories(
+        scheduling_legacy.fill_day_by_legacy_categories(
             self.connection,
             cursor,
             employees,
@@ -1475,13 +1486,13 @@ class GenerationReportTests(unittest.TestCase):
         )
         self.connection.commit()
 
-        employees = main.load_position_employees(self.connection, 1)
-        templates = main.load_active_templates(self.connection, 1)
+        employees = scheduling_data.load_position_employees(self.connection, 1)
+        templates = scheduling_data.load_active_templates(self.connection, 1)
         created_entries = []
         errors = []
         reports = []
 
-        main.fill_day_by_legacy_categories(
+        scheduling_legacy.fill_day_by_legacy_categories(
             self.connection,
             cursor,
             employees,
@@ -1600,7 +1611,7 @@ class GenerationReportTests(unittest.TestCase):
             }
         ]
 
-        main.fill_day_by_legacy_categories(
+        scheduling_legacy.fill_day_by_legacy_categories(
             self.connection,
             cursor,
             employees,
@@ -1612,7 +1623,7 @@ class GenerationReportTests(unittest.TestCase):
             [],
             [],
             [],
-            generation_mode=main.GENERATION_MODE_COVERAGE,
+            generation_mode=config.GENERATION_MODE_COVERAGE,
         )
         cursor.execute("SELECT employee_id FROM schedule_entries")
         self.assertEqual(cursor.fetchone()["employee_id"], 1)
@@ -1620,7 +1631,7 @@ class GenerationReportTests(unittest.TestCase):
         cursor.execute("DELETE FROM schedule_entries")
         self.connection.commit()
 
-        main.fill_day_by_legacy_categories(
+        scheduling_legacy.fill_day_by_legacy_categories(
             self.connection,
             cursor,
             employees,
@@ -1632,7 +1643,7 @@ class GenerationReportTests(unittest.TestCase):
             [],
             [],
             [],
-            generation_mode=main.GENERATION_MODE_REQUESTS,
+            generation_mode=config.GENERATION_MODE_REQUESTS,
         )
         cursor.execute("SELECT employee_id FROM schedule_entries")
         self.assertEqual(cursor.fetchone()["employee_id"], 2)
@@ -1683,11 +1694,11 @@ class GenerationReportTests(unittest.TestCase):
         )
         self.connection.commit()
 
-        employees = main.load_position_employees(self.connection, 1)
-        templates = main.load_active_templates(self.connection, 1)
+        employees = scheduling_data.load_position_employees(self.connection, 1)
+        templates = scheduling_data.load_active_templates(self.connection, 1)
         created_entries = []
 
-        main.fill_day_by_legacy_categories(
+        scheduling_legacy.fill_day_by_legacy_categories(
             self.connection,
             cursor,
             employees,
@@ -1749,11 +1760,11 @@ class GenerationReportTests(unittest.TestCase):
         )
         self.connection.commit()
 
-        employees = main.load_position_employees(self.connection, 1)
-        templates = main.load_active_templates(self.connection, 1)
+        employees = scheduling_data.load_position_employees(self.connection, 1)
+        templates = scheduling_data.load_active_templates(self.connection, 1)
         created_entries = []
 
-        main.fill_day_by_legacy_categories(
+        scheduling_legacy.fill_day_by_legacy_categories(
             self.connection,
             cursor,
             employees,
@@ -1818,11 +1829,11 @@ class GenerationReportTests(unittest.TestCase):
         )
         self.connection.commit()
 
-        employees = main.load_position_employees(self.connection, 1)
-        templates = main.load_active_templates(self.connection, 1)
+        employees = scheduling_data.load_position_employees(self.connection, 1)
+        templates = scheduling_data.load_active_templates(self.connection, 1)
         created_entries = []
 
-        main.fill_day_by_legacy_categories(
+        scheduling_legacy.fill_day_by_legacy_categories(
             self.connection,
             cursor,
             employees,
@@ -1838,6 +1849,57 @@ class GenerationReportTests(unittest.TestCase):
 
         cursor.execute("SELECT employee_id FROM schedule_entries WHERE date = ?", (WEEK_DATES[1],))
         self.assertEqual(cursor.fetchone()["employee_id"], 2)
+
+    def test_generate_all_defers_day_off_until_shared_employee_positions_are_finished(self):
+        from schemas import AutoGenerateAllScheduleRequest
+        from unittest.mock import patch
+
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """INSERT INTO employees (
+                id, full_name, sex, min_shifts_per_week, target_shifts_per_week,
+                max_shifts_per_week, can_work_night, can_work_weekends,
+                can_work_evenings_after_night, can_work_mornings_and_evenings
+            ) VALUES (1, 'Shared worker', 'female', 0, 2, 6, 1, 1, 1, 1)"""
+        )
+        cursor.executemany("INSERT INTO positions (id, name) VALUES (?, ?)", [(1, 'Morning ward'), (2, 'Evening ward')])
+        cursor.executemany(
+            "INSERT INTO employee_positions (employee_id, position_id, is_primary, priority_score) VALUES (1, ?, 1, 100)",
+            [(1,), (2,)],
+        )
+        cursor.executemany(
+            """INSERT INTO shift_templates (id, position_id, name, category, start_time, end_time,
+                is_overnight, is_active, is_split_only) VALUES (?, ?, ?, ?, ?, ?, 0, 1, 0)""",
+            [(1, 1, 'Morning', 'morning', '06:00', '12:00'), (2, 2, 'Evening', 'evening', '13:00', '19:00')],
+        )
+        cursor.executemany(
+            "INSERT INTO shift_requirements (position_id, shift_category, required_total, required_female_min) VALUES (?, ?, 1, 0)",
+            [(1, 'morning'), (2, 'evening')],
+        )
+        for index, date in enumerate(WEEK_DATES):
+            preference = 'not_evening' if index == 0 else 'not_morning' if index == 1 else 'off_day'
+            cursor.execute(
+                """INSERT INTO employee_week_preferences (employee_id, week_start_date, preference_date,
+                    preference_type, request_type, target_category) VALUES (1, ?, ?, ?, ?, ?)""",
+                (WEEK_START_DATE, date, preference, 'exclude_shift' if index < 2 else 'day_off',
+                 'evening' if index == 0 else 'morning' if index == 1 else None),
+            )
+        self.connection.commit()
+
+        with patch.object(services_licensing, 'require_license_capability'):
+            result = routes_generation.auto_generate_all_schedules(
+                AutoGenerateAllScheduleRequest(week_start_date=WEEK_START_DATE), _access=None
+            )
+
+        entries = cursor.execute("SELECT position_id, date FROM schedule_entries ORDER BY date").fetchall()
+        self.assertEqual([(row['position_id'], row['date']) for row in entries], [(1, WEEK_DATES[0]), (2, WEEK_DATES[1])])
+        self.assertEqual(result['total_created_count'], 2)
+        self.assertEqual(result['total_day_off_count'], 5)
+        self.assertEqual(sum(item['day_off_count'] for item in result['results']), 5)
+        self.assertEqual(cursor.execute(
+            "SELECT COUNT(*) FROM employee_day_statuses WHERE date IN (?, ?) AND status_type='day_off'", WEEK_DATES[:2]
+        ).fetchone()[0], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

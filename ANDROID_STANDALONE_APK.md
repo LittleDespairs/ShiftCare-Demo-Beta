@@ -1,14 +1,14 @@
 # Standalone Android APK
 
-The project now includes an Android wrapper in `android/` for a standalone tablet build.
+The project includes an Android wrapper in `android/` for a standalone tablet build. The current debug build is **0.21.1 beta** (`versionCode 17`, `versionName 0.21.1-beta-tablet-current`).
 
 It is designed to run without a PC server:
 
 1. Android launches the app.
 2. Chaquopy starts embedded Python inside the APK.
-3. Python starts the existing FastAPI app on `127.0.0.1:8765`.
+3. Python starts the existing FastAPI app on `127.0.0.1:8766`.
 4. Android WebView opens that local URL.
-5. SQLite is copied once into Android internal app storage and then used from there.
+5. A new SQLite database is initialized in Android internal app storage and retained across app restarts and upgrades. Working databases and private configuration are excluded from the APK.
 
 ## Build Prerequisites
 
@@ -16,11 +16,11 @@ It is designed to run without a PC server:
 - JDK 17 or newer.
 - Internet access for the first Gradle/Chaquopy dependency download.
 
-This machine currently has Java 8 and no Android SDK/Gradle on PATH, so I could scaffold and verify the Python side, but I cannot produce the final `.apk` here until the Android build tools are installed.
+The 0.21.1 beta debug APK was built locally with the JetBrains JBR below and the Android SDK configured in `android/local.properties`. Set `JAVA_HOME` explicitly if the system Java on PATH is older than JDK 17.
 
 ## Build Command
 
-After installing Android Studio/JDK 17:
+With Android SDK and JDK 17 or newer configured:
 
 ```powershell
 cd android
@@ -36,7 +36,7 @@ cd android
 .\gradlew.bat assembleDebug
 ```
 
-If Android Studio creates/updates the Gradle wrapper, the APK path will be:
+The Gradle wrapper produces the APK at:
 
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
@@ -61,3 +61,5 @@ The debug APK was successfully built locally at:
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+This is a debug artifact for local testing, not a Google Play release. Build and package-content checks passed; a physical-tablet launch has not been verified. See [the 0.21.1 release report](docs/RELEASE_0.21.1_beta_RU.md) for the artifact checksum and validation details.

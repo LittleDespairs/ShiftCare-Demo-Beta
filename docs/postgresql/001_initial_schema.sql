@@ -1,4 +1,4 @@
--- Schedule App 0.14.x beta PostgreSQL baseline.
+-- ShiftCare PostgreSQL baseline, schema 26.
 -- Apply to an empty Cloud SQL PostgreSQL database before enabling the PostgreSQL data layer.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS organization_memberships (
     role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'scheduler', 'employee', 'manager', 'read_only')),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('invited', 'active', 'disabled')),
     employee_id BIGINT REFERENCES employees(id) ON DELETE SET NULL,
+    department_access_mode TEXT NOT NULL DEFAULT 'all' CHECK (department_access_mode IN ('all', 'restricted')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_id, user_id)
@@ -452,8 +453,9 @@ CREATE TABLE IF NOT EXISTS coverage_requirements (
 
 CREATE TABLE IF NOT EXISTS app_settings (
     organization_id BIGINT NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE,
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (organization_id, key)
 );
 
 INSERT INTO app_settings (organization_id, key, value)
@@ -490,7 +492,7 @@ VALUES
     (1, 'balance_consecutive_split_weight', '100'),
     (1, 'balance_excess_night_weight', '2000'),
     (1, 'balance_excess_split_weight', '1800')
-ON CONFLICT (key) DO NOTHING;
+ON CONFLICT (organization_id, key) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON organization_memberships (user_id, organization_id);
@@ -530,5 +532,5 @@ CREATE INDEX IF NOT EXISTS idx_coverage_requirements_org_position ON coverage_re
 CREATE INDEX IF NOT EXISTS idx_app_settings_organization ON app_settings (organization_id, key);
 
 INSERT INTO schema_metadata (key, value)
-VALUES ('schema_version', '25')
+VALUES ('schema_version', '26')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;

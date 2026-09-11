@@ -88,10 +88,10 @@
             applySidebarState(getSavedSidebarState());
             if (isDemoMode()) {
                 showMessage(
-                    t(
+                    `<span data-i18n="demo_schedule_notice">${escapeHtml(t(
                         "demo_schedule_notice",
                         "ShiftCare Demo includes sample data. Generation, export, and schedule cleanup are available; backup, cloud sync, updates, and license activation are disabled."
-                    ),
+                    ))}</span>`,
                     "info"
                 );
             }
@@ -1247,13 +1247,13 @@
 
                 const select = document.getElementById("position_select");
                 if (allPositions.length === 0) {
-                    select.innerHTML = `<option value="">${t("positions_empty_list", "No positions yet")}</option>`;
+                    select.innerHTML = `<option value="" data-i18n="positions_empty_list">${t("positions_empty_list", "No positions yet")}</option>`;
                     renderScheduleInitialState();
                     return;
                 }
 
                 select.innerHTML = `
-                    <option value="">${t("schedule_select_position", "Select position")}</option>
+                    <option value="" data-i18n="schedule_select_position">${t("schedule_select_position", "Select position")}</option>
                     ${renderPositionSelectOptions(allPositions)}
                 `;
                 if (isEmployeeUser()) {

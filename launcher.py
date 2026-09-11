@@ -101,7 +101,7 @@ def get_requested_port() -> int:
 
 try:
     from main import app
-    from main import APP_TITLE
+    from shiftcare.config import APP_TITLE
 except Exception:
     error_text = f"ERROR while importing app from main.py:\n{traceback.format_exc()}"
     write_log(error_text)

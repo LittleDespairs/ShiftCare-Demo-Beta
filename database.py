@@ -3,12 +3,17 @@ import sqlite3
 import sys
 import os
 import json
-from datetime import datetime, timedelta
+import tempfile
+import threading
+import time
+import weakref
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from app_config import get_app_config
-from db_adapter import apply_postgres_schema, connect_postgres, is_postgres_engine
+from db_adapter import apply_postgres_schema, connect_postgres, is_postgres_engine, migrate_postgres_runtime_constraints
 
 # Base directory / Базовая папка проекта
 BASE_DIR = Path(__file__).resolve().parent
@@ -79,7 +84,7 @@ def get_bundled_database_path() -> Path | None:
 # Database file path / Путь к файлу базы данных
 DATABASE_PATH = get_database_path()
 DEFAULT_ORGANIZATION_PUBLIC_ID = "local-default"
-CURRENT_SCHEMA_VERSION = 25
+CURRENT_SCHEMA_VERSION = 26
 POSTGRES_SCHEMA_PATH = BASE_DIR / "docs" / "postgresql" / "001_initial_schema.sql"
 DEMO_SEED_VERSION = "2026-06-14-separated-nursing-demo-v3"
 DEMO_ORGANIZATION_PUBLIC_ID = "shiftcare-demo-center"
@@ -101,9 +106,63 @@ PUBLIC_ID_TABLE_PREFIXES = {
     "coverage_requirements": "cov",
 }
 DESKTOP_SYNC_TABLES = tuple(PUBLIC_ID_TABLE_PREFIXES.keys())
+DATABASE_MAINTENANCE_TIMEOUT_SECONDS = 10
+_SQLITE_CONNECTION_CONDITION = threading.Condition(threading.RLock())
+_SQLITE_ACTIVE_CONNECTIONS: dict[str, dict[int, int]] = {}
+_SQLITE_RESTORE_OWNERS: dict[str, int] = {}
+
+
+def _release_sqlite_connection(path: str, owner: int) -> None:
+    with _SQLITE_CONNECTION_CONDITION:
+        owners = _SQLITE_ACTIVE_CONNECTIONS.get(path, {})
+        remaining = owners.get(owner, 0) - 1
+        if remaining > 0:
+            owners[owner] = remaining
+        else:
+            owners.pop(owner, None)
+        if not owners:
+            _SQLITE_ACTIVE_CONNECTIONS.pop(path, None)
+        _SQLITE_CONNECTION_CONDITION.notify_all()
+
+
+@contextmanager
+def _exclusive_sqlite_restore(path: Path):
+    """Drain application operations and keep new connections out during restore."""
+    key, owner = str(path.resolve()), threading.get_ident()
+    with _SQLITE_CONNECTION_CONDITION:
+        if _SQLITE_ACTIVE_CONNECTIONS.get(key, {}).get(owner, 0):
+            raise ValueError("Close active database operations before restoring a backup")
+        if not _SQLITE_CONNECTION_CONDITION.wait_for(
+            lambda: key not in _SQLITE_RESTORE_OWNERS,
+            timeout=DATABASE_MAINTENANCE_TIMEOUT_SECONDS,
+        ):
+            raise ValueError("Another database restore is in progress; try again shortly")
+        _SQLITE_RESTORE_OWNERS[key] = owner
+        try:
+            if not _SQLITE_CONNECTION_CONDITION.wait_for(
+                lambda: not _SQLITE_ACTIVE_CONNECTIONS.get(key),
+                timeout=DATABASE_MAINTENANCE_TIMEOUT_SECONDS,
+            ):
+                raise ValueError("Database is busy; finish active operations and retry restore")
+        except BaseException:
+            _SQLITE_RESTORE_OWNERS.pop(key, None)
+            _SQLITE_CONNECTION_CONDITION.notify_all()
+            raise
+    try:
+        yield
+    finally:
+        with _SQLITE_CONNECTION_CONDITION:
+            _SQLITE_RESTORE_OWNERS.pop(key, None)
+            _SQLITE_CONNECTION_CONDITION.notify_all()
 
 
 class ClosingSQLiteConnection(sqlite3.Connection):
+    def close(self):
+        super().close()
+        finalizer = getattr(self, "_lifecycle_finalizer", None)
+        if finalizer:
+            finalizer()
+
     def __exit__(self, exc_type, exc_value, traceback):
         try:
             return super().__exit__(exc_type, exc_value, traceback)
@@ -141,7 +200,7 @@ def _add_column_if_missing(cursor: sqlite3.Cursor, table_name: str, column_name:
 
 
 def _current_timestamp() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(tzinfo=None, microsecond=0).isoformat()
 
 
 def _demo_week_start() -> datetime.date:
@@ -154,9 +213,8 @@ def _upsert_app_setting(cursor: sqlite3.Cursor, key: str, value: str, organizati
         """
         INSERT INTO app_settings (organization_id, key, value)
         VALUES (?, ?, ?)
-        ON CONFLICT(key)
-        DO UPDATE SET organization_id = excluded.organization_id,
-                      value = excluded.value
+        ON CONFLICT(organization_id, key)
+        DO UPDATE SET value = excluded.value
         """,
         (organization_id, key, value),
     )
@@ -211,7 +269,7 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
     if not is_demo_mode_enabled():
         return
 
-    cursor.execute("SELECT value FROM app_settings WHERE key = 'shiftcare_demo_seed_version'")
+    cursor.execute("SELECT value FROM app_settings WHERE organization_id = 1 AND key = 'shiftcare_demo_seed_version'")
     seed_row = cursor.fetchone()
     if seed_row and seed_row["value"] == DEMO_SEED_VERSION:
         return
@@ -628,6 +686,7 @@ def _seed_demo_database(cursor: sqlite3.Cursor) -> None:
 def _ensure_postgres_runtime_schema(connection) -> None:
     cursor = connection.cursor(track_lastrowid=False)
     try:
+        migrate_postgres_runtime_constraints(connection)
         cursor.execute("""
             ALTER TABLE employees
             ADD COLUMN IF NOT EXISTS id_card TEXT
@@ -1409,6 +1468,48 @@ def _ensure_schema_migration_tables(cursor: sqlite3.Cursor) -> None:
     """)
 
 
+def _migrate_sqlite_app_settings(cursor: sqlite3.Cursor) -> None:
+    cursor.execute("PRAGMA table_info(app_settings)")
+    columns = cursor.fetchall()
+    primary_key = [row["name"] for row in sorted(columns, key=lambda row: row["pk"]) if row["pk"]]
+    if primary_key == ["organization_id", "key"]:
+        return
+    # Avoid ALTER TABLE RENAME: SQLite would rewrite sync triggers on other tables
+    # to refer to the temporary name. The surrounding init transaction is atomic.
+    cursor.execute("CREATE TEMP TABLE app_settings_migration AS SELECT organization_id, key, value FROM app_settings")
+    cursor.execute("DROP TABLE app_settings")
+    cursor.execute("""
+        CREATE TABLE app_settings (
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            PRIMARY KEY (organization_id, key),
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("INSERT INTO app_settings SELECT organization_id, key, value FROM app_settings_migration")
+    cursor.execute("DROP TABLE app_settings_migration")
+
+
+def _migrate_sqlite_department_access(cursor: sqlite3.Cursor) -> None:
+    if "department_access_mode" in _table_columns(cursor, "organization_memberships"):
+        return
+    cursor.execute("""
+        ALTER TABLE organization_memberships
+        ADD COLUMN department_access_mode TEXT NOT NULL DEFAULT 'all'
+        CHECK (department_access_mode IN ('all', 'restricted'))
+    """)
+    cursor.execute("""
+        UPDATE organization_memberships
+        SET department_access_mode = 'restricted'
+        WHERE EXISTS (
+            SELECT 1 FROM user_department_access a
+            WHERE a.organization_id = organization_memberships.organization_id
+              AND a.user_id = organization_memberships.user_id
+        )
+    """)
+
+
 def _get_schema_version(cursor: sqlite3.Cursor) -> int:
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_metadata'"
@@ -1486,6 +1587,8 @@ def _ensure_public_ids(cursor: sqlite3.Cursor, table_name: str, prefix: str) -> 
 
 def _ensure_desktop_sync_triggers(cursor: sqlite3.Cursor) -> None:
     for table_name in DESKTOP_SYNC_TABLES:
+        for operation in ("insert", "update", "delete"):
+            cursor.execute(f"DROP TRIGGER IF EXISTS trg_{table_name}_desktop_sync_{operation}")
         cursor.execute(
             f"""
             CREATE TRIGGER IF NOT EXISTS trg_{table_name}_desktop_sync_insert
@@ -1496,7 +1599,7 @@ def _ensure_desktop_sync_triggers(cursor: sqlite3.Cursor) -> None:
                     organization_id, entity_type, entity_public_id, operation, payload_json
                 )
                 SELECT NEW.organization_id, '{table_name}', NEW.public_id, 'upsert', '{{}}'
-                WHERE COALESCE((SELECT value FROM app_settings WHERE key = 'desktop_sync_suspended'), '0') != '1';
+                WHERE COALESCE((SELECT value FROM app_settings WHERE organization_id = NEW.organization_id AND key = 'desktop_sync_suspended'), '0') != '1';
             END
             """
         )
@@ -1510,7 +1613,7 @@ def _ensure_desktop_sync_triggers(cursor: sqlite3.Cursor) -> None:
                     organization_id, entity_type, entity_public_id, operation, payload_json
                 )
                 SELECT NEW.organization_id, '{table_name}', NEW.public_id, 'upsert', '{{}}'
-                WHERE COALESCE((SELECT value FROM app_settings WHERE key = 'desktop_sync_suspended'), '0') != '1';
+                WHERE COALESCE((SELECT value FROM app_settings WHERE organization_id = NEW.organization_id AND key = 'desktop_sync_suspended'), '0') != '1';
             END
             """
         )
@@ -1524,7 +1627,7 @@ def _ensure_desktop_sync_triggers(cursor: sqlite3.Cursor) -> None:
                     organization_id, entity_type, entity_public_id, operation, payload_json
                 )
                 SELECT OLD.organization_id, '{table_name}', OLD.public_id, 'delete', '{{}}'
-                WHERE COALESCE((SELECT value FROM app_settings WHERE key = 'desktop_sync_suspended'), '0') != '1';
+                WHERE COALESCE((SELECT value FROM app_settings WHERE organization_id = OLD.organization_id AND key = 'desktop_sync_suspended'), '0') != '1';
             END
             """
         )
@@ -1633,11 +1736,35 @@ def validate_sqlite_file(path: Path) -> None:
     if header != b"SQLite format 3\x00":
         raise ValueError("Uploaded file is not a valid SQLite database")
 
-    connection = sqlite3.connect(path)
+    connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
     try:
-        connection.execute("PRAGMA quick_check")
+        results = connection.execute("PRAGMA quick_check").fetchall()
+        if results != [("ok",)]:
+            raise ValueError("SQLite integrity check failed: " + "; ".join(str(row[0]) for row in results))
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"SQLite integrity check failed: {exc}") from exc
     finally:
         connection.close()
+
+
+def _copy_sqlite_snapshot(source: Path, destination: Path, *, runtime_source: bool = False) -> None:
+    """SQLite's backup API includes committed WAL pages and updates targets atomically."""
+    started = time.monotonic()
+
+    def check_progress(_status, _remaining, _total):
+        if time.monotonic() - started > DATABASE_MAINTENANCE_TIMEOUT_SECONDS:
+            raise ValueError("Database is busy; retry the backup or restore shortly")
+
+    reader = get_connection() if runtime_source else sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        writer = sqlite3.connect(destination)
+        try:
+            reader.backup(writer, pages=256, progress=check_progress, sleep=0.05)
+        finally:
+            writer.close()
+    finally:
+        reader.close()
+    validate_sqlite_file(destination)
 
 
 def create_database_backup(label: str = "manual") -> Path:
@@ -1647,10 +1774,14 @@ def create_database_backup(label: str = "manual") -> Path:
     if not source.exists():
         raise FileNotFoundError(f"Database file does not exist: {source}")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_name = f"{source.stem}_{timestamp}_{_sanitize_backup_label(label)}.db"
     backup_path = get_backup_dir() / backup_name
-    shutil.copy2(source, backup_path)
+    try:
+        _copy_sqlite_snapshot(source, backup_path, runtime_source=True)
+    except BaseException:
+        backup_path.unlink(missing_ok=True)
+        raise
     return backup_path
 
 
@@ -1667,7 +1798,7 @@ def create_schedule_backup(
     if not source.exists():
         raise FileNotFoundError(f"Database file does not exist: {source}")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_name = f"{source.stem}_{timestamp}_{_sanitize_backup_label(label)}.schedulebackup"
     backup_path = get_backup_dir() / backup_name
     metadata = {
@@ -1681,11 +1812,47 @@ def create_schedule_backup(
         "contains_password_hashes": True,
         "contains_access_tokens": False,
         "contains_server_secrets": False,
+        "requires_login": True,
     }
-    with ZipFile(backup_path, "w", compression=ZIP_DEFLATED) as archive:
-        archive.write(source, "schedule_app.db")
-        archive.writestr("metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+    try:
+        with tempfile.TemporaryDirectory(prefix="shiftcare-backup-") as temp_dir:
+            snapshot = Path(temp_dir) / "schedule_app.db"
+            _copy_sqlite_snapshot(source, snapshot, runtime_source=True)
+            _sanitize_portable_backup(snapshot)
+            with ZipFile(backup_path, "w", compression=ZIP_DEFLATED) as archive:
+                archive.write(snapshot, "schedule_app.db")
+                archive.writestr("metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+    except BaseException:
+        backup_path.unlink(missing_ok=True)
+        raise
     return backup_path
+
+
+def _sanitize_portable_backup(snapshot: Path) -> None:
+    """Portable archives carry organization data, not reusable session credentials."""
+    connection = sqlite3.connect(snapshot)
+    try:
+        connection.execute("PRAGMA journal_mode=DELETE")
+        connection.execute("PRAGMA secure_delete=ON")
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "app_settings" in tables:
+            connection.execute("""
+                DELETE FROM app_settings
+                WHERE lower(key) LIKE '%token%' OR lower(key) LIKE '%secret%'
+                   OR lower(key) LIKE '%password%' OR lower(key) LIKE '%credential%'
+                   OR lower(key) LIKE '%private_key%' OR lower(key) LIKE '%api_key%'
+            """)
+        for table in ("auth_sessions", "auth_password_reset_tokens", "auth_email_verification_tokens"):
+            if table in tables:
+                connection.execute(f"DELETE FROM {table}")
+        if "organization_invitations" in tables:
+            connection.execute("UPDATE organization_invitations SET status = 'expired' WHERE status = 'pending'")
+        connection.commit()
+        # Remove credential bytes from free pages as well as live rows.
+        connection.execute("VACUUM")
+    finally:
+        connection.close()
+    validate_sqlite_file(snapshot)
 
 
 def list_database_backups(limit: int = 20) -> list[dict]:
@@ -1711,14 +1878,21 @@ def list_database_backups(limit: int = 20) -> list[dict]:
 
 
 def _extract_schedule_backup(backup_path: Path) -> Path:
-    temp_path = backup_path.with_suffix(".restore.db")
-    with ZipFile(backup_path, "r") as archive:
-        names = set(archive.namelist())
-        if "schedule_app.db" not in names or "metadata.json" not in names:
-            raise ValueError("Schedule backup is missing required files")
-        with archive.open("schedule_app.db") as source_handle, temp_path.open("wb") as target_handle:
-            shutil.copyfileobj(source_handle, target_handle)
+    handle, name = tempfile.mkstemp(prefix="shiftcare-restore-", suffix=".db")
+    os.close(handle)
+    temp_path = Path(name)
     try:
+        with ZipFile(backup_path, "r") as archive:
+            names = set(archive.namelist())
+            if "schedule_app.db" not in names or "metadata.json" not in names:
+                raise ValueError("Schedule backup is missing required files")
+            metadata = json.loads(archive.read("metadata.json"))
+            if metadata.get("format") != "schedulebackup" or metadata.get("format_version") != 1:
+                raise ValueError("Unsupported schedule backup format")
+            if int(metadata.get("schema_version", 0)) > CURRENT_SCHEMA_VERSION:
+                raise ValueError("This backup requires a newer version of ShiftCare")
+            with archive.open("schedule_app.db") as source_handle, temp_path.open("wb") as target_handle:
+                shutil.copyfileobj(source_handle, target_handle)
         validate_sqlite_file(temp_path)
         return temp_path
     except Exception:
@@ -1744,13 +1918,20 @@ def restore_database_backup(backup_name: str) -> dict:
         restore_source = extracted_path
     else:
         validate_sqlite_file(backup_path)
-    pre_restore_backup = create_database_backup("pre_restore")
     try:
-        shutil.copy2(restore_source, DATABASE_PATH)
-        return {
-            "restored_backup": backup_path.name,
-            "pre_restore_backup": pre_restore_backup.name,
-        }
+        with _exclusive_sqlite_restore(DATABASE_PATH):
+            pre_restore_backup = create_database_backup("pre_restore")
+            try:
+                _copy_sqlite_snapshot(restore_source, DATABASE_PATH)
+                init_db()
+            except BaseException:
+                _copy_sqlite_snapshot(pre_restore_backup, DATABASE_PATH)
+                raise
+            return {
+                "restored_backup": backup_path.name,
+                "pre_restore_backup": pre_restore_backup.name,
+                "requires_login": backup_path.suffix == ".schedulebackup",
+            }
     finally:
         if extracted_path and extracted_path.exists():
             extracted_path.unlink()
@@ -1761,13 +1942,28 @@ def get_connection():
     if is_postgres_engine(config.database_engine):
         return connect_postgres(config)
 
-    # Create SQLite connection / Создаём подключение к SQLite
-    connection = sqlite3.connect(DATABASE_PATH, factory=ClosingSQLiteConnection)
-    connection.execute("PRAGMA foreign_keys = ON")
-
-    # Return rows as dictionary-like objects / Возвращаем строки как объекты с доступом по имени колонки
-    connection.row_factory = sqlite3.Row
-    return connection
+    key, owner = str(DATABASE_PATH.resolve()), threading.get_ident()
+    with _SQLITE_CONNECTION_CONDITION:
+        if not _SQLITE_CONNECTION_CONDITION.wait_for(
+            lambda: key not in _SQLITE_RESTORE_OWNERS or _SQLITE_RESTORE_OWNERS[key] == owner,
+            timeout=DATABASE_MAINTENANCE_TIMEOUT_SECONDS,
+        ):
+            raise sqlite3.OperationalError("Database restore is in progress; retry shortly")
+        owners = _SQLITE_ACTIVE_CONNECTIONS.setdefault(key, {})
+        owners[owner] = owners.get(owner, 0) + 1
+    try:
+        connection = sqlite3.connect(DATABASE_PATH, factory=ClosingSQLiteConnection)
+    except BaseException:
+        _release_sqlite_connection(key, owner)
+        raise
+    connection._lifecycle_finalizer = weakref.finalize(connection, _release_sqlite_connection, key, owner)
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.row_factory = sqlite3.Row
+        return connection
+    except BaseException:
+        connection.close()
+        raise
 
 
 def _postgres_schema_is_current(connection) -> bool:
@@ -1792,13 +1988,25 @@ def init_db():
             connection.close()
         return
 
-    # Initialize database tables / Инициализируем таблицы базы данных
     connection = get_connection()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        _initialize_sqlite_schema(connection)
+    except BaseException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _initialize_sqlite_schema(connection):
     cursor = connection.cursor()
 
     # Turn on foreign keys in SQLite / Включаем внешние ключи в SQLite
     cursor.execute("PRAGMA foreign_keys = ON")
     previous_schema_version = _get_schema_version(cursor)
+    if previous_schema_version > CURRENT_SCHEMA_VERSION:
+        raise ValueError("This database requires a newer version of ShiftCare")
     _ensure_schema_migration_tables(cursor)
 
     # ==========================================
@@ -2110,6 +2318,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_user_department_access_department
         ON user_department_access (organization_id, department_id)
     """)
+    _migrate_sqlite_department_access(cursor)
 
     # =========================
     # Employees / Сотрудники
@@ -2605,13 +2814,15 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS app_settings (
             organization_id INTEGER NOT NULL DEFAULT 1,
-            key TEXT PRIMARY KEY,
+            key TEXT NOT NULL,
             value TEXT NOT NULL,
+            PRIMARY KEY (organization_id, key),
             FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
         )
     """)
 
     _add_column_if_missing(cursor, "app_settings", "organization_id", "INTEGER NOT NULL DEFAULT 1")
+    _migrate_sqlite_app_settings(cursor)
 
     cursor.execute("""
         INSERT OR IGNORE INTO app_settings (organization_id, key, value)
@@ -2762,7 +2973,7 @@ def init_db():
             cursor,
             previous_schema_version,
             CURRENT_SCHEMA_VERSION,
-            "Add weekly preference approval requests",
+            "Isolate organization settings and persist restricted department access",
         )
         _set_schema_version(cursor, CURRENT_SCHEMA_VERSION)
 
@@ -2770,4 +2981,3 @@ def init_db():
     _seed_demo_database(cursor)
 
     connection.commit()
-    connection.close()

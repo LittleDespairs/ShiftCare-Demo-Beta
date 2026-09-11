@@ -37,7 +37,16 @@ class FastAPI:
         self.description = kwargs.get("description", "")
         self.version = kwargs.get("version", "")
         self.routes = []
-        self._app = Starlette()
+        lifespan = kwargs.get("lifespan")
+        self._app = Starlette(lifespan=(lambda app: lifespan(self)) if lifespan else None)
+        self.state = self._app.state
+
+    def include_router(self, router, **options):
+        prefix = options.get("prefix", "")
+        for route in router.routes:
+            included = Route(prefix + route.path, route.endpoint, methods=route.methods, name=route.name)
+            self.routes.append(included)
+            self._app.routes.append(included)
 
     def mount(self, path: str, app, name: str | None = None):
         self._app.mount(path, app, name=name)
@@ -135,6 +144,10 @@ class FastAPI:
 
     async def __call__(self, scope, receive, send):
         await self._app(scope, receive, send)
+
+
+class APIRouter(FastAPI):
+    """The route registration subset used by the shared ShiftCare backend."""
 
 
 def _convert_param(value: Any, annotation: Any) -> Any:

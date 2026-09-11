@@ -51,3 +51,14 @@ LICENSE_MODEL.md
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local artifacts and private runtime state
+outputs/
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.schedulebackup
+backups/

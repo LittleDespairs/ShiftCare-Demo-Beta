@@ -86,11 +86,17 @@ class PostgresCursorAdapter:
                 raise sqlite3.IntegrityError(str(exc)) from exc
             raise
         if self._track_lastrowid and rewritten.lstrip().upper().startswith("INSERT "):
+            # An INSERT into a table without a sequence can make lastval() fail.
+            # Isolate this optional lookup so it cannot abort the caller's write.
+            self._cursor.connection.execute("SAVEPOINT shiftcare_lastrowid")
             try:
                 row = self._cursor.connection.execute("SELECT lastval()").fetchone()
                 self.lastrowid = int(row[0]) if row else None
             except Exception:
+                self._cursor.connection.execute("ROLLBACK TO SAVEPOINT shiftcare_lastrowid")
                 self.lastrowid = None
+            finally:
+                self._cursor.connection.execute("RELEASE SAVEPOINT shiftcare_lastrowid")
         return self
 
     def executemany(self, sql: str, params_seq):
@@ -163,9 +169,61 @@ def connect_postgres(config: AppConfig) -> PostgresConnectionAdapter:
     return PostgresConnectionAdapter(connection)
 
 
+def migrate_postgres_runtime_constraints(connection: PostgresConnectionAdapter) -> None:
+    """Upgrade existing installations before baseline seed upserts use new keys."""
+    cursor = connection.cursor(track_lastrowid=False)
+    cursor.execute("SELECT to_regclass('app_settings') AS relation")
+    if cursor.fetchone()["relation"] is not None:
+        cursor.execute("""
+            SELECT c.conname, c.contype,
+                   ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(attnum, ordinal)
+                         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+                         ORDER BY k.ordinal) AS columns
+            FROM pg_constraint c
+            WHERE c.conrelid = to_regclass('app_settings') AND c.contype IN ('p', 'u')
+        """)
+        constraints = cursor.fetchall()
+        has_primary_key = False
+        for constraint in constraints:
+            columns = list(constraint["columns"])
+            if columns == ["key"]:
+                identifier = '"' + constraint["conname"].replace('"', '""') + '"'
+                cursor.execute(f"ALTER TABLE app_settings DROP CONSTRAINT {identifier}")
+            elif constraint["contype"] == "p":
+                has_primary_key = columns == ["organization_id", "key"]
+        if not has_primary_key:
+            cursor.execute("ALTER TABLE app_settings ADD PRIMARY KEY (organization_id, key)")
+
+    cursor.execute("SELECT to_regclass('organization_memberships') AS relation")
+    if cursor.fetchone()["relation"] is not None:
+        cursor.execute("""
+            SELECT 1 FROM pg_attribute
+            WHERE attrelid = to_regclass('organization_memberships')
+              AND attname = 'department_access_mode' AND NOT attisdropped
+        """)
+        if cursor.fetchone() is None:
+            cursor.execute("""
+                ALTER TABLE organization_memberships
+                ADD COLUMN department_access_mode TEXT NOT NULL DEFAULT 'all'
+                CHECK (department_access_mode IN ('all', 'restricted'))
+            """)
+            cursor.execute("SELECT to_regclass('user_department_access') AS relation")
+            if cursor.fetchone()["relation"] is not None:
+                cursor.execute("""
+                    UPDATE organization_memberships m SET department_access_mode = 'restricted'
+                    WHERE EXISTS (SELECT 1 FROM user_department_access a
+                                  WHERE a.organization_id = m.organization_id AND a.user_id = m.user_id)
+                """)
+
+
 def apply_postgres_schema(connection: PostgresConnectionAdapter, schema_path: Path) -> None:
     sql = schema_path.read_text(encoding="utf-8")
     cursor = connection.cursor(track_lastrowid=False)
+    try:
+        migrate_postgres_runtime_constraints(connection)
+    except Exception:
+        connection.rollback()
+        raise
     for statement in [part.strip() for part in sql.split(";") if part.strip()]:
         try:
             cursor.execute(statement)

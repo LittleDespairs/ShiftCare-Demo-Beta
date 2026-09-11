@@ -46,7 +46,7 @@ def get_user_context(cursor, user_id: int) -> dict | None:
 
     cursor.execute(
         """
-        SELECT om.organization_id, o.public_id, o.name, om.role, om.status, om.employee_id
+        SELECT om.organization_id, o.public_id, o.name, om.role, om.status, om.employee_id, om.department_access_mode
         FROM organization_memberships om
         JOIN organizations o ON o.id = om.organization_id
         WHERE om.user_id = ?
@@ -62,6 +62,7 @@ def get_user_context(cursor, user_id: int) -> dict | None:
             "role": row["role"],
             "status": row["status"],
             "employee_id": row["employee_id"],
+            "department_access_mode": row["department_access_mode"],
         }
         for row in cursor.fetchall()
     ]

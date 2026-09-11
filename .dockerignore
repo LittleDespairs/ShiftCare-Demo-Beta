@@ -21,3 +21,23 @@ android/.gradle
 android/app/.gradle
 android/build
 android/app/build
+
+# Local artifacts and private runtime state
+outputs/
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.schedulebackup
+backups/
+private/
+design_artifacts/
+.codex/
+.agents/
+.idea/
+.vscode/
+android/local.properties
+android/app/src/main/assets/schedule_app_backend/
+android/app/src/main/python/schedule_app_backend/

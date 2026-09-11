@@ -16,3 +16,25 @@ outputs/
 *.db
 *.sqlite
 *.schedulebackup
+
+# Local artifacts and private runtime state
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+private/
+.env
+.env.*
+*.sqlite3
+*.log
+*.tmp
+*.bak
+.codex/
+.agents/
+.idea/
+.vscode/
+android/local.properties
+android/app/src/main/assets/schedule_app_backend/
+android/app/src/main/python/schedule_app_backend/

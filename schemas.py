@@ -92,10 +92,13 @@ class OrganizationMemberEmployeeLinkUpdate(BaseModel):
 
 class OrganizationMemberDepartmentAccessUpdate(BaseModel):
     department_ids: list[int] = Field(default_factory=list, max_length=200)
+    access_mode: Literal["all", "restricted"] | None = None
 
     @model_validator(mode="after")
     def normalize_department_ids(self):
         self.department_ids = sorted({int(department_id) for department_id in self.department_ids if int(department_id) > 0})
+        if self.access_mode == "all" and self.department_ids:
+            raise ValueError("All-department access cannot include a restricted department list")
         return self
 
 
@@ -109,6 +112,14 @@ class CloudOrganizationLinkRequest(BaseModel):
     cloud_organization_id: int = Field(ge=1)
     cloud_organization_public_id: str = Field(min_length=2, max_length=120)
     linked_at: str | None = Field(default=None, max_length=40)
+    cloud_access_token: str | None = Field(default=None, min_length=16, max_length=2048)
+    sync_bundle: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_sync_credentials(self):
+        if bool(self.cloud_access_token) != bool(self.sync_bundle):
+            raise ValueError("Cloud access token and accepted sync bundle must be supplied together")
+        return self
 
 
 class EmployeeCreate(BaseModel):

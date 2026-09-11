@@ -11,8 +11,8 @@ android {
         applicationId "com.scheduleapp.tablet.current"
         minSdk 26
         targetSdk 35
-        versionCode 16
-        versionName "0.20.13-beta-tablet-current"
+        versionCode 17
+        versionName "0.21.1-beta-tablet-current"
 
         ndk {
             abiFilters "arm64-v8a"
@@ -36,7 +36,7 @@ chaquopy {
     }
 }
 
-tasks.register("syncScheduleBackend", Copy) {
+tasks.register("syncScheduleBackend", Sync) {
     from("../..") {
         include "main.py"
         include "app_config.py"
@@ -53,14 +53,18 @@ tasks.register("syncScheduleBackend", Copy) {
         include "schemas.py"
         include "update_service.py"
         include "word_export.py"
-        include "schedule_app.db"
+        include "release_config.py"
+        include "sync_policy.py"
+        include "shiftcare/**"
+        exclude "**/__pycache__/**", "**/*.pyc", "**/*.db", "**/*.sqlite*", "**/.env*", "**/private/**"
         include "templates/**"
         include "static/**"
     }
     into("src/main/python/schedule_app_backend")
+    preserve { include ".gitkeep", "__init__.py" }
 }
 
-tasks.register("syncScheduleBackendAssets", Copy) {
+tasks.register("syncScheduleBackendAssets", Sync) {
     from("../..") {
         include "main.py"
         include "app_config.py"
@@ -77,7 +81,10 @@ tasks.register("syncScheduleBackendAssets", Copy) {
         include "schemas.py"
         include "update_service.py"
         include "word_export.py"
-        include "schedule_app.db"
+        include "release_config.py"
+        include "sync_policy.py"
+        include "shiftcare/**"
+        exclude "**/__pycache__/**", "**/*.pyc", "**/*.db", "**/*.sqlite*", "**/.env*", "**/private/**"
         include "templates/**"
         include "static/**"
     }

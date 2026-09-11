@@ -2,6 +2,27 @@
 
 This file tracks beta builds across the active beta lines from `0.12.x_beta` onward.
 
+# 0.21.1_beta - 2026-09-11
+
+## Release Focus
+
+Refactor the application and protect organization data during synchronization, migration and recovery. This entry describes the local release candidate; it does not record a cloud deployment or public release.
+
+## Changed
+
+- Replaced the monolithic `main.py` with an application factory, domain routers, services and scheduling modules. Preserved all 144 existing HTTP route contracts.
+- Added explicit startup/shutdown ownership for the desktop sync worker.
+- Introduced synchronization protocol 2: stable record identities, baseline-based three-way merge, revision checks under transaction locks, consistent exports and recovery of interrupted jobs.
+- Made application settings unique per organization and preserved department access restrictions through synchronization. Schema version is now 26.
+- Replaced file-copy backups with SQLite online backups and coordinated restore with recovery rollback. Portable backups clear sessions and require a new login.
+- Deferred generated days off until all positions have been scheduled for shared employees.
+- Finished employee portal setting loading, saving, retry and error states; unified release asset versions and corrected normal/demo PWA names.
+- Removed working databases and private files from build payloads; made native build failures stop packaging. Updated Android runtime shims for modular FastAPI routes and lifespan.
+
+## Verification and rollout
+
+See `RELEASE_0.21.1_beta.md` for validation, installer checksums and installation limitations. Cloud protocol 2 must be deployed before distributing the new desktop sync client. Existing unsigned installers cannot pass the updater's signature validation.
+
 # 0.20.13_beta - 2026-07-07
 
 ## Release Focus

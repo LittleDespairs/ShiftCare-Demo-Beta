@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#121820">
     <meta name="mobile-web-app-capable" content="yes">
     <title>Settings - {{ app_name }}</title>
-    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
 
     <!--
@@ -15,7 +15,7 @@
         Used across all redesigned pages.
         Используется на всех переделанных страницах.
     -->
-<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-desktop-1080p-readability">
+<link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
 
     <style>
         /* =========================================================
@@ -1005,6 +1005,14 @@
                         </span>
                     </button>
 
+                    <button class="settings-nav-item" type="button" data-settings-tab="employee-portal" aria-selected="false">
+                        <span class="settings-nav-icon">P</span>
+                        <span>
+                            <span class="settings-nav-title" data-i18n="settings_tab_employee_portal">Employee portal</span>
+                            <span class="settings-nav-text" data-i18n="settings_tab_employee_portal_text">Employee schedule access</span>
+                        </span>
+                    </button>
+
                     <button class="settings-nav-item" type="button" data-settings-tab="generation" aria-selected="false">
                         <span class="settings-nav-icon">A</span>
                         <span>
@@ -1114,18 +1122,6 @@
                                             </span>
                                         </div>
 
-                                        <div class="settings-option-row">
-                                            <label class="settings-toggle-row" for="employee_shift_swap_requests_enabled">
-                                                <input id="employee_shift_swap_requests_enabled" type="checkbox">
-                                                <span>
-                                                    <span class="settings-option-heading" data-i18n="settings_shift_swap_enabled_title">Employee shift swap requests</span>
-                                                    <span class="settings-option-text" data-i18n="settings_shift_swap_enabled_text">
-                                                        Allow employees to create new shift swap requests from the schedule.
-                                                    </span>
-                                                </span>
-                                            </label>
-                                        </div>
-
                                         <div class="color-form-grid" style="margin-top:14px;">
                                             <label class="color-control" for="schedule_morning_color">
                                                 <input id="schedule_morning_color" class="color-input" type="color">
@@ -1197,6 +1193,44 @@
                                         Save schedule view
                                     </button>
                                 </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="settings-panel" data-settings-panel="employee-portal">
+                        <div class="settings-panel-card">
+                            <div class="settings-section-header">
+                                <div>
+                                    <h3 class="settings-section-title" data-i18n="settings_employee_portal_title">Employee portal</h3>
+                                    <p class="settings-section-text" data-i18n="settings_employee_portal_text">
+                                        Control what employees can do in the employee portal.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div id="employee-portal-settings-message-box" role="status" aria-live="polite"></div>
+
+                            <form id="employee-portal-settings-form" aria-busy="true">
+                                <fieldset id="employee-portal-settings-fields" disabled style="border:0;padding:0;margin:0;">
+                                <div class="settings-option-row">
+                                    <label class="settings-toggle-row" for="employee_shift_swap_requests_enabled">
+                                        <input id="employee_shift_swap_requests_enabled" type="checkbox">
+                                        <span>
+                                            <span class="settings-option-heading" data-i18n="settings_shift_swap_enabled_title">Employee shift swap requests</span>
+                                            <span class="settings-option-text" data-i18n="settings_shift_swap_enabled_text">
+                                                Allow employees to create new shift swap requests from the schedule.
+                                            </span>
+                                        </span>
+                                    </label>
+                                </div>
+
+                                <div class="settings-actions">
+                                    <button class="btn btn-primary" type="submit" data-i18n="settings_save_employee_portal">
+                                        Save employee portal settings
+                                    </button>
+                                </div>
+                                </fieldset>
+                                <button class="btn btn-secondary" id="reload-employee-portal-settings-btn" type="button" data-i18n="common_reload" disabled>Reload</button>
                             </form>
                         </div>
                     </section>
@@ -1765,8 +1799,7 @@
             { id: "schedule_status_color", previewId: "preview_status" }
         ];
         const scheduleViewDefaults = {
-            schedule_coverage_display_mode: "interval",
-            employee_shift_swap_requests_enabled: true
+            schedule_coverage_display_mode: "interval"
         };
         let databaseBackups = [];
         let latestUpdate = null;
@@ -2094,6 +2127,11 @@
                     `${t("settings_backup_restored", "Backup restored")}: ${result.restored_backup}. ${t("settings_backup_pre_restore", "Current database was preserved as")}: ${result.pre_restore_backup}`,
                     "success"
                 );
+                if (result.requires_login) {
+                    window.scheduleAuth?.clearSession?.();
+                    window.location.assign("/login");
+                    return;
+                }
                 await loadDatabaseBackups();
             } catch (error) {
                 showDatabaseMessage(error.message || t("settings_backup_restore_failed", "Failed to restore backup."), "danger");
@@ -2127,10 +2165,6 @@
             const coverageModeSelect = document.getElementById("schedule_coverage_display_mode");
             if (coverageModeSelect) {
                 coverageModeSelect.value = settings.schedule_coverage_display_mode || scheduleViewDefaults.schedule_coverage_display_mode;
-            }
-            const shiftSwapEnabledInput = document.getElementById("employee_shift_swap_requests_enabled");
-            if (shiftSwapEnabledInput) {
-                shiftSwapEnabledInput.checked = settings.employee_shift_swap_requests_enabled !== false;
             }
             updateAppearancePreview();
         }
@@ -2184,10 +2218,6 @@
             if (coverageModeSelect) {
                 payload.schedule_coverage_display_mode = coverageModeSelect.value || scheduleViewDefaults.schedule_coverage_display_mode;
             }
-            const shiftSwapEnabledInput = document.getElementById("employee_shift_swap_requests_enabled");
-            if (shiftSwapEnabledInput) {
-                payload.employee_shift_swap_requests_enabled = Boolean(shiftSwapEnabledInput.checked);
-            }
 
             const response = await fetch("/api/app-settings", {
                 method: "PUT",
@@ -2211,10 +2241,6 @@
             const savedCoverageModeSelect = document.getElementById("schedule_coverage_display_mode");
             if (savedCoverageModeSelect) {
                 savedCoverageModeSelect.value = result.settings.schedule_coverage_display_mode || scheduleViewDefaults.schedule_coverage_display_mode;
-            }
-            const savedShiftSwapEnabledInput = document.getElementById("employee_shift_swap_requests_enabled");
-            if (savedShiftSwapEnabledInput) {
-                savedShiftSwapEnabledInput.checked = result.settings.employee_shift_swap_requests_enabled !== false;
             }
             updateAppearancePreview();
             showAppearanceMessage(t("settings_msg_appearance_saved", "Appearance settings saved."), "success");
@@ -2384,11 +2410,12 @@
             loadLicenseStatus({ silent: true });
         });
     </script>
-<script src="/static/js/i18n.js?v={{ app_version }}-shift-swap-setting"></script>
-<script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-department-access"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}"></script>
+<script src="/static/js/portal_settings.js?v={{ app_version }}"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
-<script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
+<script src="/static/js/update_notifier.js?v={{ app_version }}"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

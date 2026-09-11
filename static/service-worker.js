@@ -1,9 +1,45 @@
-const CACHE_NAME = "shiftcare-0.20.13-beta-employee-portal-settings-20260707";
+// Generated release asset list: python tools/sync_release_metadata.py
+const APP_VERSION = "0.21.1_beta";
+const CACHE_NAME = `shiftcare-${APP_VERSION}`;
 
 const SHELL_ASSETS = [
   "/",
   "/login",
   "/schedule",
+  "/weekly-preferences",
+  "/organization",
+  "/feedback",
+  "/guide",
+  "/accept-invitation",
+  "/reset-password",
+  "/verify-email",
+  "/static/css/auth.css?v=0.21.1_beta",
+  "/static/css/schedule.css?v=0.21.1_beta",
+  "/static/css/style.css?v=0.21.1_beta",
+  "/static/js/accept_invitation.js?v=0.21.1_beta",
+  "/static/js/access_control.js?v=0.21.1_beta",
+  "/static/js/auth.js?v=0.21.1_beta",
+  "/static/js/auth_client.js?v=0.21.1_beta",
+  "/static/js/auth_i18n.js?v=0.21.1_beta",
+  "/static/js/employees.js?v=0.21.1_beta",
+  "/static/js/feedback.js?v=0.21.1_beta",
+  "/static/js/home.js?v=0.21.1_beta",
+  "/static/js/i18n.js?v=0.21.1_beta",
+  "/static/js/online_status.js?v=0.21.1_beta",
+  "/static/js/organization.js?v=0.21.1_beta",
+  "/static/js/portal_settings.js?v=0.21.1_beta",
+  "/static/js/pwa.js?v=0.21.1_beta",
+  "/static/js/reset_password.js?v=0.21.1_beta",
+  "/static/js/schedule.js?v=0.21.1_beta",
+  "/static/js/support.js?v=0.21.1_beta",
+  "/static/js/update_notifier.js?v=0.21.1_beta",
+  "/static/js/verify_email.js?v=0.21.1_beta",
+  "/manifest.webmanifest",
+  "/static/icons/app-icon.svg",
+  "/static/offline.html"
+];
+
+const OPTIONAL_PAGES = [
   "/settings",
   "/employees",
   "/departments",
@@ -11,31 +47,24 @@ const SHELL_ASSETS = [
   "/employee-positions",
   "/shift-templates",
   "/coverage-requirements",
-  "/weekly-preferences",
-  "/organization",
-  "/feedback",
-  "/guide",
-  "/static/css/style.css?v=0.20.13_beta-desktop-1080p-readability",
-  "/static/css/auth.css?v=0.20.13_beta-desktop-1080p-readability",
-  "/static/css/schedule.css?v=0.20.13_beta-mobile-current-first",
-  "/static/js/i18n.js?v=0.20.13_beta-shift-swap-setting",
-  "/static/js/auth_client.js?v=0.20.13_beta-desktop-local",
-  "/static/js/access_control.js?v=0.20.13_beta-nav-feedback-ru",
-  "/static/js/auth_i18n.js?v=0.20.13_beta-department-access",
-  "/static/js/auth.js?v=0.20.13_beta-portal-entry-employee-mode",
-  "/static/js/schedule.js?v=0.20.13_beta-shift-swap-setting",
-  "/static/js/organization.js?v=0.20.13_beta-employee-portal-settings",
-  "/static/js/feedback.js?v=0.20.13_beta-feedback",
-  "/static/js/online_status.js?v=0.20.13_beta",
-  "/static/js/pwa.js?v=0.20.13_beta",
-  "/static/js/update_notifier.js?v=0.20.13_beta-startup-updates",
-  "/static/manifest.webmanifest",
-  "/static/icons/app-icon.svg"
+  "/support"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(SHELL_ASSETS);
+      // Desktop and developer pages legitimately return 404 on the portal.
+      // Their availability must not prevent installation of the shared shell.
+      await Promise.all(OPTIONAL_PAGES.map(async (url) => {
+        try {
+          const response = await fetch(url);
+          if (response.ok) await cache.put(url, response);
+        } catch (error) {
+          // Optional pages will be cached when successfully visited later.
+        }
+      }));
+    })
   );
   self.skipWaiting();
 });
@@ -44,7 +73,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
       keys
-        .filter((key) => key !== CACHE_NAME)
+        .filter((key) => key.startsWith("shiftcare-") && key !== CACHE_NAME)
         .map((key) => caches.delete(key))
     ))
   );
@@ -54,7 +83,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const requestUrl = new URL(event.request.url);
 
-  if (requestUrl.pathname.startsWith("/api/")) {
+  if (event.request.method !== "GET" || requestUrl.origin !== self.location.origin || requestUrl.pathname.startsWith("/api/")) {
     return;
   }
 
@@ -67,24 +96,31 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+          if (response.ok) {
+            const responseClone = response.clone();
+            event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone)));
+          }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(async () => (await caches.match(event.request))
+          || (await caches.match(requestUrl.pathname))
+          || caches.match("/static/offline.html"))
     );
     return;
   }
 
   if (
     requestUrl.pathname.startsWith("/static/js/") ||
-    requestUrl.pathname.startsWith("/static/css/")
+    requestUrl.pathname.startsWith("/static/css/") ||
+    requestUrl.pathname === "/manifest.webmanifest"
   ) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+          if (response.ok) {
+            const responseClone = response.clone();
+            event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone)));
+          }
           return response;
         })
         .catch(() => caches.match(event.request))

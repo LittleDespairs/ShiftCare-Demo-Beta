@@ -6,7 +6,7 @@ Runtime model:
 
 - Android starts a Java `Activity`.
 - Chaquopy starts an embedded Python runtime.
-- `app_bridge.py` starts the FastAPI backend on `127.0.0.1:8765` inside the tablet.
+- `app_bridge.py` starts the FastAPI backend on `127.0.0.1:8766` inside the tablet.
 - Android WebView opens that local URL.
 - SQLite data is stored in the app internal storage directory, so it survives app restarts and upgrades.
 
@@ -16,7 +16,10 @@ Runtime model:
 - JDK 17 or newer.
 - Internet access during the first Gradle build, because Gradle downloads Android and Chaquopy dependencies.
 
-The current machine has Java 8 and no Android SDK/Gradle on PATH, so the project is scaffolded but cannot be built here until those tools are installed.
+The local 0.21.1 beta debug build was verified with the JetBrains JBR below and
+the SDK configured in the untracked `local.properties`. The Gradle wrapper
+downloads the required Gradle distribution; the system Java on PATH is not used
+when `JAVA_HOME` is set explicitly.
 
 ## Build
 
@@ -41,6 +44,12 @@ The debug APK will be created under:
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+The backend copy tasks use `Sync` and include the `shiftcare` package and shared
+release configuration. They remove stale generated files and exclude runtime
+databases, local environment files and private data. New installations initialize
+their own database in application storage. Debug APKs are local test artifacts;
+they are not store releases.
 
 ## Install on your tablet
 

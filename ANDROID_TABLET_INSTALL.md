@@ -1,6 +1,6 @@
 # Android Tablet Install
 
-This project is a Python/FastAPI web app with a SQLite database. Android cannot run the existing Windows `.exe` build directly. The current tablet-friendly path is:
+This project is a Python/FastAPI web app with a SQLite database. Android cannot run the Windows `.exe` build directly. This guide covers using the app over a local network:
 
 1. Run the app server on your PC.
 2. Open it from the Android tablet over the same Wi-Fi network.
@@ -48,12 +48,8 @@ The app includes a web app manifest, an icon, theme color, and a service worker 
 - Use the exact IP address printed by `run_tablet_server.py`.
 - If port `8000` is busy, stop the other server first.
 
-## Fully standalone tablet app later
+## Standalone tablet APK
 
-A real APK that runs everything on the tablet would need a different packaging path, such as:
+The project also includes a standalone Android WebView wrapper with an embedded Python backend and its own local SQLite database. The **0.21.1 beta** debug APK has been built and checked locally; a physical-tablet launch has not been verified.
 
-- a native Android wrapper with an embedded Python backend,
-- a rewrite of the backend to an Android-native stack,
-- or a hosted server plus a simple Android WebView shell.
-
-The PWA/LAN route is the lowest-risk way to use the current app on a private tablet before deciding whether a full APK is worth building.
+See [standalone APK build and installation](ANDROID_STANDALONE_APK.md) for that option. The LAN setup above remains useful when the tablet should use the database running on the PC.

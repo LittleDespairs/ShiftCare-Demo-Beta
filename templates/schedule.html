@@ -7,15 +7,15 @@
     <meta name="theme-color" content="#121820">
     <meta name="mobile-web-app-capable" content="yes">
     <title>Schedule - {{ app_name }}</title>
-    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
 
     <!--
         Main shared stylesheet / Основной общий CSS-файл
         Он уже используется новой главной страницей
     -->
-    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-desktop-1080p-readability">
-    <link rel="stylesheet" href="/static/css/schedule.css?v={{ app_version }}-mobile-current-first">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+    <link rel="stylesheet" href="/static/css/schedule.css?v={{ app_version }}">
 </head>
 
 <body class="app-shell schedule-board-page ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}" data-employee-portal-mode="{{ '1' if cloud_employee_portal_mode() else '0' }}">
@@ -512,12 +512,12 @@
         It controls language switching and RTL/LTR direction.
         Он управляет языком и направлением интерфейса RTL/LTR.
     -->
-<script src="/static/js/i18n.js?v={{ app_version }}-shift-swap-setting"></script>
-<script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-nav-feedback-ru"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}"></script>
 <script src="/static/js/pwa.js?v={{ app_version }}"></script>
-<script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
-    <script src="/static/js/schedule.js?v={{ app_version }}-shift-swap-setting"></script>
+<script src="/static/js/update_notifier.js?v={{ app_version }}"></script>
+    <script src="/static/js/schedule.js?v={{ app_version }}"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

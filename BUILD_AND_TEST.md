@@ -2,21 +2,26 @@
 
 ## Test
 
-Use the project virtual environment:
+Use the project virtual environment. Tests create isolated databases; do not set `SCHEDULE_APP_DATABASE_PATH` to a working database:
 
 ```powershell
+$env:PYTHON_DOTENV_DISABLED = "1"
+$env:DATABASE_ENGINE = "sqlite"
+$env:APP_ENV = "development"
+$env:K_SERVICE = ""
+$env:SCHEDULE_APP_DISABLE_BACKGROUND_SYNC = "1"
+$env:EMAIL_ENABLED = "0"
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Quick import check:
+Application composition and packaged Android runtime smoke checks:
 
 ```powershell
-@'
-import main
-print(main.APP_VERSION)
-print(main.app.title)
-'@ | .\.venv\Scripts\python.exe -
+.\.venv\Scripts\python.exe -m unittest tests.test_application_structure tests.test_release_assets -v
+.\.venv\Scripts\python.exe tools/sync_release_metadata.py --check
 ```
+
+Set `SCHEDULE_APP_POSTGRES_TEST_DSN` to a disposable PostgreSQL 16 database to include real PostgreSQL migration, settings, CAS, export snapshot and concurrency checks. Each integration test uses and removes an isolated schema. Without a DSN these checks are explicitly skipped. CI runs Python 3.12/3.13 with PostgreSQL on Linux and Python 3.13 on Windows.
 
 ## Local Run
 
@@ -92,7 +97,7 @@ the GitHub Actions workflow that starts a disposable PostgreSQL service.
 
 The standalone Android wrapper is in `android/`.
 
-It requires Android Studio, Android SDK, and JDK 17+. The current local Java is Java 8, so install/configure JDK 17 before building.
+It requires Android SDK and JDK 17+. The 0.21.1 beta debug APK was built locally using the JetBrains JBR below and the SDK configured in `android/local.properties`. Set `JAVA_HOME` explicitly if the system Java on PATH is older than JDK 17.
 
 ```powershell
 cd android
@@ -115,13 +120,13 @@ See `ANDROID_STANDALONE_APK.md` and `android/README.md`.
 Current spec:
 
 ```text
-ShiftCare_0.20.13_beta.spec
+ShiftCare_0.21.1_beta.spec
 ```
 
 Build command:
 
 ```powershell
-.\.venv\Scripts\pyinstaller.exe ShiftCare_0.20.13_beta.spec
+.\.venv\Scripts\pyinstaller.exe ShiftCare_0.21.1_beta.spec
 ```
 
 ## Windows Installer
@@ -145,8 +150,8 @@ If Inno Setup is not installed locally:
 Expected installer output:
 
 ```text
-dist\installer\ShiftCare_Setup_0.20.13-beta.exe
-dist\installer\ShiftCare_Demo_Setup_0.20.13-beta.exe
+dist\installer\ShiftCare_Setup_0.21.1-beta.exe
+dist\installer\ShiftCare_Demo_Setup_0.21.1-beta.exe
 ```
 
 Customer release build with code signing:
@@ -168,7 +173,7 @@ match the legal subject in the code-signing certificate.
 Before uploading the installer to GitHub Releases, verify it on a clean Windows machine:
 
 ```powershell
-signtool verify /pa /tw /v .\dist\installer\ShiftCare_Setup_0.20.13-beta.exe
+signtool verify /pa /tw /v .\dist\installer\ShiftCare_Setup_0.21.1-beta.exe
 ```
 
 ## Before Committing

@@ -10,13 +10,12 @@
         departments: [],
         clientConfig: null,
         cloudLink: null,
-        appSettings: null,
     };
 
     const elements = {};
+    let cloudLinkBusy = false;
     const INVITATION_ROLES = new Set(["owner", "admin"]);
     const MEMBER_VIEW_ROLES = new Set(["owner", "admin", "scheduler", "manager"]);
-    const APP_SETTINGS_ROLES = new Set(["owner", "admin", "scheduler"]);
     const ALL_MEMBER_ROLES = ["owner", "admin", "scheduler", "manager", "read_only", "employee"];
     const ADMIN_ASSIGNABLE_ROLES = ["scheduler", "manager", "read_only", "employee"];
     const INVITE_ROLES = ["employee", "read_only", "manager", "scheduler", "admin", "owner"];
@@ -153,10 +152,6 @@
         return MEMBER_VIEW_ROLES.has(state.membership?.role);
     }
 
-    function canManageEmployeePortalSettings() {
-        return APP_SETTINGS_ROLES.has(state.membership?.role);
-    }
-
     function selectMembership() {
         const membership = window.scheduleAuth.getActiveMembership(state.user);
         state.membership = membership;
@@ -211,48 +206,10 @@
         }
     }
 
-    function renderEmployeePortalSettings() {
-        if (!elements.shiftSwapRequestsEnabled) return;
-        elements.shiftSwapRequestsEnabled.checked = state.appSettings?.employee_shift_swap_requests_enabled !== false;
-    }
-
-    async function loadEmployeePortalSettings() {
-        if (!canManageEmployeePortalSettings()) {
-            state.appSettings = null;
-            renderEmployeePortalSettings();
-            return;
-        }
-        state.appSettings = await window.scheduleAuth.request("/api/app-settings");
-        renderEmployeePortalSettings();
-    }
-
-    async function saveEmployeePortalSettings() {
-        if (!canManageEmployeePortalSettings() || !elements.shiftSwapRequestsEnabled) return;
-        setMessage(uiText("org_msg_saving_employee_portal_settings", "Saving portal settings..."), "");
-        try {
-            const response = await window.scheduleAuth.request("/api/app-settings", {
-                method: "PUT",
-                body: JSON.stringify({
-                    employee_shift_swap_requests_enabled: Boolean(elements.shiftSwapRequestsEnabled.checked),
-                }),
-            });
-            state.appSettings = response.settings || state.appSettings;
-            renderEmployeePortalSettings();
-            setMessage(uiText("org_msg_employee_portal_settings_saved", "Employee portal settings saved."), "success");
-        } catch (error) {
-            renderEmployeePortalSettings();
-            setMessage(error.message, "error");
-        }
-    }
-
     function renderPermissions() {
         elements.inviteForm.hidden = !canManageInvitations();
         if (elements.employeePortalPanel) {
-            elements.employeePortalPanel.hidden = Boolean(state.clientConfig?.cloud_employee_portal_mode)
-                && !canManageEmployeePortalSettings();
-        }
-        if (elements.employeePortalSettingsForm) {
-            elements.employeePortalSettingsForm.hidden = !canManageEmployeePortalSettings();
+            elements.employeePortalPanel.hidden = Boolean(state.clientConfig?.cloud_employee_portal_mode);
         }
         if (elements.membersPanel) {
             elements.membersPanel.hidden = !canViewMembers();
@@ -1070,6 +1027,7 @@
     }
 
     async function uploadAndLinkCloudOrganization() {
+        if (cloudLinkBusy) return;
         if (!canManageInvitations()) {
             setCloudStatus(uiText("org_cloud_only_admin_connect", "Only owners and admins can connect this organization to cloud."), "error");
             return;
@@ -1081,6 +1039,9 @@
         }
         setMessage("", "");
         setCloudStatus(uiText("org_cloud_preparing_export", "Preparing local organization export..."), "");
+        cloudLinkBusy = true;
+        const submit = elements.cloudLinkForm?.querySelector("button[type='submit']");
+        if (submit) submit.disabled = true;
         try {
             const localBundle = await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-export`);
             setCloudStatus(uiText("org_cloud_signing_in", "Signing in to Cloud beta API..."), "");
@@ -1089,6 +1050,17 @@
             if (!cloudMembership || !["owner", "admin"].includes(cloudMembership.role)) {
                 throw new Error(uiText("org_cloud_owner_required", "Cloud account must be an owner or admin of the target organization."));
             }
+            setCloudStatus(uiText("org_cloud_checking_snapshot", "Checking the cloud organization before linking..."), "");
+            const cloudBundle = await cloudRequest(
+                cloudBaseUrl,
+                `/api/organizations/${cloudMembership.organization_id}/cloud-export`,
+                {},
+                cloudSession.access_token,
+            );
+            if (cloudBundle.sync_protocol !== 2 || !cloudBundle.sync_revision) {
+                throw new Error(uiText("org_cloud_protocol_update", "Update the cloud service before linking this organization."));
+            }
+            localBundle.sync = { protocol: 2, base_revision: cloudBundle.sync_revision, initial_link: true };
             setCloudStatus(uiText("org_cloud_uploading", "Uploading local organization to cloud..."), "");
             const importResponse = await cloudRequest(
                 cloudBaseUrl,
@@ -1097,32 +1069,43 @@
                     method: "POST",
                     body: JSON.stringify({
                         bundle: localBundle,
-                        replace_existing: elements.cloudReplaceExisting.checked,
+                        replace_existing: true,
                     }),
                 },
                 cloudSession.access_token,
             );
+            if (!importResponse.sync_bundle) {
+                throw new Error(uiText("org_cloud_protocol_update", "Update the cloud service before linking this organization."));
+            }
             setCloudStatus(uiText("org_cloud_saving_link", "Saving cloud link locally..."), "");
-            await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-link`, {
+            const linkResponse = await window.scheduleAuth.request(`/api/organizations/${state.organizationId}/cloud-link`, {
                 method: "POST",
                 body: JSON.stringify({
                     cloud_api_base_url: cloudBaseUrl,
                     cloud_organization_id: cloudMembership.organization_id,
                     cloud_organization_public_id: importResponse.organization_public_id || cloudMembership.organization_public_id,
+                    cloud_access_token: cloudSession.access_token,
+                    sync_bundle: importResponse.sync_bundle,
                     linked_at: new Date().toISOString(),
                 }),
             });
+            await loadCloudLinkStatus();
+            const imported = importResponse.imported || {};
             setCloudStatus(
-                uiText("org_cloud_linked_imported", "Linked. Imported {employees} employees, {positions} positions, {shift_templates} shift templates.")
-                    .replace("{employees}", importResponse.imported.employees)
-                    .replace("{positions}", importResponse.imported.positions)
-                    .replace("{shift_templates}", importResponse.imported.shift_templates),
+                linkResponse.sync_pending
+                    ? uiText("org_cloud_linked_pending", "Connected. Recent local changes are waiting to synchronize.")
+                    : uiText("org_cloud_linked_imported", "Linked. Imported {employees} employees, {positions} positions, {shift_templates} shift templates.")
+                        .replace("{employees}", imported.employees || 0)
+                        .replace("{positions}", imported.positions || 0)
+                        .replace("{shift_templates}", imported.shift_templates || 0),
                 "success",
             );
-            await loadCloudLinkStatus();
             elements.cloudPassword.value = "";
         } catch (error) {
             setCloudStatus(error.message, "error");
+        } finally {
+            cloudLinkBusy = false;
+            if (submit) submit.disabled = false;
         }
     }
 
@@ -1154,7 +1137,6 @@
             try {
                 await loadOrganizationData();
                 await loadEmployeesForInvitations();
-                await loadEmployeePortalSettings();
                 await loadCloudLinkStatus();
             } catch (error) {
                 setMessage(error.message, "error");
@@ -1169,10 +1151,6 @@
             if (!elements.employeePortalUrl.value) return;
             await navigator.clipboard.writeText(elements.employeePortalUrl.value);
             setMessage(uiText("org_msg_employee_portal_copied", "Employee portal link copied."), "success");
-        });
-        elements.employeePortalSettingsForm?.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            await saveEmployeePortalSettings();
         });
         elements.inviteRole?.addEventListener("change", updateInviteRoleState);
         elements.cloudLinkForm?.addEventListener("submit", async (event) => {
@@ -1271,13 +1249,10 @@
             employeePortalUrl: document.getElementById("employee-portal-url"),
             openEmployeePortalLink: document.getElementById("open-employee-portal-link"),
             copyEmployeePortal: document.getElementById("copy-employee-portal-btn"),
-            employeePortalSettingsForm: document.getElementById("employee-portal-settings-form"),
-            shiftSwapRequestsEnabled: document.getElementById("employee_shift_swap_requests_enabled"),
             cloudLinkForm: document.getElementById("cloud-link-form"),
             cloudApiBaseUrl: document.getElementById("cloud-api-base-url"),
             cloudEmail: document.getElementById("cloud-email"),
             cloudPassword: document.getElementById("cloud-password"),
-            cloudReplaceExisting: document.getElementById("cloud-replace-existing"),
             cloudLinkSummary: document.getElementById("cloud-link-summary"),
             cloudLinkApi: document.getElementById("cloud-link-api"),
             cloudLinkOrganization: document.getElementById("cloud-link-organization"),
@@ -1307,7 +1282,6 @@
             updateInviteRoleState();
             await loadOrganizationData();
             await loadEmployeesForInvitations();
-            await loadEmployeePortalSettings();
             await loadCloudLinkStatus();
         } catch (error) {
             setMessage(error.message, "error");

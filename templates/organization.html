@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#121820">
     <title>Personal account - {{ app_name }}</title>
-    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}-desktop-1080p-readability">
-    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}-desktop-1080p-readability">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ app_version }}">
+    <link rel="stylesheet" href="/static/css/auth.css?v={{ app_version }}">
 </head>
 
 <body class="app-shell ltr" data-app-version="{{ app_version }}" data-app-name="{{ app_name }}" data-demo-mode="{{ '1' if demo_mode_enabled() else '0' }}" data-employee-portal-mode="{{ '1' if cloud_employee_portal_mode() else '0' }}">
@@ -211,16 +211,6 @@
                         </div>
                     </div>
 
-                    <form id="employee-portal-settings-form" class="organization-form-stack" hidden>
-                        <label class="portal-color-control" for="employee_shift_swap_requests_enabled">
-                            <input id="employee_shift_swap_requests_enabled" type="checkbox">
-                            <span>
-                                <strong data-i18n="settings_shift_swap_enabled_title">Employee shift swap requests</strong>
-                                <small data-i18n="settings_shift_swap_enabled_text">Allow employees to create new shift swap requests from the schedule.</small>
-                            </span>
-                        </label>
-                        <button class="btn btn-primary" type="submit" data-i18n="org_save_employee_portal_settings">Save portal settings</button>
-                    </form>
                 </section>
 
                 <form id="invite-form" class="organization-panel">
@@ -330,12 +320,12 @@
             <div id="organization-message" class="organization-message" role="status" aria-live="polite"></div>
         </main>
     </div>
-<script src="/static/js/i18n.js?v={{ app_version }}-shift-swap-setting"></script>
-<script src="/static/js/auth_client.js?v={{ app_version }}-desktop-local"></script>
-<script src="/static/js/access_control.js?v={{ app_version }}-nav-feedback-ru"></script>
-<script src="/static/js/update_notifier.js?v={{ app_version }}-startup-updates"></script>
-<script src="/static/js/auth_i18n.js?v={{ app_version }}-department-access"></script>
-<script src="/static/js/organization.js?v={{ app_version }}-employee-portal-settings"></script>
+<script src="/static/js/i18n.js?v={{ app_version }}"></script>
+<script src="/static/js/auth_client.js?v={{ app_version }}"></script>
+<script src="/static/js/access_control.js?v={{ app_version }}"></script>
+<script src="/static/js/update_notifier.js?v={{ app_version }}"></script>
+<script src="/static/js/auth_i18n.js?v={{ app_version }}"></script>
+<script src="/static/js/organization.js?v={{ app_version }}"></script>
 <script src="/static/js/online_status.js?v={{ app_version }}"></script>
 </body>
 

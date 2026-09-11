@@ -120,20 +120,24 @@ def get_position_app_settings(
     connection,
     position_id: int,
     base_settings: dict | None = None,
-    organization_id: int = 1,
+    organization_id: int | None = None,
 ) -> dict:
-    settings = base_settings or get_app_settings(connection, organization_id=organization_id)
     cursor = connection.cursor()
-    cursor.execute(
-        """
-        SELECT max_consecutive_nights, emergency_max_consecutive_nights,
+    query = """
+        SELECT organization_id, max_consecutive_nights, emergency_max_consecutive_nights,
                max_consecutive_split_days, emergency_max_consecutive_split_days
         FROM positions
         WHERE id = ?
-        """,
-        (position_id,),
-    )
-    return apply_position_generation_limits(settings, cursor.fetchone())
+    """
+    params = (position_id,)
+    if organization_id is not None:
+        query += " AND organization_id = ?"
+        params += (organization_id,)
+    cursor.execute(query, params)
+    position = cursor.fetchone()
+    resolved_organization = organization_id if organization_id is not None else (position["organization_id"] if position else 1)
+    settings = base_settings or get_app_settings(connection, organization_id=resolved_organization)
+    return apply_position_generation_limits(settings, position)
 
 
 def save_app_settings(connection, settings: AppSettingsUpdate, organization_id: int = 1) -> None:
@@ -143,9 +147,8 @@ def save_app_settings(connection, settings: AppSettingsUpdate, organization_id: 
             """
             INSERT INTO app_settings (organization_id, key, value)
             VALUES (?, ?, ?)
-            ON CONFLICT(key)
-            DO UPDATE SET organization_id = excluded.organization_id,
-                          value = excluded.value
+            ON CONFLICT(organization_id, key)
+            DO UPDATE SET value = excluded.value
             """,
             (organization_id, key, str(value)),
         )
@@ -158,9 +161,8 @@ def reset_visual_color_settings(connection, organization_id: int = 1) -> int:
             """
             INSERT INTO app_settings (organization_id, key, value)
             VALUES (?, ?, ?)
-            ON CONFLICT(key)
-            DO UPDATE SET organization_id = excluded.organization_id,
-                          value = excluded.value
+            ON CONFLICT(organization_id, key)
+            DO UPDATE SET value = excluded.value
             """,
             (organization_id, key, value),
         )
