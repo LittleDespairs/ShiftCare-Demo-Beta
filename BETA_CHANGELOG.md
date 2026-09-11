@@ -6,7 +6,7 @@ This file tracks beta builds across the active beta lines from `0.12.x_beta` onw
 
 ## Release Focus
 
-Refactor the application and protect organization data during synchronization, migration and recovery. This entry describes the local release candidate; it does not record a cloud deployment or public release.
+Refactor the application and protect organization data during synchronization, migration and recovery. Published on 2026-09-11 after the live portal was upgraded to `0.21.1_beta` and Linux/Windows CI passed. Windows installers are an explicitly approved unsigned beta for manual distribution; updater signature enforcement remains enabled.
 
 ## Changed
 
@@ -21,7 +21,7 @@ Refactor the application and protect organization data during synchronization, m
 
 ## Verification and rollout
 
-See `RELEASE_0.21.1_beta.md` for validation, installer checksums and installation limitations. Cloud protocol 2 must be deployed before distributing the new desktop sync client. Existing unsigned installers cannot pass the updater's signature validation.
+See `RELEASE_0.21.1_beta.md` for validation, installer checksums and installation limitations. Cloud protocol 2 is deployed, and portal liveness, readiness and PostgreSQL checks passed before publication. The unsigned Windows installers cannot pass the updater's signature validation.
 
 # 0.20.13_beta - 2026-07-07
 

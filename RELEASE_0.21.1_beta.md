@@ -33,3 +33,11 @@ Schema 26 changes organization settings keys. Rolling back requires a matched ap
 SHA256: `78702d7b0c6915514eb119e970804d135849194092750237aa34b21aec403432`
 
 Download `SHA256SUMS.txt` alongside the installer to check the downloaded file. The app executable relies on its accompanying runtime directory; the installer is the distributable package.
+
+## Publication status
+
+Published on 2026-09-11 as an explicitly approved unsigned Windows beta for manual distribution. The updater's trusted-signature requirement remains enabled; this release does not enable automatic installation of unsigned files. The Android asset in the standard release is explicitly labeled as a debug tablet build.
+
+The live employee portal at [portal.shiftcare.co.il](https://portal.shiftcare.co.il/login) and [schedule-app-beta.web.app](https://schedule-app-beta.web.app/login) was upgraded to `0.21.1_beta` before the installers were published. Liveness, readiness, and PostgreSQL connectivity checks passed.
+
+[Public source CI](https://github.com/LittleDespairs/ShiftCare-Demo-Beta/actions/runs/34632678203) passed for commit `ac95bf63bd397a9035fa5884b2320b53697e1af1`: Linux Python 3.12 and 3.13, plus Windows. The release tag continues to identify this tested source snapshot.
