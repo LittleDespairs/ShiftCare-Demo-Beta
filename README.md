@@ -13,7 +13,7 @@ The 0.21.1 beta update improves concurrent desktop/cloud synchronization, organi
 
 ## Source and development
 
-This snapshot was synchronized from source commit `20f91cd63a09bf257e6cc8bf132d005f84a270d6`, preserving this repository's existing history. Working databases, secrets, private documents, build outputs, and internal project/release audit reports are excluded.
+The `main` branch contains the current 0.21.1 beta source, including the desktop synchronization correction used by the refreshed Windows installer. The existing `v0.21.1-beta` tag retains the original source snapshot; use `main` to reproduce the refreshed Windows build. Repository history is preserved. Working databases, secrets, private documents, build outputs, and internal project/release audit reports are excluded.
 
 - [Build and test guide](BUILD_AND_TEST.md)
 - [Application architecture](docs/ARCHITECTURE.md)

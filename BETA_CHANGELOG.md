@@ -6,7 +6,7 @@ This file tracks beta builds across the active beta lines from `0.12.x_beta` onw
 
 ## Release Focus
 
-Refactor the application and protect organization data during synchronization, migration and recovery. Published on 2026-09-11 after the live portal was upgraded to `0.21.1_beta` and Linux/Windows CI passed. Windows installers are an explicitly approved unsigned beta for manual distribution; updater signature enforcement remains enabled.
+Refactor the application and protect organization data during synchronization, migration and recovery. The portal was upgraded to 0.21.1 beta on 2026-09-11 after a verified Cloud SQL backup and a controlled maintenance window.
 
 ## Changed
 
@@ -21,7 +21,19 @@ Refactor the application and protect organization data during synchronization, m
 
 ## Verification and rollout
 
-See `RELEASE_0.21.1_beta.md` for validation, installer checksums and installation limitations. Cloud protocol 2 is deployed, and portal liveness, readiness and PostgreSQL checks passed before publication. The unsigned Windows installers cannot pass the updater's signature validation.
+210 local tests passed, including PostgreSQL integration. GitHub CI passed on Linux with Python 3.12/3.13 and on Windows with Python 3.13. Both portal origins report 0.21.1_beta with healthy PostgreSQL; static resources and PWA versions were checked independently. See `RELEASE_0.21.1_beta.md` for publication details and artifacts. The beta installers are unsigned with explicit release authorization; the updater's signature validation remains enabled.
+
+## Desktop synchronization correction — 2026-09-11
+
+- Poll for incoming portal requests even when the desktop has no outgoing changes. Pending local edits are merged with independent incoming requests; retry delays remain effective.
+- Recover a missing legacy baseline only when all shared records match and the only cloud additions are weekly preferences or requests created after the last successful push. Local-only records, ambiguous changes and destructive queue history still require review.
+- Avoid re-enqueuing unchanged weekly and recurring preferences at startup, on both SQLite and PostgreSQL.
+- Acknowledge only captured redundant updates, preserve newer local edits, reject stale connection settings after unlink and retain outgoing failure details while retries remain pending.
+- Show synchronization and reload failures on the weekly preferences page without replacing displayed requests with an empty list or a success message.
+
+The correction keeps the application version at `0.21.1_beta`. Windows downloads are updated in place under the existing `v0.21.1-beta` release, with refreshed checksums and the same download URLs. Source changes are available on `main`; the original release tag and Android build remain unchanged.
+
+Validation: 223 Python tests passed without skips, including the PostgreSQL integration suite; all 12 JavaScript behavior tests and release metadata checks passed. A backed-up legacy desktop database was recovered through GET-only cloud access, then compared against the full cloud snapshot. Existing records and pending approval states were preserved.
 
 # 0.20.13_beta - 2026-07-07
 

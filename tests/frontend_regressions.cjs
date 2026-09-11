@@ -188,3 +188,142 @@ test("initial link never finalizes an incompatible cloud or a conflicting import
         assert.equal(link.submit.disabled, false);
     }
 });
+
+function weeklyPreferences(request) {
+    const source = fs.readFileSync("templates/weekly_preferences.html", "utf8");
+    function definition(name, nextName) {
+        const declaration = source.indexOf(`function ${name}(`);
+        const start = source.slice(declaration - 6, declaration) === "async " ? declaration - 6 : declaration;
+        const next = source.indexOf(`function ${nextName}(`, start);
+        const end = source.slice(next - 6, next) === "async " ? next - 6 : next;
+        assert.ok(start >= 0 && end > start, `Missing weekly preference handler: ${name}`);
+        return source.slice(start, end);
+    }
+    const calls = [], notices = [];
+    const modalElement = () => ({ classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {} });
+    const typeButtons = ["request_shift", "exclude_shift", "day_off", "vacation"].map(requestType => ({
+        ...modalElement(), dataset: { requestType }
+    }));
+    const categoryButtons = ["morning", "evening", "night"].map(requestCategory => ({
+        ...modalElement(), dataset: { requestCategory }
+    }));
+    const elements = {
+        week_start: { value: "2026-09-13" },
+        request_type_select: { value: "request_shift" },
+        request_category_select: { value: "morning" },
+        "request-modal-overlay": modalElement(),
+        "request-category-field": { hidden: false }
+    };
+    const context = {
+        document: {
+            getElementById: id => elements[id],
+            querySelectorAll: selector => selector === "[data-request-type]" ? typeButtons : categoryButtons
+        },
+        console: { error() {} },
+        buildWeek: date => [date],
+        isEmployeePortalPreferencesMode: () => false,
+        normalizeRequest: item => item,
+        preferenceKey: (id, date) => `${id}:${date}`,
+        rebuildPreferenceRequestMap() {}, renderTable() {}, renderApprovalPanel() {},
+        closeRequestModal() { context.pendingRequestTarget = null; },
+        t: (key, fallback) => fallback,
+        escapeHtml: value => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+        showMessage: (text, type) => notices.push({ text, type }),
+        preferencesMap: { previous: [] }, preferenceRequests: [{ id: 8, status: "pending" }],
+        preferencesLoaded: true, weekDates: ["2026-09-06"],
+        pendingRequestTarget: { employeeId: 5, date: "2026-09-13" },
+        window: { scheduleAuth: { request: async (url, options = {}) => {
+            calls.push({ url, options });
+            return request(url, options);
+        } } }
+    };
+    vm.createContext(context);
+    vm.runInContext([
+        definition("loadWeekPreferences", "handlePreferencesContextChanged"),
+        definition("openRequestModal", "savePendingRequest"),
+        definition("savePendingRequest", "decidePreferenceRequest"),
+        definition("decidePreferenceRequest", "deletePreferenceRequest"),
+        definition("deletePreferenceRequest", "deletePreference")
+    ].join("\n"), context);
+    return { context, calls, notices, elements };
+}
+
+test("weekly preference load preserves the server's sync conflict detail", async () => {
+    const detail = "Sync needs review: these different copies have no agreed baseline; changes were preserved";
+    const ui = weeklyPreferences(async () => { throw new Error(detail); });
+    assert.equal(await ui.context.loadWeekPreferences(), false);
+    assert.deepEqual(ui.notices, [{ text: detail, type: "danger" }]);
+    assert.equal(ui.calls.length, 1);
+    assert.deepEqual(ui.context.weekDates, ["2026-09-06"]);
+});
+
+test("failed approval-list load preserves displayed requests, reports failure and supports retry", async () => {
+    let fail = true;
+    const preference = { id: 4, employee_id: 5, preference_date: "2026-09-13", request_type: "request_shift" };
+    const ui = weeklyPreferences(async url => {
+        if (url.includes("preference-requests")) {
+            if (fail) throw new Error("Approval list unavailable");
+            return [];
+        }
+        return [preference];
+    });
+    assert.equal(await ui.context.loadWeekPreferences(), false);
+    assert.equal(ui.context.preferenceRequests[0].id, 8);
+    assert.ok("previous" in ui.context.preferencesMap);
+    assert.deepEqual(ui.notices, [{ text: "Approval list unavailable", type: "danger" }]);
+    fail = false;
+    assert.equal(await ui.context.loadWeekPreferences(), true);
+    assert.equal(ui.context.preferencesMap["5:2026-09-13"][0].id, 4);
+    assert.equal(ui.context.preferenceRequests.length, 0);
+    assert.equal(ui.notices.at(-1).type, "success");
+});
+
+test("saved preference, approval and deletion do not hide a failed reload with success", async () => {
+    for (const action of ["savePendingRequest", "decidePreferenceRequest", "deletePreferenceRequest"]) {
+        const ui = weeklyPreferences(async (url, options) => {
+            if (options.method) return { status: "saved" };
+            throw new Error("Sync needs review: <cloud> copies differ");
+        });
+        await ui.context[action](8, "approved");
+        assert.ok(ui.calls[0].options.method);
+        assert.equal(ui.notices.length, 1);
+        assert.equal(ui.notices[0].type, "warning");
+        assert.match(ui.notices[0].text, /change was saved/);
+        assert.match(ui.notices[0].text, /Sync needs review: &lt;cloud&gt; copies differ/);
+    }
+});
+
+test("malformed preference lists fail visibly and pending approval remains distinct from a saved preference", async () => {
+    const broken = weeklyPreferences(async () => ({}));
+    assert.equal(await broken.context.loadWeekPreferences(), false);
+    assert.equal(broken.notices.at(-1).type, "danger");
+    const pending = weeklyPreferences(async (url, options) => options.method ? { status: "pending_approval" } : []);
+    await pending.context.savePendingRequest();
+    assert.equal(pending.notices.at(-1).type, "info");
+    assert.match(pending.notices.at(-1).text, /sent for administrator approval/);
+});
+
+test("weekly request modal resets to a morning shift and serializes the selected type/category", async () => {
+    const ui = weeklyPreferences(async (url, options) => options.method ? { status: "saved" } : []);
+    const choices = [
+        ...["request_shift", "exclude_shift"].flatMap(type => ["morning", "evening", "night"].map(category => [type, category])),
+        ["day_off", null], ["vacation", null]
+    ];
+    for (const [type, category] of choices) {
+        ui.context.openRequestModal(5, "2026-09-15");
+        assert.equal(ui.elements.request_type_select.value, "request_shift");
+        assert.equal(ui.elements.request_category_select.value, "morning");
+        ui.context.setRequestType(type);
+        if (category) ui.context.setRequestCategory(category);
+        assert.equal(ui.elements["request-category-field"].hidden, category === null);
+        await ui.context.savePendingRequest();
+        const write = ui.calls.filter(call => call.options.method === "POST").at(-1);
+        assert.deepEqual(JSON.parse(write.options.body), {
+            employee_id: 5, week_start_date: "2026-09-13", preference_date: "2026-09-15",
+            request_type: type, target_category: category
+        });
+    }
+    ui.context.openRequestModal(5, "2026-09-16");
+    assert.equal(ui.elements.request_type_select.value, "request_shift", "Vacation must not persist as the next request's default");
+    assert.equal(ui.elements.request_category_select.value, "morning");
+});

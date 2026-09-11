@@ -7,6 +7,7 @@ represents a deletion, rather than an invitation to resurrect an old record.
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import UTC, datetime
 import hashlib
 import json
 import re
@@ -39,6 +40,56 @@ AUDIT_FIELDS = {
 
 class SyncConflict(ValueError):
     """Neither side may silently discard the other side's changes."""
+
+
+def bootstrap_legacy_remote_additions(local: dict, remote: dict, remote_bundle: dict, evidence: dict) -> dict:
+    """Adopt a legacy baseline only for provably new incoming weekly requests.
+
+    An absent baseline cannot distinguish a deletion from a missing record.
+    Therefore local-only rows, edited shared rows, changed catalog/settings,
+    destructive outbox history and older remote-only rows require review.
+    This deliberately never unions arbitrary snapshots or chooses a winner.
+    """
+    def reject():
+        raise SyncConflict("Sync needs review: these different copies have no agreed baseline; changes were preserved")
+
+    def timestamp(value):
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+        except (TypeError, ValueError):
+            return None
+
+    cutoff = timestamp(evidence.get("last_push_at"))
+    if cutoff is None or local.get("organization") != remote.get("organization"):
+        reject()
+    local_records = local.get("records", {})
+    remote_records = remote.get("records", {})
+    for change in evidence.get("outbox", []):
+        if change.get("operation") != "upsert":
+            reject()
+        if change.get("status") in {"pending", "failed", "syncing"}:
+            if change.get("entity_public_id") not in local_records.get(change.get("entity_type"), {}):
+                reject()
+    allowed_additions = {"employee_week_preferences", "employee_week_preference_requests"}
+    raw_remote = {
+        table: {str(row.get("public_id")): row for row in rows}
+        for table, rows in (remote_bundle.get("records") or {}).items()
+    }
+    for table in set(local_records) | set(remote_records):
+        ours, theirs = local_records.get(table, {}), remote_records.get(table, {})
+        if any(key not in theirs or value != theirs[key] for key, value in ours.items()):
+            reject()
+        additions = set(theirs) - set(ours)
+        if additions and table not in allowed_additions:
+            reject()
+        for key in additions:
+            created = timestamp(raw_remote.get(table, {}).get(key, {}).get("created_at"))
+            if created is None or created <= cutoff:
+                reject()
+    # Run the ordinary referential checks too; malformed additions must not
+    # cause an importer to drop a request whose employee is unavailable.
+    return merge_snapshots(local, local, remote)
 
 
 class StableIdentityImportCursor:

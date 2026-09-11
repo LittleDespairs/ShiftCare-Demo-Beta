@@ -14,6 +14,7 @@ from sync_policy import SyncConflict
 from sync_policy import bundle_from_snapshot
 from sync_policy import canonical_snapshot
 from sync_policy import merge_snapshots
+from sync_policy import bootstrap_legacy_remote_additions
 import database
 import json
 import os
@@ -31,6 +32,26 @@ def should_start_desktop_sync_worker() -> bool:
 
 
 _DESKTOP_SYNC_RUN_LOCK = threading.Lock()
+
+
+def capture_legacy_sync_evidence(connection) -> dict:
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT value FROM app_settings WHERE organization_id = 1 AND key = 'desktop_cloud_last_push_at'"
+    )
+    last_push = cursor.fetchone()
+    cursor.execute(
+        "SELECT id, entity_type, entity_public_id, operation, status FROM desktop_sync_outbox WHERE organization_id = 1"
+    )
+    return {"last_push_at": last_push["value"] if last_push else None,
+            "outbox": [dict(row) for row in cursor.fetchall()]}
+
+
+def merge_desktop_snapshots(baseline, local_bundle, remote_bundle, legacy_evidence=None):
+    local, remote = canonical_snapshot(local_bundle), canonical_snapshot(remote_bundle)
+    if baseline is None and local != remote:
+        return bootstrap_legacy_remote_additions(local, remote, remote_bundle, legacy_evidence or {})
+    return merge_snapshots(baseline, local, remote)
 
 
 def run_desktop_sync_once() -> bool:
@@ -81,17 +102,21 @@ def run_desktop_sync_once() -> bool:
         local_bundle = services_bundles.build_organization_export_bundle(connection, 1)
         local_snapshot = canonical_snapshot(local_bundle)
         baseline = json.loads(settings["desktop_cloud_sync_baseline"]) if settings.get("desktop_cloud_sync_baseline") else None
-        if not claimed_ids:
-            if baseline is None or local_snapshot == baseline:
-                connection.commit()
-                return False
-            # Settings and employee-position links have no per-row outbox
-            # trigger. Detect their edits against the agreed snapshot too.
+        legacy_evidence = capture_legacy_sync_evidence(connection) if baseline is None else None
+        if not claimed_ids and baseline is not None and local_snapshot != baseline:
             cursor.execute(
-                "INSERT INTO desktop_sync_outbox (organization_id, entity_type, entity_public_id, operation) VALUES (1, 'organization', 'snapshot', 'replace')"
+                "SELECT COUNT(*) FROM desktop_sync_outbox "
+                "WHERE organization_id = 1 AND status IN ('pending', 'failed')"
             )
-            claimed_ids = [int(cursor.lastrowid)]
-        placeholders = ",".join("?" for _ in claimed_ids)
+            deferred_count = int(cursor.fetchone()[0])
+            # Settings and employee-position links have no per-row outbox
+            # trigger. Do not bypass the retry delay of an existing operation.
+            if not deferred_count:
+                cursor.execute(
+                    "INSERT INTO desktop_sync_outbox (organization_id, entity_type, entity_public_id, operation) VALUES (1, 'organization', 'snapshot', 'replace')"
+                )
+                claimed_ids = [int(cursor.lastrowid)]
+        placeholders = ",".join("?" for _ in claimed_ids) or "NULL"
         cursor.execute(
             f"""
             UPDATE desktop_sync_outbox
@@ -110,28 +135,35 @@ def run_desktop_sync_once() -> bool:
         expected_public_id = settings.get("cloud_organization_public_id")
         if expected_public_id and str((remote_bundle.get("organization") or {}).get("public_id")) != expected_public_id:
             raise SyncConflict("Cloud organization identity changed; local data was preserved")
-        merged = merge_snapshots(baseline, local_snapshot, canonical_snapshot(remote_bundle))
-        bundle = bundle_from_snapshot(merged, remote_bundle)
-        bundle["sync"] = {"protocol": 2, "base_revision": remote_bundle["sync_revision"]}
-        response = services_cloud_client.request_cloud_json(
-            cloud_base_url,
-            f"/api/organizations/{int(cloud_organization_id)}/cloud-import",
-            method="POST",
-            payload={"bundle": bundle, "replace_existing": True},
-            token=cloud_token,
-        )
-        accepted_bundle = response.get("sync_bundle")
-        if not accepted_bundle:
-            raise SyncConflict("Cloud did not acknowledge the synchronized snapshot; local changes were preserved")
+        remote_snapshot = canonical_snapshot(remote_bundle)
+        merged = merge_desktop_snapshots(baseline, local_bundle, remote_bundle, legacy_evidence)
+        accepted_bundle = remote_bundle
+        did_push = bool(claimed_ids) and merged != remote_snapshot
+        if did_push:
+            bundle = bundle_from_snapshot(merged, remote_bundle)
+            bundle["sync"] = {"protocol": 2, "base_revision": remote_bundle["sync_revision"]}
+            response = services_cloud_client.request_cloud_json(
+                cloud_base_url,
+                f"/api/organizations/{int(cloud_organization_id)}/cloud-import",
+                method="POST",
+                payload={"bundle": bundle, "replace_existing": True},
+                token=cloud_token,
+            )
+            accepted_bundle = response.get("sync_bundle")
+            if not accepted_bundle:
+                raise SyncConflict("Cloud did not acknowledge the synchronized snapshot; local changes were preserved")
+            merged = canonical_snapshot(accepted_bundle)
 
         services_bundles.lock_organization_sync_snapshot(connection, 1)
         current_bundle = services_bundles.build_organization_export_bundle(connection, 1)
         services_bundles.ensure_desktop_sync_identity(connection, settings)
         # Edits made while the HTTP request was in flight stay local and pending.
-        local_merged = merge_snapshots(local_snapshot, canonical_snapshot(current_bundle), canonical_snapshot(accepted_bundle))
+        current_snapshot = canonical_snapshot(current_bundle)
+        local_merged = merge_snapshots(local_snapshot, current_snapshot, merged)
         local_result = bundle_from_snapshot(local_merged, current_bundle)
-        with suspend_desktop_sync_triggers(cursor, 1):
-            services_bundles.import_organization_bundle(connection, 1, local_result, True, None)
+        if local_merged != current_snapshot:
+            with suspend_desktop_sync_triggers(cursor, 1):
+                services_bundles.import_organization_bundle(connection, 1, local_result, True, None)
         services_bundles.save_desktop_sync_baseline(cursor, accepted_bundle)
 
         now = services_common.current_utc_timestamp()
@@ -146,20 +178,28 @@ def run_desktop_sync_once() -> bool:
         cursor.execute(
             """
             INSERT INTO app_settings (organization_id, key, value)
-            VALUES (1, 'desktop_cloud_last_push_at', ?)
+            VALUES (1, 'desktop_cloud_last_pull_at', ?)
             ON CONFLICT(organization_id, key)
             DO UPDATE SET value = excluded.value
             """,
             (now,),
         )
+        if did_push:
+            cursor.execute(
+                "INSERT INTO app_settings (organization_id, key, value) VALUES (1, 'desktop_cloud_last_push_at', ?) "
+                "ON CONFLICT(organization_id, key) DO UPDATE SET value = excluded.value", (now,),
+            )
         cursor.execute(
             """
             DELETE FROM app_settings
             WHERE organization_id = 1 AND key = 'desktop_cloud_last_push_error'
+              AND NOT EXISTS (
+                  SELECT 1 FROM desktop_sync_outbox WHERE organization_id = 1 AND status = 'failed'
+              )
             """
         )
         connection.commit()
-        return True
+        return bool(claimed_ids) or local_merged != local_snapshot or baseline is None
     except Exception as exc:
         connection.rollback()
         try:

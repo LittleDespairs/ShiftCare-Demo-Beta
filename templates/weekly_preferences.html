@@ -1663,10 +1663,10 @@
 
             if (!weekStart) {
                 showMessage(t("msg_select_week_start", "Please select a week start date."), "warning");
-                return;
+                return false;
             }
 
-            weekDates = buildWeek(weekStart);
+            const loadedWeekDates = buildWeek(weekStart);
 
             try {
                 const requestStatusParam = isEmployeePortalPreferencesMode() ? "" : "&status=pending";
@@ -1675,12 +1675,12 @@
                 );
                 const requests = await window.scheduleAuth.request(
                     `/api/employee-week-preference-requests?week_start_date=${encodeURIComponent(weekStart)}${requestStatusParam}&skip_cloud_pull=1`
-                ).catch(error => {
-                    console.error(error);
-                    showMessage(t("msg_server_error_load_preference_requests", "Server error while loading preference requests."), "warning");
-                    return [];
-                });
+                );
+                if (!Array.isArray(preferences) || !Array.isArray(requests)) {
+                    throw new Error(t("msg_server_error_load_preference_requests", "Server error while loading preference requests."));
+                }
 
+                weekDates = loadedWeekDates;
                 preferencesMap = {};
                 preferences.forEach(item => {
                     const normalized = normalizeRequest(item);
@@ -1690,7 +1690,7 @@
                     }
                     preferencesMap[key].push(normalized);
                 });
-                preferenceRequests = Array.isArray(requests) ? requests : [];
+                preferenceRequests = requests;
                 rebuildPreferenceRequestMap();
 
                 preferencesLoaded = true;
@@ -1699,9 +1699,15 @@
                 if (showLoadedMessage) {
                     showMessage(t("msg_preferences_loaded", "Preferences loaded successfully."), "success");
                 }
+                return true;
             } catch (error) {
                 console.error(error);
-                showMessage(t("msg_server_error_load_preferences", "Server error while loading preferences."), "danger");
+                const detail = error.message || t("msg_server_error_load_preferences", "Server error while loading preferences.");
+                const message = options.changeSaved
+                    ? `${t("msg_preference_change_saved_reload_failed", "The change was saved, but the list could not be refreshed:")} ${detail}`
+                    : detail;
+                showMessage(escapeHtml(message), options.changeSaved ? "warning" : "danger");
+                return false;
             }
         }
 
@@ -1874,7 +1880,7 @@
                     })
                 });
                 closeRequestModal();
-                await loadWeekPreferences({ showLoadedMessage: false });
+                if (!await loadWeekPreferences({ showLoadedMessage: false, changeSaved: true })) return;
                 if (response?.status === "pending_approval") {
                     showMessage(
                         t("msg_preference_request_pending_approval", "This request was sent for administrator approval."),
@@ -1896,7 +1902,7 @@
                     method: "PATCH",
                     body: JSON.stringify({ status })
                 });
-                await loadWeekPreferences({ showLoadedMessage: false });
+                if (!await loadWeekPreferences({ showLoadedMessage: false, changeSaved: true })) return;
                 const messageKey = status === "approved"
                     ? "msg_preference_request_approved"
                     : "msg_preference_request_rejected";
@@ -1916,7 +1922,7 @@
                 await window.scheduleAuth.request(`/api/employee-week-preference-requests/${requestId}`, {
                     method: "DELETE"
                 });
-                await loadWeekPreferences({ showLoadedMessage: false });
+                if (!await loadWeekPreferences({ showLoadedMessage: false, changeSaved: true })) return;
                 showMessage(t("msg_preference_request_deleted", "Preference request deleted."), "success");
             } catch (error) {
                 console.error(error);

@@ -850,6 +850,13 @@ def _ensure_postgres_runtime_schema(connection) -> None:
                     WHEN preference_type LIKE '%night' THEN 'night'
                     ELSE target_category
                 END
+            WHERE (preference_type = 'off_day' AND (request_type IS NULL OR request_type <> 'day_off'))
+               OR (preference_type = 'vacation' AND (request_type IS NULL OR request_type <> 'vacation'))
+               OR (preference_type = 'no_morning_evening_combo' AND (request_type IS NULL OR request_type <> 'no_morning_evening_combo'))
+               OR (preference_type LIKE 'not_%' AND (request_type IS NULL OR request_type <> 'exclude_shift'))
+               OR (preference_type LIKE '%morning' AND (target_category IS NULL OR target_category <> 'morning'))
+               OR (preference_type LIKE '%evening' AND (target_category IS NULL OR target_category <> 'evening'))
+               OR (preference_type LIKE '%night' AND (target_category IS NULL OR target_category <> 'night'))
         """)
         cursor.execute("""
             ALTER TABLE employee_recurring_preferences
@@ -873,6 +880,12 @@ def _ensure_postgres_runtime_schema(connection) -> None:
                     WHEN preference_type LIKE '%night' THEN 'night'
                     ELSE target_category
                 END
+            WHERE (preference_type = 'off_day' AND (request_type IS NULL OR request_type <> 'day_off'))
+               OR (preference_type = 'vacation' AND (request_type IS NULL OR request_type <> 'vacation'))
+               OR (preference_type LIKE 'not_%' AND (request_type IS NULL OR request_type <> 'exclude_shift'))
+               OR (preference_type LIKE '%morning' AND (target_category IS NULL OR target_category <> 'morning'))
+               OR (preference_type LIKE '%evening' AND (target_category IS NULL OR target_category <> 'evening'))
+               OR (preference_type LIKE '%night' AND (target_category IS NULL OR target_category <> 'night'))
         """)
         cursor.execute("""
             ALTER TABLE employee_week_preferences
@@ -2659,6 +2672,12 @@ def _initialize_sqlite_schema(connection):
                 WHEN preference_type LIKE '%night' THEN 'night'
                 ELSE target_category
             END
+        WHERE (preference_type = 'off_day' AND (request_type IS NULL OR request_type <> 'day_off'))
+           OR (preference_type = 'vacation' AND (request_type IS NULL OR request_type <> 'vacation'))
+           OR (preference_type LIKE 'not_%' AND (request_type IS NULL OR request_type <> 'exclude_shift'))
+           OR (preference_type LIKE '%morning' AND (target_category IS NULL OR target_category <> 'morning'))
+           OR (preference_type LIKE '%evening' AND (target_category IS NULL OR target_category <> 'evening'))
+           OR (preference_type LIKE '%night' AND (target_category IS NULL OR target_category <> 'night'))
     """)
 
     cursor.execute("""
@@ -2738,6 +2757,13 @@ def _initialize_sqlite_schema(connection):
                 WHEN preference_type LIKE '%night' THEN 'night'
                 ELSE target_category
             END
+        WHERE (preference_type = 'off_day' AND (request_type IS NULL OR request_type <> 'day_off'))
+           OR (preference_type = 'vacation' AND (request_type IS NULL OR request_type <> 'vacation'))
+           OR (preference_type = 'no_morning_evening_combo' AND (request_type IS NULL OR request_type <> 'no_morning_evening_combo'))
+           OR (preference_type LIKE 'not_%' AND (request_type IS NULL OR request_type <> 'exclude_shift'))
+           OR (preference_type LIKE '%morning' AND (target_category IS NULL OR target_category <> 'morning'))
+           OR (preference_type LIKE '%evening' AND (target_category IS NULL OR target_category <> 'evening'))
+           OR (preference_type LIKE '%night' AND (target_category IS NULL OR target_category <> 'night'))
     """)
 
     cursor.execute("""

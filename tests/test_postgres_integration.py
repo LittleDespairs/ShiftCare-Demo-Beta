@@ -4,6 +4,7 @@ import unittest
 import uuid
 from pathlib import Path
 
+import database
 from app_settings_service import get_app_settings, get_position_app_settings, reset_visual_color_settings, save_app_settings
 from db_adapter import PostgresConnectionAdapter, apply_postgres_schema, migrate_postgres_runtime_constraints
 from schemas import AppSettingsUpdate
@@ -42,6 +43,44 @@ class PostgresIntegrationTests(unittest.TestCase):
         self.assertGreater(self.connection.execute("SELECT COUNT(*) AS count FROM app_settings").fetchone()["count"], 0)
         apply_postgres_schema(self.connection, self.schema_path)
         self.assertEqual(self.connection.execute("SELECT COUNT(*) AS count FROM organizations").fetchone()["count"], 1)
+
+    def test_runtime_preference_normalization_does_not_rewrite_current_rows(self):
+        self.connection.execute("""
+            INSERT INTO employees (
+                id, full_name, sex, min_shifts_per_week, max_shifts_per_week,
+                can_work_night, can_work_weekends, can_work_evenings_after_night,
+                can_work_mornings_and_evenings
+            ) VALUES (1, 'Preference migration', 'female', 0, 7, 1, 1, 1, 1)
+        """)
+        for table, columns, values in (
+            ("employee_recurring_preferences", "preference_kind, day_of_week", "'strict', 0"),
+            ("employee_week_preferences", "week_start_date, preference_date", "'2026-09-13', '2026-09-13'"),
+        ):
+            self.connection.execute(f"""
+                INSERT INTO {table} (employee_id, {columns}, preference_type, request_type, target_category)
+                VALUES (1, {values}, 'off_day', 'day_off', NULL),
+                       (1, {values}, 'not_evening', 'request_shift', NULL)
+            """)
+        self.connection.commit()
+
+        def snapshot():
+            return {
+                table: [tuple(row[column] for column in ("preference_type", "request_type", "target_category", "row_version")) for row in self.connection.execute(
+                    f"SELECT preference_type, request_type, target_category, xmin::text AS row_version FROM {table} ORDER BY preference_type"
+                ).fetchall()]
+                for table in ("employee_recurring_preferences", "employee_week_preferences")
+            }
+
+        original = snapshot()
+        database._ensure_postgres_runtime_schema(self.connection)
+        migrated = snapshot()
+        for table, rows in migrated.items():
+            self.assertEqual(rows[0][:3], ("not_evening", "exclude_shift", "evening"))
+            self.assertNotEqual(rows[0][3], original[table][0][3])
+            self.assertEqual(rows[1], original[table][1])
+        for _ in range(2):
+            database._ensure_postgres_runtime_schema(self.connection)
+            self.assertEqual(snapshot(), migrated)
 
     def test_settings_writes_and_visual_reset_do_not_cross_organization_boundaries(self):
         self.connection.execute("INSERT INTO organizations (id, public_id, name) VALUES (2, 'org-two', 'Two')")

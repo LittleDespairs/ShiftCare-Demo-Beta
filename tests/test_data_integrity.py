@@ -101,6 +101,73 @@ class DataIntegrityTests(unittest.TestCase):
             rows = connection.execute("SELECT DISTINCT organization_id FROM desktop_sync_outbox").fetchall()
             self.assertEqual([row[0] for row in rows], [2])
 
+    def seed_preference_normalization_cases(self):
+        cases = [
+            ("off_day", "day_off", None),
+            ("vacation", "vacation", None),
+            ("only_morning", "request_shift", "morning"),
+            ("only_evening", "request_shift", "evening"),
+            ("only_night", "request_shift", "night"),
+            ("not_morning", "exclude_shift", "morning"),
+            ("not_evening", "exclude_shift", "evening"),
+            ("not_night", "exclude_shift", "night"),
+            ("no_morning_evening_combo", "no_morning_evening_combo", None),
+        ]
+        with database.get_connection() as connection:
+            connection.execute("""
+                INSERT INTO employees (
+                    id, full_name, sex, min_shifts_per_week, max_shifts_per_week,
+                    can_work_night, can_work_weekends, can_work_evenings_after_night,
+                    can_work_mornings_and_evenings
+                ) VALUES (1, 'Preference migration', 'female', 0, 7, 1, 1, 1, 1)
+            """)
+            for index, values in enumerate(cases, start=1):
+                connection.execute("""
+                    INSERT INTO employee_recurring_preferences (
+                        employee_id, preference_kind, day_of_week,
+                        preference_type, request_type, target_category, public_id
+                    ) VALUES (1, 'strict', 0, ?, ?, ?, ?)
+                """, (*values, f"recurring-{index}"))
+                connection.execute("""
+                    INSERT INTO employee_week_preferences (
+                        employee_id, week_start_date, preference_date,
+                        preference_type, request_type, target_category, public_id
+                    ) VALUES (1, '2026-09-13', '2026-09-13', ?, ?, ?, ?)
+                """, (*values, f"weekly-{index}"))
+            connection.execute("DELETE FROM desktop_sync_outbox")
+
+    def test_repeated_init_does_not_enqueue_unchanged_existing_preferences(self):
+        self.seed_preference_normalization_cases()
+        tables = ("employee_recurring_preferences", "employee_week_preferences")
+        with database.get_connection() as connection:
+            original = {table: [dict(row) for row in connection.execute(f"SELECT * FROM {table} ORDER BY id")]
+                        for table in tables}
+        for _ in range(2):
+            database.init_db()
+            with database.get_connection() as connection:
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM desktop_sync_outbox").fetchone()[0], 0)
+                for table in tables:
+                    self.assertEqual([dict(row) for row in connection.execute(f"SELECT * FROM {table} ORDER BY id")], original[table])
+
+    def test_preference_normalization_enqueues_only_rows_that_need_migration(self):
+        self.seed_preference_normalization_cases()
+        tables = ("employee_recurring_preferences", "employee_week_preferences")
+        with database.get_connection() as connection:
+            for table in tables:
+                connection.execute(f"UPDATE {table} SET request_type = 'request_shift', target_category = NULL WHERE preference_type = 'not_evening'")
+            connection.execute("DELETE FROM desktop_sync_outbox")
+        database.init_db()
+        with database.get_connection() as connection:
+            queued = connection.execute("SELECT entity_type, COUNT(*) FROM desktop_sync_outbox GROUP BY entity_type").fetchall()
+            self.assertEqual({row[0]: row[1] for row in queued}, {table: 1 for table in tables})
+            for table in tables:
+                row = connection.execute(f"SELECT request_type, target_category FROM {table} WHERE preference_type = 'not_evening'").fetchone()
+                self.assertEqual(tuple(row), ("exclude_shift", "evening"))
+            connection.execute("DELETE FROM desktop_sync_outbox")
+        database.init_db()
+        with database.get_connection() as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM desktop_sync_outbox").fetchone()[0], 0)
+
     def test_legacy_department_restriction_survives_last_department_deletion(self):
         with database.get_connection() as connection:
             connection.execute("INSERT INTO users (id, email, full_name) VALUES (1, 'scheduler@example.test', 'Scheduler')")

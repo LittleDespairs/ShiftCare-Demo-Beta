@@ -3705,7 +3705,7 @@ class ApiRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn("preference_date must belong to the selected week", response.text)
 
-    def test_pending_local_preferences_prevent_cloud_pull_before_generation(self):
+    def test_pending_local_preferences_without_baseline_require_review_instead_of_silent_skip(self):
         employee_id = self._create_employee()
         response = self.client.post(
             "/api/employee-week-preferences",
@@ -3734,8 +3734,13 @@ class ApiRegressionTests(unittest.TestCase):
             )
         self.connection.commit()
 
-        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=AssertionError("cloud pull should be skipped")):
-            services_sync_pull.pull_cloud_preferences_for_desktop_generation(self.connection)
+        remote_bundle = services_bundles.build_organization_export_bundle(self.connection, 1)
+        remote_bundle["records"]["employee_week_preferences"] = []
+        with patch.object(services_cloud_client, 'request_cloud_json', return_value=remote_bundle) as cloud_request:
+            with self.assertRaises(HTTPException) as conflict:
+                services_sync_pull.pull_cloud_preferences_for_desktop_generation(self.connection)
+        self.assertEqual(conflict.exception.status_code, 409)
+        cloud_request.assert_called_once()
 
         cursor.execute(
             """
@@ -3948,12 +3953,19 @@ class ApiRegressionTests(unittest.TestCase):
             self.assertEqual(path, "/api/organizations/42/cloud-export")
             return cloud_bundle
 
-        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=fake_cloud_request):
-            self.assertTrue(services_sync_pull.sync_cloud_preferences_to_desktop(self.connection, {
+        connection_settings = {
                 "cloud_api_base_url": "https://schedule-app-beta.web.app",
                 "cloud_organization_id": "42",
                 "desktop_cloud_access_token": "cloud-token",
-            }))
+        }
+        for key, value in connection_settings.items():
+            cursor.execute(
+                "INSERT INTO app_settings (organization_id, key, value) VALUES (1, ?, ?) "
+                "ON CONFLICT(organization_id, key) DO UPDATE SET value=excluded.value", (key, value),
+            )
+        self.connection.commit()
+        with patch.object(services_cloud_client, 'request_cloud_json', side_effect=fake_cloud_request):
+            self.assertTrue(services_sync_pull.sync_cloud_preferences_to_desktop(self.connection, connection_settings))
         self.connection.commit()
 
         cursor.execute("SELECT COUNT(*) AS count FROM desktop_sync_outbox")
